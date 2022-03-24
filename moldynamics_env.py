@@ -40,12 +40,6 @@ def env_fn(**kwargs):
 
 class MolecularDynamics(ParallelEnv):
     metadata = {"render_modes":["human"], "name":"md_v0"}
-    atomic_numbers_mapping = {
-        1: "hydrogen",
-        6: "carbon",
-        7: "nitrogen",
-        8: "oxygen"
-    }    
     
     def __init__(self, db_path, timelimit=1000, exp_folder=None,
                  save_trajectories=False, evaluate_rewards_rdkit=False):
@@ -62,40 +56,30 @@ class MolecularDynamics(ParallelEnv):
         self.traj_file = os.path.join(exp_folder, 'tmp.traj')
 
         with connect(self.dbpath) as conn:
-            example_atoms = conn.get(1).toatoms()
-        self.atomic_numbers = example_atoms.get_atomic_numbers()
-        observation_shape = example_atoms.get_positions().shape
+            example_row = conn.get(1)
+        self.atoms_count = example_row.count_atoms()
+        example_atoms = example_row.toatoms()
+        self.observation_shape = example_atoms.get_positions().shape
 
-        self.possible_agents, self.action_spaces = self._init_agents()
-        self.observation_spaces = [
-            Box(
-                low=-np.inf, 
-                high=np.inf,
-                shape=(observation_shape)
-            )
-            for _ in self.possible_agents
-        ]
+        self.possible_agents, self.action_spaces, self.observation_spaces = self._init_agents()
 
     def _init_agents(self):
         unit_cube_action_space = Box(low=-1.0, high=1.0, shape=(3,))
-        last_type = ""
+        r3_observation_space = Box(low=-np.inf, high=np.inf, shape=self.observation_shape)
+
         agents = []
         self.agent_name_mapping = {}
         action_spaces = {}
-        i = 0
-        for agent_id, atomic_number in enumerate(self.atomic_numbers):
-            if atomic_number not in self.atomic_numbers_mapping:
-                raise ValueError("Invalid atomic number for atom number {}".format(agent_id))
-            agent_type = self.atomic_numbers_mapping[atomic_number]
-            if last_type == agent_type:
-                i += 1
-            else:
-                i = 0
-            agents.append(f"{agent_type}_{i}")
-            self.agent_name_mapping[agents[-1]] = agent_id
-            action_spaces[agents[-1]] = unit_cube_action_space
-            last_type = agent_type
-        return agents, action_spaces
+        observation_spaces = {}
+
+        for atom_type, atom_count in self.atoms_count.items():
+            for atom_number in range(atom_count):
+                agent_id = len(agents)
+                agents.append(f"{atom_type}_{atom_number}")
+                self.agent_name_mapping[agents[-1]] = agent_id
+                action_spaces[agents[-1]] = unit_cube_action_space
+                observation_spaces[agents[-1]] = r3_observation_space
+        return agents, action_spaces, observation_spaces
 
     def step(self, actions):
         if self.env_done:
