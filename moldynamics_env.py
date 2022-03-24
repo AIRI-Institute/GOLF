@@ -15,25 +15,27 @@ from pettingzoo.utils import wrappers
 from pettingzoo.utils import parallel_to_aec
 
 
-def env(**kwargs):
-    '''
-    The env function often wraps the environment in wrappers by default.
-    '''
-    env = raw_env(**kwargs)
-    # This wrapper is only for environments which print results to the terminal
-    env = wrappers.CaptureStdoutWrapper(env)
-    # Provides a wide vareity of helpful user errors
-    # Strongly recommended
-    env = wrappers.OrderEnforcingWrapper(env)
-    return env
+# def make_env(raw_env):
+#     '''
+#     The env function often wraps the environment in wrappers by default.
+#     '''
+#     def env_fn(**kwargs):
+#         env = raw_env(**kwargs)
+#         # This wrapper is only for environments which print results to the terminal
+#         env = wrappers.CaptureStdoutWrapper(env)
+#         # Provides a wide vareity of helpful user errors
+#         # Strongly recommended
+#         env = wrappers.OrderEnforcingWrapper(env)
+#         return env
+#     return env_fn
 
-def raw_env(**kwargs):
+def env_fn(**kwargs):
     '''
     To support the AEC API, the raw_env() function just uses the from_parallel
     function to convert from a ParallelEnv to an AEC env
     '''
     env = MolecularDynamics(**kwargs)
-    env = parallel_to_aec(env)
+    # env = wrappers.OrderEnforcingWrapper(env)
     return env
 
 class MolecularDynamics(ParallelEnv):
@@ -46,13 +48,14 @@ class MolecularDynamics(ParallelEnv):
     }    
     
     def __init__(self, db_path, timelimit=1000, exp_folder=None,
-                 save_trajectories=False, evaluate_rewards_rdkit=False) -> None:
+                 save_trajectories=False, evaluate_rewards_rdkit=False):
         self.TL = timelimit
         self.dbpath = db_path
         self.db_len = self._get_db_length()
         self.exp_folder = exp_folder
         self.save_trajectories = save_trajectories
         self.evaluate_rewards_rdkit = evaluate_rewards_rdkit
+        self.env_done = True
         self.atoms = None
 
         assert self.exp_folder is not None, "Provide a name for the experiment in order to save trajectories."
@@ -94,22 +97,21 @@ class MolecularDynamics(ParallelEnv):
             last_type = agent_type
         return agents, action_spaces
 
-    def step(self, actions) -> dict:
+    def step(self, actions):
+        if self.env_done:
+            raise AssertionError("reset() needs to be called before step")
         current_postitions = self.atoms.get_positions()
         
         actions_np = np.zeros(current_postitions.shape)
         for agent in self.agents:
             actions_np[self.agent_name_mapping[agent], :] = actions[agent]
-        print(actions_np)
         
         current_postitions += actions_np
-        print(current_postitions)
         self.atoms.set_positions(current_postitions)
-        print(self.atoms.get_positions())
         self.trajectory.write(self.atoms)
 
         self.env_steps += 1
-        env_done = self.env_steps >= self.TL
+        self.env_done = self.env_steps >= self.TL
 
         if self.evaluate_rewards_rdkit:
             rewards = self._evaluate_rewards_rdkit()
@@ -117,21 +119,22 @@ class MolecularDynamics(ParallelEnv):
             rewards = {agent: None for agent in self.agents}                
 
         observations = {agent: self.atoms for agent in self.agents}
-        dones = {agent: env_done for agent in self.agents}
+        dones = {agent: self.env_done for agent in self.agents}
         infos = {agent: {} for agent in self.agents}
 
         return observations, rewards, dones, infos
 
-    def render(self, mode="human") -> None:
+    def render(self, mode="human"):
         if self.env_done:
             trajectory = Trajectory(self.traj_file, "r")
-            view(trajectory, viewer='nglviewer')
-            if self.save_trajectory:
+            view(trajectory)
+            if self.save_trajectories:
                 new_traj_file = os.path.join(self.exp_folder, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.traj')
                 os.replace(self.traj_file, new_traj_file)
-            os.remove(self.traj_file)
+            else:
+                os.remove(self.traj_file)
     
-    def reset(self, idx=None) -> dict:
+    def reset(self, idx=None):
         if idx is None:
             idx = np.random.randint(1, self.db_len + 1)
         with connect(self.dbpath) as conn:
@@ -145,10 +148,11 @@ class MolecularDynamics(ParallelEnv):
 
         self.agents = self.possible_agents[:]
         self.env_steps = 0
+        self.env_done = False
         observations = {agent: self.atoms for agent in self.agents}
         return observations
 
-    def close(self) -> None:
+    def close(self):
         if os.path.exists(self.traj_file):
             os.remove(self.traj_file)
 
