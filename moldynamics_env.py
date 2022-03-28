@@ -82,8 +82,8 @@ class MolecularDynamics(ParallelEnv):
         return agents, action_spaces, observation_spaces
 
     def step(self, actions):
-        if self.env_done:
-            raise AssertionError("reset() needs to be called before step")
+        #if self.env_done:
+        #    raise AssertionError("reset() needs to be called before step")
         current_postitions = self.atoms.get_positions()
         
         actions_np = np.zeros(current_postitions.shape)
@@ -105,6 +105,10 @@ class MolecularDynamics(ParallelEnv):
         observations = {agent: self.atoms for agent in self.agents}
         dones = {agent: self.env_done for agent in self.agents}
         infos = {agent: {} for agent in self.agents}
+
+        self.agents = [
+            agent for agent in self.agents if not dones[agent]
+        ]
 
         return observations, rewards, dones, infos
 
