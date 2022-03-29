@@ -42,13 +42,12 @@ class MolecularDynamics(ParallelEnv):
     metadata = {"render_modes":["human"], "name":"md_v0"}
     
     def __init__(self, db_path, timelimit=1000, exp_folder=None,
-                 save_trajectories=False, evaluate_rewards_rdkit=False):
+                 save_trajectories=False):
         self.TL = timelimit
         self.dbpath = db_path
         self.db_len = self._get_db_length()
         self.exp_folder = exp_folder
         self.save_trajectories = save_trajectories
-        self.evaluate_rewards_rdkit = evaluate_rewards_rdkit
         self.env_done = True
         self.atoms = None
 
@@ -97,11 +96,7 @@ class MolecularDynamics(ParallelEnv):
         self.env_steps += 1
         self.env_done = self.env_steps >= self.TL
 
-        if self.evaluate_rewards_rdkit:
-            rewards = self._evaluate_rewards_rdkit()
-        else:
-            rewards = {agent: None for agent in self.agents}                
-
+        rewards = {agent: None for agent in self.agents}                
         observations = {agent: self.atoms for agent in self.agents}
         dones = {agent: self.env_done for agent in self.agents}
         infos = {agent: {} for agent in self.agents}
@@ -143,9 +138,6 @@ class MolecularDynamics(ParallelEnv):
     def close(self):
         if os.path.exists(self.traj_file):
             os.remove(self.traj_file)
-
-    def _evaluate_rewards_rdkit(self):
-        pass
 
     def _get_db_length(self):
         with connect(self.dbpath) as conn:
