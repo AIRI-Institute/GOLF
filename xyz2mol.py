@@ -709,6 +709,7 @@ def set_coordinates(mol, coordinates):
     for i in range(mol.GetNumAtoms()):
         x, y, z = coordinates[i]
         conf.SetAtomPosition(i, Point3D(x, y, z))
+        
 
 def parse_molecule(xyz_file):
     mol_data = read_xyz_file(xyz_file)
