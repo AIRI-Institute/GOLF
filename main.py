@@ -86,7 +86,7 @@ def main(args, experiment_folder):
     }
 
     replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE)
-    actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size).to(DEVICE)
+    actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size, action_scale=args.action_scale).to(DEVICE)
     critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
 
@@ -100,7 +100,6 @@ def main(args, experiment_folder):
                       tau=args.tau,
                       target_entropy=-np.prod(env.action_space.shape).item())
 
-    evaluations = []
     state, done = env.reset(), False
     episode_return = 0
     episode_timesteps = 0
@@ -173,7 +172,9 @@ if __name__ == "__main__":
     parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")
     parser.add_argument("--cutoff", default=20.0, type=float, help="Cutoff for Schnet in actor/critic")
     parser.add_argument("--n_gaussians", default=50, type=int, help="Number of Gaussians for Schnet in actor/critic")
+    # Actor args
     parser.add_argument("--actor_out_embedding_size", default=128, type=int, help="Output embedding size for actor")
+    parser.add_argument("--action_scale", default=0.01, type=float, help="Bounds actions to [-action_scale, action_scale]")
     # Other args
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
     parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate

@@ -12,8 +12,9 @@ LOG_STD_MIN_MAX = (-20, 2)
 
 
 class Actor(nn.Module):
-    def __init__(self, schnet_args, out_embedding_size):
+    def __init__(self, schnet_args, out_embedding_size, action_scale=0.01):
         super(Actor, self).__init__()
+        self.action_scale = action_scale
         self.out_embedding_size = out_embedding_size
         schnet = spk.SchNet(
                         n_interactions=schnet_args["n_interactions"], #3
@@ -43,21 +44,23 @@ class Actor(nn.Module):
         norm = torch.norm(P, p=2, dim=-1) + 1e-8
         P /= norm[..., None]
 
-        # No tanh and action constraints for now
         if self.training:
             # Calculate mean and std of actions
             actions_mean = (P * rel_shifts_mean[..., None]).sum(-2)
             actions_log_std = (P * rel_shifts_log_std[..., None]).sum(-2)
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
-            # Sample actions and calculate log prob
-            normal = Normal(actions_mean, actions_std)
-            actions = normal.rsample()
-            log_prob = normal.log_prob(actions)
-            log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1) # maybe remove keepdim
+            # Sample bounded actions and calculate log prob
+            tanh_normal = TanhNormal(actions_mean, actions_std)
+            actions, pre_tanh = tanh_normal.rsample()
+            log_prob = tanh_normal.log_prob(pre_tanh)
+            log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
         else:
-            actions = (P * rel_shifts_mean[..., None]).sum(-2)
+            actions = torch.tanh((P * rel_shifts_mean[..., None]).sum(-2))
             log_prob = None
+
+        # Scale actions
+        actions *= self.action_scale
 
         return actions, log_prob
 
@@ -101,7 +104,6 @@ class Critic(nn.Module):
             net({k:  v.detach().clone() for k, v in state_dict_copy.items()})['quantiles'] \
             for net in self.nets
             ), dim=1)
-        # Restore previuous positions
         return quantiles
 
 
