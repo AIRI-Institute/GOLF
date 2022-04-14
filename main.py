@@ -87,7 +87,7 @@ def main(args, experiment_folder):
 
     replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE)
     actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size).to(DEVICE)
-    critic = Critic(schnet_args, args.n_quantiles, args.n_nets).to(DEVICE)
+    critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
@@ -115,8 +115,10 @@ def main(args, experiment_folder):
     else:
         start_iter = 0
     for t in range(start_iter, int(args.max_timesteps)):
-        action = actor.select_action(state)
-        next_state, reward, done, _ = env.step(action)
+        action = actor.select_action({k:v.detach().clone() for k, v in state.items()})
+        next_state, reward, done, infos = env.step(action)
+        # print("INFO: ", infos)
+        # print("REWARD: ", reward)
         episode_timesteps += 1
 
         ep_end = done or episode_timesteps >= EPISODE_LENGTH

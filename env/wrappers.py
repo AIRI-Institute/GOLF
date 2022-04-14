@@ -27,7 +27,7 @@ class ma_gym_schnet_reward(gym.Wrapper):
         # Thus all agents share the same observation
         schnet_output = self.model(list(obs.values())[0])
         # Return calculated rewards
-        rewards = {agent: schnet_output['energy'].item() for agent in obs.keys()}
+        rewards = {agent: -schnet_output['energy'].item() for agent in obs.keys()}
         return obs, rewards, done, infos
 
 
@@ -52,7 +52,7 @@ class gym_schnet_reward(gym.Wrapper):
         # Thus all agents share the same observation
         schnet_output = self.model(obs)
         # Return calculated rewards
-        reward = schnet_output['energy'].item()
+        reward = -schnet_output['energy'].item()
         return obs, reward, done, info
 
 
@@ -81,7 +81,7 @@ class ma_gym_rdkit_reward(gym.Wrapper):
         # Update current coordinates
         set_coordinates(self.molecule, self.env.atoms.get_positions())
         rdkit_output = get_rdkit_energy(self.molecule)
-        rewards = {agent: rdkit_output for agent in obs.keys()}
+        rewards = {agent: -rdkit_output for agent in obs.keys()}
         return obs, rewards, done, infos
 
 
@@ -108,7 +108,7 @@ class gym_rdkit_reward(gym.Wrapper):
         info = dict(info, **{self.reward_name: reward})
         # Update current coordinates
         set_coordinates(self.molecule, self.env.atoms.get_positions())
-        rdkit_output = get_rdkit_energy(self.molecule)
+        rdkit_output = -get_rdkit_energy(self.molecule)
         return obs, rdkit_output, done, info
 
 

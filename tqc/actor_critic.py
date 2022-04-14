@@ -37,7 +37,6 @@ class Actor(nn.Module):
         # Calculate mean and std of shifts relative to other atoms
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2))
         rel_shifts_log_std = torch.matmul(k_sigma, v_sigma.transpose(1, 2))
-        rel_shifts_log_std = rel_shifts_log_std.clamp(*LOG_STD_MIN_MAX)
 
         # Calculate matrix of 1-vectors to other atoms
         P = state_dict['_positions'][:, :, None, :] - state_dict['_positions'][:, None, :, :]
@@ -49,10 +48,11 @@ class Actor(nn.Module):
             # Calculate mean and std of actions
             actions_mean = (P * rel_shifts_mean[..., None]).sum(-2)
             actions_log_std = (P * rel_shifts_log_std[..., None]).sum(-2)
+            actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
             # Sample actions and calculate log prob
             normal = Normal(actions_mean, actions_std)
-            actions = normal.rsample() 
+            actions = normal.rsample()
             log_prob = normal.log_prob(actions)
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1) # maybe remove keepdim
         else:
@@ -93,11 +93,15 @@ class Critic(nn.Module):
 
     def forward(self, state_dict, actions):
         # To avoid modifying the input
-        old_positions = torch.clone(state_dict["_positions"])
-        state_dict["_positions"] += actions
-        quantiles = torch.stack(tuple(net(state_dict)['quantiles'] for net in self.nets), dim=1)
+        state_dict_copy = {k:  v.detach().clone() for k, v in state_dict.items()}
+        state_dict_copy["_positions"] += actions
+        # Schnet changes the state_dict so a deepcopy
+        # has to be passed to each net in order to do .backwards()
+        quantiles = torch.stack(tuple(
+            net({k:  v.detach().clone() for k, v in state_dict_copy.items()})['quantiles'] \
+            for net in self.nets
+            ), dim=1)
         # Restore previuous positions
-        state_dict["_positions"] = old_positions
         return quantiles
 
 

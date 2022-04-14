@@ -50,8 +50,7 @@ class Trainer(object):
 			# --- Q loss ---
 			with torch.no_grad():
 				# get policy action
-				new_next_action, next_log_pi = self.actor(next_state)
-
+				new_next_action, next_log_pi = self.actor({k:v.detach().clone() for k, v in next_state.items()})
 				# compute and cut quantiles at the next state
 				next_z = self.critic_target(next_state, new_next_action)  # batch x nets x quantiles
 				sorted_z, _ = torch.sort(next_z.reshape(batch_size, -1))
@@ -61,32 +60,38 @@ class Trainer(object):
 				# compute target
 				target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
 			
+			# --- Critic loss ---
 			cur_z = self.critic(state, action)
 			critic_loss = quantile_huber_loss_f(cur_z, target)
 			metrics['critic_loss'] = critic_loss.item()
 
 			# --- Policy and alpha loss ---
-			new_action, log_pi = self.actor(state)
+			new_action, log_pi = self.actor({k:v.detach().clone() for k, v in state.items()})
 			metrics['actor_entropy'] = - log_pi.mean().item()
 			alpha_loss = -self.log_alpha * (log_pi + self.target_entropy).detach().mean()
 			actor_loss = (alpha * log_pi - self.critic(state, new_action).mean(2).mean(1, keepdim=True)).mean()
 			metrics['actor_loss'] = actor_loss.item()
 
-			# --- Update ---
-			self.critic_optimizer.zero_grad()
-			critic_loss.backward()
-			self.critic_optimizer.step()
+			# --- Update --- 
 
+			# --- zero_grad ---
+			self.critic_optimizer.zero_grad()
+			self.actor_optimizer.zero_grad()
+			self.alpha_optimizer.zero_grad()
+
+			# --- backward
+			critic_loss.backward()
+			actor_loss.backward()
+			alpha_loss.backward()
+
+			# --- optimizer step ---
+			self.critic_optimizer.step()
+			self.actor_optimizer.step()
+			self.alpha_optimizer.step()
+
+			# --- update target net ---
 			for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-
-			self.actor_optimizer.zero_grad()
-			actor_loss.backward()
-			self.actor_optimizer.step()
-
-			self.alpha_optimizer.zero_grad()
-			alpha_loss.backward()
-			self.alpha_optimizer.step()
 
 			self.total_it += 1
 			return metrics
