@@ -2,7 +2,6 @@
 import gym
 import numpy as np
 import os
-import torch
 
 from datetime import datetime
 
@@ -14,8 +13,6 @@ from gym.spaces import Box, Dict
 
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import wrappers
-from pettingzoo.utils import parallel_to_aec
-from pygments import highlight
 
 from schnetpack.data.atoms import AtomsConverter
 

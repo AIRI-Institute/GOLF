@@ -1,7 +1,6 @@
 import argparse
 import copy
 import itertools
-from nbformat import read
 
 from rdkit.Chem import rdmolops
 from rdkit.Chem import rdchem

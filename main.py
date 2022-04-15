@@ -35,6 +35,7 @@ class Logger:
         self._keep_n_episodes = 5
         self.exploration_episode_lengths = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_returns = deque(maxlen=self._keep_n_episodes)
+        self.exploration_episode_info_returns = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_number = 0
 
     def log(self, metrics):
@@ -46,10 +47,11 @@ class Logger:
             json.dump(metrics, out_metrics)
             out_metrics.write('\n')
 
-    def update_evaluation_statistics(self, episode_length, episode_return):
+    def update_evaluation_statistics(self, episode_length, episode_return, episode_info_return):
         self.exploration_episode_number += 1
         self.exploration_episode_lengths.append(episode_length)
         self.exploration_episode_returns.append(episode_return)
+        self.exploration_episode_info_returns.append(episode_info_return)
 
 
 def main(args, experiment_folder):
@@ -102,6 +104,7 @@ def main(args, experiment_folder):
 
     state, done = env.reset(), False
     episode_return = 0
+    episode_info_return = 0
     episode_timesteps = 0
     episode_num = 0
 
@@ -115,9 +118,7 @@ def main(args, experiment_folder):
         start_iter = 0
     for t in range(start_iter, int(args.max_timesteps)):
         action = actor.select_action({k:v.detach().clone() for k, v in state.items()})
-        next_state, reward, done, infos = env.step(action)
-        # print("INFO: ", infos)
-        # print("REWARD: ", reward)
+        next_state, reward, done, info = env.step(action)
         episode_timesteps += 1
 
         ep_end = done or episode_timesteps >= EPISODE_LENGTH
@@ -125,6 +126,8 @@ def main(args, experiment_folder):
 
         state = next_state
         episode_return += reward
+        if 'rdkit_reward' in info:
+            episode_info_return += info['rdkit_reward']
 
         # Train agent after collecting sufficient data
         if t >= args.batch_size:
@@ -135,18 +138,19 @@ def main(args, experiment_folder):
 
         if ep_end:
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
-            logger.update_evaluation_statistics(episode_timesteps, episode_return)
+            logger.update_evaluation_statistics(episode_timesteps, episode_return, episode_info_return)
             # Reset environment
             state, done = env.reset(), False
 
             episode_return = 0
+            episode_info_return = 0
             episode_timesteps = 0
             episode_num += 1
 
         # Evaluate episode
         if (t + 1) % args.eval_freq == 0:
             step_metrics['Total_timesteps'] = t + 1
-            step_metrics['Evaluation_returns'] = eval_policy(actor, eval_env, EPISODE_LENGTH)
+            step_metrics['Evaluation_returns'], step_metrics['RDKit_evaluation_returns'] = eval_policy(actor, eval_env, EPISODE_LENGTH)
             logger.log(step_metrics)
 
         if t in full_checkpoints:
