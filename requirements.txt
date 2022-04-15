@@ -1,5 +1,5 @@
 ase==3.22.1
-hpy==3.6.0
+h5py==3.6.0
 tqdm==4.64.0
 PyYAML==6.0
 schnetpack==1.0.0
