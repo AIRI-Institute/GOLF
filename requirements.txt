@@ -1,0 +1,8 @@
+ase==3.22.1
+hpy==3.6.0
+tqdm==4.64.0
+PyYAML==6.0
+schnetpack==1.0.0
+rdkit-pypi==2022.3.1
+PettingZoo==1.17.0
+networkx==2.8
