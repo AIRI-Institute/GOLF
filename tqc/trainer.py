@@ -106,6 +106,13 @@ class Trainer(object):
 		torch.save(self.log_alpha, filename + '_log_alpha')
 		torch.save(self.alpha_optimizer.state_dict(), filename + "_alpha_optimizer")
 
+	def light_save(self, filename):
+		filename = str(filename)
+		torch.save(self.critic.state_dict(), filename + "_critic")
+		torch.save(self.critic_target.state_dict(), filename + "_critic_target")
+		torch.save(self.actor.state_dict(), filename + "_actor")
+		torch.save(self.log_alpha, filename + "_log_alpha")
+
 	def load(self, filename):
 		filename = str(filename)
 		self.critic.load_state_dict(torch.load(filename + "_critic"))
@@ -115,3 +122,10 @@ class Trainer(object):
 		self.actor_optimizer.load_state_dict(torch.load(filename + "_actor_optimizer"))
 		self.log_alpha = torch.load(filename + '_log_alpha')
 		self.alpha_optimizer.load_state_dict(torch.load(filename + "_alpha_optimizer"))
+
+	def light_load(self, filename):
+		filename = str(filename)
+		self.critic.load_state_dict(torch.load(filename + "_critic"))
+		self.critic_target.load_state_dict(torch.load(filename + "_critic_target"))
+		self.actor.load_state_dict(torch.load(filename + "_actor"))
+		self.log_alpha = torch.load(filename + '_log_alpha')
