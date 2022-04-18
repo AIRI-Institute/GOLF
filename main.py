@@ -61,8 +61,10 @@ def main(args, experiment_folder):
     trajectory_dir = experiment_folder / 'trajectory'
     if not os.path.exists(trajectory_dir):
         os.makedirs(trajectory_dir)
-    env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit, exp_folder=trajectory_dir)
-    eval_env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit, exp_folder=trajectory_dir)
+    env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
+                 calculate_mean=args.calculate_mean_energy, exp_folder=trajectory_dir)
+    eval_env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
+                      calculate_mean=args.calculate_mean_energy, exp_folder=trajectory_dir)
 
     # Initialize reward wrapper
     if args.reward == 'schnet':
@@ -171,6 +173,7 @@ if __name__ == "__main__":
     parser.add_argument("--timelimit", default=100, type=int, help="Timelimit for MD env")
     parser.add_argument("--schnet_model_path", default="env/schnet_model/schnet_model_3_blocks", type=str, help="Path to trained schnet model")
     parser.add_argument("--molecule_path", default="env/molecules_xyz/malonaldehyde.xyz", type=str, help="Path to example .xyz file")
+    parser.add_argument("--calculate_mean_energy", action="store_true", default=False, help="Calculate mean energy of the database")
     parser.add_argument("--reward", default="both", choices=["schnet", "rdkit", "both"], help="Type of reward for MD env")
     # Schnet args
     parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")

@@ -15,6 +15,7 @@ class ma_gym_schnet_reward(gym.Wrapper):
             self.reward_name = 'env_reward'
         else:
             self.reward_name = 'unknown_reward'
+        self.mean_energy = env.mean_energy
         super().__init__(env)
 
     def step(self, action):
@@ -27,7 +28,7 @@ class ma_gym_schnet_reward(gym.Wrapper):
         # Thus all agents share the same observation
         schnet_output = self.model(list(obs.values())[0])
         # Return calculated rewards
-        rewards = {agent: -schnet_output['energy'].item() for agent in obs.keys()}
+        rewards = {agent: -(schnet_output['energy'].item() - self.mean_energy) for agent in obs.keys()}
         return obs, rewards, done, infos
 
 
@@ -41,6 +42,7 @@ class gym_schnet_reward(gym.Wrapper):
             self.reward_name = 'env_reward'
         else:
             self.reward_name = 'unknown_reward'
+        self.mean_energy = env.mean_energy
         super().__init__(env)
 
     def step(self, action):
@@ -52,7 +54,7 @@ class gym_schnet_reward(gym.Wrapper):
         # Thus all agents share the same observation
         schnet_output = self.model(obs)
         # Return calculated rewards
-        reward = -schnet_output['energy'].item()
+        reward = -(schnet_output['energy'].item() - self.mean_energy)
         return obs, reward, done, info
 
 
