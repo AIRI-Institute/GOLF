@@ -43,7 +43,6 @@ class Trainer(object):
 	def train(self, replay_buffer, batch_size=256):
 		metrics = dict()
 		state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
-		print(action)
 		alpha = torch.exp(self.log_alpha)
 		metrics['alpha'] = alpha.item()
 
@@ -72,28 +71,29 @@ class Trainer(object):
 		metrics['critic_loss'] = critic_loss.item()
 
 		# --- Policy and alpha loss ---
-		new_action, log_pi = self.actor(state)
-		metrics['actor_entropy'] = - log_pi.mean().item()
-		alpha_loss = -self.log_alpha * (log_pi + self.target_entropy).detach().mean()
-		actor_loss = (alpha * log_pi - self.critic(state, new_action).mean(2).mean(1, keepdim=True)).mean()
-		metrics['actor_loss'] = actor_loss.item()
 
 		# --- Update --- 
 
 		# --- zero_grad ---
 		self.critic_optimizer.zero_grad()
-		self.actor_optimizer.zero_grad()
-		self.alpha_optimizer.zero_grad()
-
-		# --- backward
 		critic_loss.backward()
-		actor_loss.backward()
-		alpha_loss.backward()
-
-		# --- optimizer step ---
 		self.critic_optimizer.step()
+
+
+		new_action, log_pi = self.actor(state)
+		metrics['actor_entropy'] = - log_pi.mean().item()
+		actor_loss = (alpha * log_pi - self.critic(state, new_action).mean(2).mean(1, keepdim=True)).mean()
+		metrics['actor_loss'] = actor_loss.item()
+
+		self.actor_optimizer.zero_grad()
+		actor_loss.backward()
 		self.actor_optimizer.step()
-		self.alpha_optimizer.step()
+
+		alpha_loss = -self.log_alpha * (log_pi + self.target_entropy).detach().mean()
+
+		self.alpha_optimizer.zero_grad()
+		alpha_loss.backward()
+		self.actor_optimizer.step()
 
 		# --- update target net ---
 		for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
