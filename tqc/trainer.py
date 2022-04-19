@@ -41,60 +41,66 @@ class Trainer(object):
 			metrics[f'Target_Q/Q_value_t={t}'] = next_z[:, :total_quantiles_to_keep].mean().__float__()
 
 	def train(self, replay_buffer, batch_size=256):
-		with torch.autograd.set_detect_anomaly(True):
-			metrics = dict()
-			state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
-			alpha = torch.exp(self.log_alpha)
-			metrics['alpha'] = alpha.item()
+		metrics = dict()
+		state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
+		print(action)
+		alpha = torch.exp(self.log_alpha)
+		metrics['alpha'] = alpha.item()
 
-			# --- Q loss ---
-			with torch.no_grad():
-				# get policy action
-				new_next_action, next_log_pi = self.actor({k:v.detach().clone() for k, v in next_state.items()})
-				# compute and cut quantiles at the next state
-				next_z = self.critic_target(next_state, new_next_action)  # batch x nets x quantiles
-				sorted_z, _ = torch.sort(next_z.reshape(batch_size, -1))
-				self.add_next_z_metrics(metrics, sorted_z)
-				sorted_z_part = sorted_z[:, :self.quantiles_total-self.top_quantiles_to_drop]
+		# --- Q loss ---
+		with torch.no_grad():
+			# get policy action
+			new_next_action, next_log_pi = self.actor(next_state)
+			# compute and cut quantiles at the next state
+			next_z = self.critic_target(next_state, new_next_action)
+			sorted_z, _ = torch.sort(next_z.reshape(batch_size, -1))
+			self.add_next_z_metrics(metrics, sorted_z)
+			sorted_z_part = sorted_z[:, :self.quantiles_total-self.top_quantiles_to_drop]
 
-				# compute target
-				target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
-			
-			# --- Critic loss ---
-			cur_z = self.critic(state, action)
-			critic_loss = quantile_huber_loss_f(cur_z, target)
-			metrics['critic_loss'] = critic_loss.item()
+			# compute target
+			print("---Target---")
+			print("reward[0]: {} sorted_z_part[0]: {} alpha: {} next_log_pi[0]: {}".format(reward[0], sorted_z_part[0], alpha, next_log_pi[0]))
+			target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
+			print("target[0]: ", target[0])
+		
+		# --- Critic loss ---
+		cur_z = self.critic(state, action)
+		print("---Critic---")
 
-			# --- Policy and alpha loss ---
-			new_action, log_pi = self.actor({k:v.detach().clone() for k, v in state.items()})
-			metrics['actor_entropy'] = - log_pi.mean().item()
-			alpha_loss = -self.log_alpha * (log_pi + self.target_entropy).detach().mean()
-			actor_loss = (alpha * log_pi - self.critic(state, new_action).mean(2).mean(1, keepdim=True)).mean()
-			metrics['actor_loss'] = actor_loss.item()
+		print("cur_z[0]", cur_z[0])
+		critic_loss = quantile_huber_loss_f(cur_z, target)
+		metrics['critic_loss'] = critic_loss.item()
 
-			# --- Update --- 
+		# --- Policy and alpha loss ---
+		new_action, log_pi = self.actor(state)
+		metrics['actor_entropy'] = - log_pi.mean().item()
+		alpha_loss = -self.log_alpha * (log_pi + self.target_entropy).detach().mean()
+		actor_loss = (alpha * log_pi - self.critic(state, new_action).mean(2).mean(1, keepdim=True)).mean()
+		metrics['actor_loss'] = actor_loss.item()
 
-			# --- zero_grad ---
-			self.critic_optimizer.zero_grad()
-			self.actor_optimizer.zero_grad()
-			self.alpha_optimizer.zero_grad()
+		# --- Update --- 
 
-			# --- backward
-			critic_loss.backward()
-			actor_loss.backward()
-			alpha_loss.backward()
+		# --- zero_grad ---
+		self.critic_optimizer.zero_grad()
+		self.actor_optimizer.zero_grad()
+		self.alpha_optimizer.zero_grad()
 
-			# --- optimizer step ---
-			self.critic_optimizer.step()
-			self.actor_optimizer.step()
-			self.alpha_optimizer.step()
+		# --- backward
+		critic_loss.backward()
+		actor_loss.backward()
+		alpha_loss.backward()
 
-			# --- update target net ---
-			for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+		# --- optimizer step ---
+		self.critic_optimizer.step()
+		self.actor_optimizer.step()
+		self.alpha_optimizer.step()
 
-			self.total_it += 1
-			return metrics
+		# --- update target net ---
+		for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
+			target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+		self.total_it += 1
+		return metrics
 
 	def save(self, filename):
 		filename = str(filename)
