@@ -3,6 +3,7 @@ import copy
 import datetime
 import json
 import numpy as np
+import torch
 import os
 import pickle
 import random
@@ -56,28 +57,34 @@ class Logger:
 
 def main(args, experiment_folder):
     # --- Init ---
+    # Tmp set env name
+    args.env = "Malonaldehyde"
     logger = Logger(experiment_folder, args)
     # Initialize env
     trajectory_dir = experiment_folder / 'trajectory'
     if not os.path.exists(trajectory_dir):
         os.makedirs(trajectory_dir)
     env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
-                 calculate_mean=args.calculate_mean_energy, exp_folder=trajectory_dir)
+                 calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
     eval_env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
-                      calculate_mean=args.calculate_mean_energy, exp_folder=trajectory_dir)
+                      calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
 
     # Initialize reward wrapper
     if args.reward == 'schnet':
-        env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path, device=DEVICE)
-        eval_env = env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path, device=DEVICE)
+        env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path,
+                                    reward_delta=args.reward_delta, device=DEVICE)
+        eval_env = env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path,
+                                               reward_delta=args.reward_delta, device=DEVICE)
     elif args.reward == 'rdkit':
         env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path)
         eval_env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path)
     elif args.reward == 'both':
         env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path)
-        env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path, device=DEVICE)
+        env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path,
+                                    reward_delta=args.reward_delta, device=DEVICE)
         eval_env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path)
-        eval_env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path, device=DEVICE)
+        eval_env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path,
+                                         reward_delta=args.reward_delta,  device=DEVICE)
 
     state_dict_names, \
     state_dims, \
@@ -119,10 +126,11 @@ def main(args, experiment_folder):
     else:
         start_iter = 0
     for t in range(start_iter, int(args.max_timesteps)):
-        action = actor.select_action({k:v.detach().clone() for k, v in state.items()})
+        with torch.no_grad():
+            action = actor.select_action(state)
+
         next_state, reward, done, info = env.step(action)
         episode_timesteps += 1
-
         ep_end = done or episode_timesteps >= EPISODE_LENGTH
         replay_buffer.add(state, action, next_state, reward, done)
 
@@ -173,8 +181,9 @@ if __name__ == "__main__":
     parser.add_argument("--timelimit", default=100, type=int, help="Timelimit for MD env")
     parser.add_argument("--schnet_model_path", default="env/schnet_model/schnet_model_3_blocks", type=str, help="Path to trained schnet model")
     parser.add_argument("--molecule_path", default="env/molecules_xyz/malonaldehyde.xyz", type=str, help="Path to example .xyz file")
-    parser.add_argument("--calculate_mean_energy", action="store_true", default=False, help="Calculate mean energy of the database")
+    parser.add_argument("--calculate_mean_std_energy", action="store_true", default=False, help="Calculate mean, std of energy of database")
     parser.add_argument("--reward", default="both", choices=["schnet", "rdkit", "both"], help="Type of reward for MD env")
+    parser.add_argument("--reward_delta", action="store_true", default=False, help="Use delta of energy as reward")
     # Schnet args
     parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")
     parser.add_argument("--cutoff", default=20.0, type=float, help="Cutoff for Schnet in actor/critic")

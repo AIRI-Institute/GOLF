@@ -37,7 +37,7 @@ class MAMolecularDynamics(ParallelEnv):
                  db_path,
                  converter,
                  timelimit=1000,
-                 calculate_mean=False,
+                 calculate_mean_std=False,
                  exp_folder=None,
                  save_trajectories=False):
         self.TL = timelimit
@@ -48,9 +48,10 @@ class MAMolecularDynamics(ParallelEnv):
         self.save_trajectories = save_trajectories
         self.env_done = True
         self.atoms = None
-        self.mean_energy = 0
-        if calculate_mean:
-            self.mean_energy = self._get_mean_energy()
+        self.mean_energy = 0.
+        self.std_energy = 1.
+        if calculate_mean_std:
+            self.mean_energy, self.std_energy = self._get_mean_std_energy()
 
         assert self.exp_folder is not None, "Provide a name for the experiment in order to save trajectories."
         self.traj_file = os.path.join(exp_folder, 'tmp.traj')
@@ -146,16 +147,17 @@ class MAMolecularDynamics(ParallelEnv):
             db_len = len(conn)
         return db_len
 
-    def _get_mean_energy(self):
-        energy = 0
+    def _get_mean_std_energy(self):
+        energy = []
         # Speed up the computation
         random_sample_size = self._get_db_length() // 10
         indices = np.random.choice(np.arange(1, self._get_db_length() + 1), random_sample_size, replace=False)
         with connect(self.dbpath) as conn:
             for ind in indices:
                 row = conn.get(ind)
-                energy += row.data['energy']
-        return energy / random_sample_size
+                energy.append(row.data['energy'])
+        energy = np.array(energy)
+        return energy.mean(), energy.std()
 
 
 class MolecularDynamics(gym.Env):
@@ -165,7 +167,7 @@ class MolecularDynamics(gym.Env):
                  db_path,
                  converter, 
                  timelimit=100,
-                 calculate_mean=False,
+                 calculate_mean_std=False,
                  exp_folder=None,
                  save_trajectories=False):
         self.TL = timelimit
@@ -176,9 +178,11 @@ class MolecularDynamics(gym.Env):
         self.save_trajectories = save_trajectories
         self.env_done = True
         self.atoms = None
-        self.mean_energy = 0
-        if calculate_mean:
-            self.mean_energy = self._get_mean_energy()
+        self.mean_energy = 0.
+        self.std_energy = 1.
+        if calculate_mean_std:
+            self.mean_energy, self.std_energy = self._get_mean_std_energy()
+        
         assert self.exp_folder is not None, "Provide a name for the experiment in order to save trajectories."
         self.traj_file = os.path.join(exp_folder, 'tmp.traj')
 
@@ -208,12 +212,12 @@ class MolecularDynamics(gym.Env):
         self.env_steps += 1
         self.env_done = self.env_steps >= self.TL
 
-        rewards = None
+        reward = None
         obs = self.converter(self.atoms)
-        dones = self.env_done
-        infos = {}
+        done = self.env_done
+        info = {}
 
-        return obs, rewards, dones, infos
+        return obs, reward, done, info
 
     def render(self, mode="human"):
         if self.env_done:
@@ -251,13 +255,14 @@ class MolecularDynamics(gym.Env):
             db_len = len(conn)
         return db_len
 
-    def _get_mean_energy(self):
-        energy = 0
+    def _get_mean_std_energy(self):
+        energy = []
         # Speed up the computation
-        random_sample_size = self._get_db_length() // 10
+        random_sample_size = self._get_db_length() // 1000
         indices = np.random.choice(np.arange(1, self._get_db_length() + 1), random_sample_size, replace=False)
         with connect(self.dbpath) as conn:
             for ind in indices:
-                row = conn.get(ind)
-                energy += row.data['energy']
-        return energy / random_sample_size
+                row = conn.get(int(ind))
+                energy.append(row.data['energy'])
+        energy = np.array(energy)
+        return energy.mean(), energy.std()
