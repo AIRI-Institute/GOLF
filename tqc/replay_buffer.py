@@ -38,11 +38,9 @@ class ReplayBuffer(object):
         # It might be useful to store it to optimize computations
         # Sort keys in state and next_state and skip representation
         sorted_state_values = [state[key].squeeze() for key in sorted(state) if key != "representation"]
-        sorted_next_state_values = [state[key].squeeze() for key in sorted(next_state) if key != "representation"]
+        sorted_next_state_values = [next_state[key].squeeze() for key in sorted(next_state) if key != "representation"]
         values = (*sorted_state_values, action, *sorted_next_state_values, reward, 1. - done)
         for name, value in zip(self.transition_names, values):
-            # print(name)
-            # print(type(value))
             getattr(self, name)[self.ptr] = value.detach().cpu()
 
         self.ptr = (self.ptr + 1) % self.max_size
