@@ -21,8 +21,6 @@ from tqc.replay_buffer import ReplayBuffer
 from tqc.functions import eval_policy
 
 
-EPISODE_LENGTH = 100
-
 class Logger:
     def __init__(self, experiment_folder, config):
         if os.path.exists(experiment_folder):
@@ -131,7 +129,7 @@ def main(args, experiment_folder):
 
         next_state, reward, done, info = env.step(action)
         episode_timesteps += 1
-        ep_end = done or episode_timesteps >= EPISODE_LENGTH
+        ep_end = done or episode_timesteps >= args.timelimit
         replay_buffer.add(state, action, next_state, reward, done)
 
         state = next_state
@@ -160,7 +158,7 @@ def main(args, experiment_folder):
         # Evaluate episode
         if (t + 1) % args.eval_freq == 0:
             step_metrics['Total_timesteps'] = t + 1
-            step_metrics['Evaluation_returns'], step_metrics['RDKit_evaluation_returns'] = eval_policy(actor, eval_env, EPISODE_LENGTH)
+            step_metrics['Evaluation_returns'], step_metrics['RDKit_evaluation_returns'] = eval_policy(actor, eval_env, args.timelimit)
             logger.log(step_metrics)
 
         if t in full_checkpoints:

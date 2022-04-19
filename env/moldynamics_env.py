@@ -214,7 +214,8 @@ class MolecularDynamics(gym.Env):
 
         reward = None
         obs = self.converter(self.atoms)
-        done = self.env_done
+        # For now done is always False
+        done = False
         info = {}
 
         return obs, reward, done, info
