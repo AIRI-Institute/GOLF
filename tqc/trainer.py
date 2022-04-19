@@ -46,7 +46,7 @@ class Trainer(object):
 		alpha = torch.exp(self.log_alpha)
 		metrics['alpha'] = alpha.item()
 
-		# --- Q loss ---
+		# --- Compute critic target ---
 		with torch.no_grad():
 			# get policy action
 			new_next_action, next_log_pi = self.actor(next_state)
@@ -55,47 +55,38 @@ class Trainer(object):
 			sorted_z, _ = torch.sort(next_z.reshape(batch_size, -1))
 			self.add_next_z_metrics(metrics, sorted_z)
 			sorted_z_part = sorted_z[:, :self.quantiles_total-self.top_quantiles_to_drop]
-
-			# compute target
-			print("---Target---")
-			print("reward[0]: {} sorted_z_part[0]: {} alpha: {} next_log_pi[0]: {}".format(reward[0], sorted_z_part[0], alpha, next_log_pi[0]))
 			target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
-			print("target[0]: ", target[0])
 		
 		# --- Critic loss ---
 		cur_z = self.critic(state, action)
-		print("---Critic---")
-
-		print("cur_z[0]", cur_z[0])
 		critic_loss = quantile_huber_loss_f(cur_z, target)
 		metrics['critic_loss'] = critic_loss.item()
 
-		# --- Policy and alpha loss ---
-
-		# --- Update --- 
-
-		# --- zero_grad ---
+		# --- Update critic --- 
 		self.critic_optimizer.zero_grad()
 		critic_loss.backward()
 		self.critic_optimizer.step()
 
-
+		# --- Policy and loss ---
 		new_action, log_pi = self.actor(state)
 		metrics['actor_entropy'] = - log_pi.mean().item()
 		actor_loss = (alpha * log_pi - self.critic(state, new_action).mean(2).mean(1, keepdim=True)).mean()
 		metrics['actor_loss'] = actor_loss.item()
 
+		# --- Update actor ---
 		self.actor_optimizer.zero_grad()
 		actor_loss.backward()
 		self.actor_optimizer.step()
 
+		# --- Alpha loss ---
 		alpha_loss = -self.log_alpha * (log_pi + self.target_entropy).detach().mean()
 
+		# --- Update alpha ---
 		self.alpha_optimizer.zero_grad()
 		alpha_loss.backward()
 		self.actor_optimizer.step()
 
-		# --- update target net ---
+		# --- Update target net ---
 		for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
 			target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
