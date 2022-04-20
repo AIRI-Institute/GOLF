@@ -62,7 +62,7 @@ class MAMolecularDynamics(ParallelEnv):
         example_atoms = example_row.toatoms()
         self.observation_shape = example_atoms.get_positions().shape
 
-        # Fix observaition spaces according to converter
+        # Fix observation spaces according to converter
         self.possible_agents, self.action_spaces, self.observation_spaces = self._init_agents()
 
     def _init_agents(self):
@@ -150,8 +150,8 @@ class MAMolecularDynamics(ParallelEnv):
     def _get_mean_std_energy(self):
         energy = []
         # Speed up the computation
-        random_sample_size = self._get_db_length() // 10
-        indices = np.random.choice(np.arange(1, self._get_db_length() + 1), random_sample_size, replace=False)
+        random_sample_size = self.db_len // 10
+        indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
         with connect(self.dbpath) as conn:
             for ind in indices:
                 row = conn.get(ind)
@@ -265,8 +265,8 @@ class MolecularDynamics(gym.Env):
     def _get_mean_std_energy(self):
         energy = []
         # Speed up the computation
-        random_sample_size = self._get_db_length() // 1000
-        indices = np.random.choice(np.arange(1, self._get_db_length() + 1), random_sample_size, replace=False)
+        random_sample_size = self.db_len // 1000
+        indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
         with connect(self.dbpath) as conn:
             for ind in indices:
                 row = conn.get(int(ind))
