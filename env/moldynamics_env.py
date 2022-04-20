@@ -19,6 +19,10 @@ from sqlite3 import DatabaseError
 from schnetpack.data.atoms import AtomsConverter
 
 
+def on_giveup(details):
+    print("Giving Up after {} tries. Time elapsed: {:.3f} :(".format(details['tries'], details['elapsed']))
+
+
 class MAMolecularDynamics(ParallelEnv):
     metadata = {"render_modes":["human"], "name":"md_v0"}
     
@@ -275,10 +279,6 @@ class MolecularDynamics(gym.Env):
             seed = np.random.randint(0, 1000000)
         np.random.seed(seed)
         return seed
-
-
-def on_giveup(details):
-    print("Giving Up after {} tries. Time elapsed: {:.3f} :(".format(details['tries'], details['elapsed']))
 
 def env_fn(device, multiagent=False, **kwargs):
     '''
