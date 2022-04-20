@@ -66,6 +66,9 @@ def main(args, experiment_folder):
                  calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
     eval_env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
                       calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
+    # Seed env
+    env.seed(args.seed)
+    eval_env.seed(args.seed)
 
     # Initialize reward wrapper
     if args.reward == 'schnet':
@@ -193,7 +196,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
     parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate
     parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
-    parser.add_argument("--seed", default=0, type=int)
+    parser.add_argument("--seed", default=None, type=int)
     parser.add_argument("--n_quantiles", default=25, type=int)
     parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
     parser.add_argument("--n_nets", default=5, type=int)

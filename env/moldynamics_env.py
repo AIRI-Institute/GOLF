@@ -159,6 +159,12 @@ class MAMolecularDynamics(ParallelEnv):
         energy = np.array(energy)
         return energy.mean(), energy.std()
 
+    def seed(self, seed=None):
+        if seed is None:
+            seed = np.random.randint(0, 1000000)
+        np.random.seed(seed)
+        return seed
+
 
 class MolecularDynamics(gym.Env):
     metadata = {"render_modes":["human"], "name":"md_v0"}
@@ -267,3 +273,9 @@ class MolecularDynamics(gym.Env):
                 energy.append(row.data['energy'])
         energy = np.array(energy)
         return energy.mean(), energy.std()
+
+    def seed(self, seed=None):
+        if seed is None:
+            seed = np.random.randint(0, 1000000)
+        np.random.seed(seed)
+        return seed
