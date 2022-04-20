@@ -108,6 +108,8 @@ class Critic(nn.Module):
 
 
 class TanhNormal(Distribution):
+    arg_constraints = {}
+
     def __init__(self, normal_mean, normal_std):
         super().__init__()
         self.normal_mean = normal_mean
