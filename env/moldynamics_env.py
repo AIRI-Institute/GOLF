@@ -1,4 +1,4 @@
-
+import backoff
 import gym
 import numpy as np
 import os
@@ -14,21 +14,10 @@ from gym.spaces import Box, Dict
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import wrappers
 
+from sqlite3 import DatabaseError
+
 from schnetpack.data.atoms import AtomsConverter
 
-
-def env_fn(device, multiagent=False, **kwargs):
-    '''
-    To support the AEC API, the raw_env() function just uses the from_parallel
-    function to convert from a ParallelEnv to an AEC env
-    '''
-    converter = AtomsConverter(device=device)
-    if multiagent is True:
-        env = MAMolecularDynamics(converter=converter, **kwargs)
-    else:
-        env = MolecularDynamics(converter=converter, **kwargs)
-    # env = wrappers.OrderEnforcingWrapper(env)
-    return env
 
 class MAMolecularDynamics(ParallelEnv):
     metadata = {"render_modes":["human"], "name":"md_v0"}
@@ -236,6 +225,13 @@ class MolecularDynamics(gym.Env):
             else:
                 os.remove(self.traj_file)
     
+    # Makes sqllite3 database compatible with NFS storages
+    @backoff.on_exception(
+        backoff.expo,
+        exception=DatabaseError,
+        max_tries=5,
+        on_giveup=on_giveup #lambda details
+    )
     def reset(self, db_idx=None):
         if db_idx is None:
             db_idx = np.random.randint(1, self.db_len + 1)
@@ -279,3 +275,20 @@ class MolecularDynamics(gym.Env):
             seed = np.random.randint(0, 1000000)
         np.random.seed(seed)
         return seed
+
+
+def on_giveup(details):
+    print("Giving Up after {} tries. Time elapsed: {:.3f} :(".format(details['tries'], details['elapsed']))
+
+def env_fn(device, multiagent=False, **kwargs):
+    '''
+    To support the AEC API, the raw_env() function just uses the from_parallel
+    function to convert from a ParallelEnv to an AEC env
+    '''
+    converter = AtomsConverter(device=device)
+    if multiagent is True:
+        env = MAMolecularDynamics(converter=converter, **kwargs)
+    else:
+        env = MolecularDynamics(converter=converter, **kwargs)
+    # env = wrappers.OrderEnforcingWrapper(env)
+    return env

@@ -6,3 +6,4 @@ schnetpack==1.0.0
 rdkit-pypi==2022.3.1
 PettingZoo==1.17.0
 networkx==2.6.3
+backoff==1.11.1
