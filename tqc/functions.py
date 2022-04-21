@@ -18,7 +18,7 @@ def eval_policy(policy, eval_env, max_episode_steps, eval_episodes=10):
                 avg_info_reward += info['rdkit_reward']
             t += 1
     avg_reward /= eval_episodes
-    avg_info_reward / eval_episodes
+    avg_info_reward /= eval_episodes
     policy.train()
     return avg_reward, avg_info_reward
 
