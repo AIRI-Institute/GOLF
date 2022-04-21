@@ -148,6 +148,7 @@ def main(args, experiment_folder):
         else:
             step_metrics = dict()
         step_metrics['Timestamp'] = str(datetime.datetime.now())
+        step_metrics['Action_norm'] = np.linalg.norm(action, axis=1).mean()
 
         if ep_end:
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
