@@ -31,9 +31,11 @@ class MAMolecularDynamics(ParallelEnv):
                  converter,
                  timelimit=1000,
                  calculate_mean_std=False,
+                 done_on_timelimit=False,
                  exp_folder=None,
                  save_trajectories=False):
         self.TL = timelimit
+        self.done_on_timelimit = done_on_timelimit
         self.dbpath = db_path
         self.converter = converter
         self.db_len = self._get_db_length()
@@ -94,7 +96,11 @@ class MAMolecularDynamics(ParallelEnv):
 
         rewards = {agent: None for agent in self.agents}                
         observations = {agent: self.converter(self.atoms) for agent in self.agents}
-        dones = {agent: self.env_done for agent in self.agents}
+        if self.done_on_timelimit:
+            done = self.env_done
+        else:
+            done = False
+        dones = {agent: done for agent in self.agents}
         infos = {agent: {} for agent in self.agents}
 
         self.agents = [
@@ -167,9 +173,11 @@ class MolecularDynamics(gym.Env):
                  converter, 
                  timelimit=100,
                  calculate_mean_std=False,
+                 done_on_timelimit=False,
                  exp_folder=None,
                  save_trajectories=False):
         self.TL = timelimit
+        self.done_on_timelimit = done_on_timelimit
         self.dbpath = db_path
         self.converter = converter
         self.db_len = self._get_db_length()
@@ -181,6 +189,7 @@ class MolecularDynamics(gym.Env):
         self.std_energy = 1.
         if calculate_mean_std:
             self.mean_energy, self.std_energy = self._get_mean_std_energy()
+        print(self.std_energy)
         
         assert self.exp_folder is not None, "Provide a name for the experiment in order to save trajectories."
         self.traj_file = os.path.join(exp_folder, 'tmp.traj')
@@ -213,8 +222,10 @@ class MolecularDynamics(gym.Env):
 
         reward = None
         obs = self.converter(self.atoms)
-        # For now done is always False
-        done = False
+        if self.done_on_timelimit:
+            done = self.env_done
+        else:
+            done = False
         info = {}
 
         return obs, reward, done, info
@@ -234,7 +245,7 @@ class MolecularDynamics(gym.Env):
         backoff.expo,
         exception=DatabaseError,
         max_tries=5,
-        on_giveup=on_giveup #lambda details
+        on_giveup=on_giveup
     )
     def reset(self, db_idx=None):
         if db_idx is None:
@@ -265,7 +276,7 @@ class MolecularDynamics(gym.Env):
     def _get_mean_std_energy(self):
         energy = []
         # Speed up the computation
-        random_sample_size = self.db_len // 1000
+        random_sample_size = self.db_len // 10
         indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
         with connect(self.dbpath) as conn:
             for ind in indices:

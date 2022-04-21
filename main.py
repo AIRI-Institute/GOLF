@@ -63,9 +63,11 @@ def main(args, experiment_folder):
     if not os.path.exists(trajectory_dir):
         os.makedirs(trajectory_dir)
     env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
-                 calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
+                 done_on_timelimit=args.done_on_timelimit, calculate_mean_std=args.calculate_mean_std_energy,
+                 exp_folder=trajectory_dir)
     eval_env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
-                      calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
+                      done_on_timelimit=args.done_on_timelimit, calculate_mean_std=args.calculate_mean_std_energy,
+                      exp_folder=trajectory_dir)
     # Seed env
     env.seed(args.seed)
     eval_env.seed(args.seed)
@@ -185,6 +187,7 @@ if __name__ == "__main__":
     parser.add_argument("--calculate_mean_std_energy", type=bool, default=False, help="Calculate mean, std of energy of database")
     parser.add_argument("--reward", default="both", choices=["schnet", "rdkit", "both"], help="Type of reward for MD env")
     parser.add_argument("--reward_delta", type=bool, default=False, help="Use delta of energy as reward")
+    parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
     # Schnet args
     parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")
     parser.add_argument("--cutoff", default=20.0, type=float, help="Cutoff for Schnet in actor/critic")
