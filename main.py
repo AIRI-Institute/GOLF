@@ -120,7 +120,7 @@ def main(args, experiment_folder):
     episode_timesteps = 0
     episode_num = 0
 
-    actor.train()
+    actor.train()    
     full_checkpoints = [int(args.max_timesteps / 3), int(args.max_timesteps * 2 / 3), int(args.max_timesteps) - 1]
     if args.load_model is not None:
         start_iter = int(args.load_model.split('/')[-1].split('_')[1]) + 1
@@ -166,13 +166,13 @@ def main(args, experiment_folder):
             step_metrics['Evaluation_returns'], step_metrics['RDKit_evaluation_returns'] = eval_policy(actor, eval_env, args.timelimit)
             logger.log(step_metrics)
 
-        if t in full_checkpoints:
+        if t in full_checkpoints and args.save_checkpoints:
             trainer_save_name = f'{experiment_folder}/iter_{t}'
             trainer.save(trainer_save_name)
             with open(f'{experiment_folder}/iter_{t}_replay', 'wb') as outF:
                 pickle.dump(replay_buffer, outF)
             # Remove previous checkpoint?
-        elif (t + 1) % args.light_checkpoint_freq == 0:
+        elif (t + 1) % args.light_checkpoint_freq == 0 and args.save_checkpoints:
             trainer_save_name = f'{experiment_folder}/iter_{t}'
             trainer.light_save(trainer_save_name)
 
@@ -207,6 +207,7 @@ if __name__ == "__main__":
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--light_checkpoint_freq", type=int, default=200000)
+    parser.add_argument("--save_checkpoints", type=bool, default=False, help="Save light and full checkpoints")
     parser.add_argument("--load_model", type=str, default=None)
     parser.add_argument("--log_dir", default='.')
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
