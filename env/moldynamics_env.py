@@ -189,7 +189,6 @@ class MolecularDynamics(gym.Env):
         self.std_energy = 1.
         if calculate_mean_std:
             self.mean_energy, self.std_energy = self._get_mean_std_energy()
-        print(self.std_energy)
         
         assert self.exp_folder is not None, "Provide a name for the experiment in order to save trajectories."
         self.traj_file = os.path.join(exp_folder, 'tmp.traj')

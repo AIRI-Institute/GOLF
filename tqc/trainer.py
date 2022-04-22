@@ -84,7 +84,7 @@ class Trainer(object):
 		# --- Update alpha ---
 		self.alpha_optimizer.zero_grad()
 		alpha_loss.backward()
-		self.actor_optimizer.step()
+		self.alpha_optimizer.step()
 
 		# --- Update target net ---
 		for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
