@@ -110,7 +110,7 @@ class TanhNormal(Distribution):
     def __init__(self, normal_mean, normal_std, tanh_scale=1.0):
         super().__init__()
         self.normal_mean = normal_mean
-        self.tanh_scale = torch.FloatTensor([tanh_scale])
+        self.tanh_scale = torch.FloatTensor([tanh_scale]).to(DEVICE)
         self.normal_std = normal_std
         self.standard_normal = Normal(torch.zeros_like(self.normal_mean, device=DEVICE),
                                       torch.ones_like(self.normal_std, device=DEVICE))
