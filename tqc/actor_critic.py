@@ -61,6 +61,8 @@ class Actor(nn.Module):
 
         # Scale actions
         actions *= self.action_scale
+        # TODO Check maths !!!
+        log_prob =- torch.log([self.action_scale])
 
         return actions, log_prob
 

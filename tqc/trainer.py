@@ -70,7 +70,7 @@ class Trainer(object):
 		# --- Policy loss ---
 		new_action, log_pi = self.actor(state)
 		metrics['actor_entropy'] = - log_pi.mean().item()
-		actor_loss = (alpha.detach() * log_pi - self.critic(state, new_action).mean((1, 2)).unsqueeze(1)).mean()
+		actor_loss = (alpha * log_pi[..., None] - self.critic(state, new_action)).mean()
 		metrics['actor_loss'] = actor_loss.item()
 
 		# --- Update actor ---
