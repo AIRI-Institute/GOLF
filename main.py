@@ -132,6 +132,9 @@ def main(args, experiment_folder):
         with torch.no_grad():
             action = actor.select_action(state)
 
+        # TMP
+        action *= 0.01
+
         next_state, reward, done, info = env.step(action)
         episode_timesteps += 1
         ep_end = done or episode_timesteps >= args.timelimit
