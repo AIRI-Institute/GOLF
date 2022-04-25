@@ -51,18 +51,13 @@ class Actor(nn.Module):
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
             # Sample bounded actions and calculate log prob
-            tanh_normal = TanhNormal(actions_mean, actions_std)
+            tanh_normal = TanhNormal(actions_mean, actions_std, self.action_scale)
             actions, pre_tanh = tanh_normal.rsample()
             log_prob = tanh_normal.log_prob(pre_tanh)
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
         else:
-            actions = torch.tanh((P * rel_shifts_mean[..., None]).sum(-2))
+            actions = self.action_scale * torch.tanh((P * rel_shifts_mean[..., None]).sum(-2))
             log_prob = None
-
-        # Scale actions
-        actions *= self.action_scale
-        # TODO Check maths !!!
-        log_prob =- torch.log([self.action_scale])
 
         return actions, log_prob
 
@@ -112,19 +107,21 @@ class Critic(nn.Module):
 class TanhNormal(Distribution):
     arg_constraints = {}
 
-    def __init__(self, normal_mean, normal_std):
+    def __init__(self, normal_mean, normal_std, tanh_scale=1.0):
         super().__init__()
         self.normal_mean = normal_mean
+        self.tanh_scale = torch.FloatTensor([tanh_scale])
         self.normal_std = normal_std
         self.standard_normal = Normal(torch.zeros_like(self.normal_mean, device=DEVICE),
                                       torch.ones_like(self.normal_std, device=DEVICE))
         self.normal = Normal(normal_mean, normal_std)
 
     def log_prob(self, pre_tanh):
-        log_det = 2 * np.log(2) + F.logsigmoid(2 * pre_tanh) + F.logsigmoid(-2 * pre_tanh)
+        log_det = 2 * np.log(2) + F.logsigmoid(2 * pre_tanh) + F.logsigmoid(-2 * pre_tanh) +\
+                  np.prod(self.normal_mean.shape[1:]).item() * torch.log(self.tanh_scale)
         result = self.normal.log_prob(pre_tanh) - log_det
         return result
 
     def rsample(self):
         pretanh = self.normal_mean + self.normal_std * self.standard_normal.sample()
-        return torch.tanh(pretanh), pretanh
+        return self.tanh_scale * torch.tanh(pretanh), pretanh
