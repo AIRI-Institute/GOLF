@@ -3,7 +3,7 @@ import torch
 from tqc import DEVICE
 
 
-def eval_policy(policy, eval_env, max_episode_steps, eval_episodes=10):
+def eval_policy(policy, eval_env, max_episode_steps, action_scale=1.0, eval_episodes=10):
     policy.eval()
     avg_reward = 0.
     avg_info_reward = 0.
@@ -11,8 +11,9 @@ def eval_policy(policy, eval_env, max_episode_steps, eval_episodes=10):
         state, done = eval_env.reset(), False
         t = 0
         while not done and t < max_episode_steps:
-            action = policy.select_action(state)
-            state, reward, done, info = eval_env.step(action)
+            with torch.no_grad():
+                action = policy.select_action(state)
+            state, reward, done, info = eval_env.step(action * action_scale)
             avg_reward += reward
             if 'rdkit_reward' in info:
                 avg_info_reward += info['rdkit_reward']
