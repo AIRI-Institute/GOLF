@@ -100,7 +100,8 @@ def main(args, experiment_folder):
     }
 
     replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE)
-    actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size, action_scale=args.action_scale).to(DEVICE)
+    # TMP set action_scale to 1.0
+    actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size, action_scale=1.0).to(DEVICE)
     critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
 
@@ -132,10 +133,8 @@ def main(args, experiment_folder):
         with torch.no_grad():
             action = actor.select_action(state)
 
-        # TMP
-        action *= 0.01
-
-        next_state, reward, done, info = env.step(action)
+        # TMP move action scaling to env 
+        next_state, reward, done, info = env.step(action * args.action_scale)
         episode_timesteps += 1
         ep_end = done or episode_timesteps >= args.timelimit
         replay_buffer.add(state, action, next_state, reward, done)
