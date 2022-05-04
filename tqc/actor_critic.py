@@ -92,15 +92,15 @@ class Critic(nn.Module):
             self.nets.append(net)
 
     def forward(self, state_dict, actions):
-        # To avoid modifying the input
-        state_dict_copy = {k:  v.detach().clone() for k, v in state_dict.items()}
-        state_dict_copy["_positions"] += actions
-        # Schnet changes the state_dict so a deepcopy
-        # has to be passed to each net in order to do .backwards()
-        quantiles = torch.stack(tuple(
-            net({k:  v.detach().clone() for k, v in state_dict_copy.items()})['quantiles'] \
-            for net in self.nets
-            ), dim=1)
+        quantiles_list = []
+        for net in self.nets:
+            # Schnet changes the state_dict so a deepcopy
+            # has to be passed to each net in order to do .backwards()
+            next_state = {k:  v.detach().clone() for k, v in state_dict.items()}
+            # Change state here to keep the gradients flowing
+            next_state["_positions"] += actions
+            quantiles_list.append(net(next_state)['quantiles'])
+        quantiles = torch.stack(quantiles_list, dim=1)
         return quantiles
 
 
