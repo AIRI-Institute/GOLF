@@ -12,7 +12,7 @@ LOG_STD_MIN_MAX = (-20, 2)
 
 
 class Actor(nn.Module):
-    def __init__(self, schnet_args, out_embedding_size, action_scale=0.01):
+    def __init__(self, schnet_args, out_embedding_size, action_scale=1.0):
         super(Actor, self).__init__()
         self.action_scale = action_scale
         self.out_embedding_size = out_embedding_size
@@ -25,7 +25,7 @@ class Actor(nn.Module):
                                 spk.atomistic.Atomwise(
                                     n_in=schnet.n_atom_basis,
                                     n_out=out_embedding_size * 4,
-                                    n_neurons=[out_embedding_size],
+                                    n_neurons=[out_embedding_size * 2],
                                     contributions='kv'
                                 )
                             ]
@@ -34,7 +34,6 @@ class Actor(nn.Module):
     def forward(self, state_dict):
         kv = self.model(state_dict)['kv']
         k_mu, v_mu, k_sigma, v_sigma = torch.split(kv, self.out_embedding_size, dim=-1)
-
         # Calculate mean and std of shifts relative to other atoms
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2))
         rel_shifts_log_std = torch.matmul(k_sigma, v_sigma.transpose(1, 2))
