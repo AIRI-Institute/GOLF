@@ -88,8 +88,10 @@ class gym_schnet_reward(gym.Wrapper):
 
 
 class ma_gym_rdkit_reward(gym.Wrapper):
-    def __init__(self, env, molecule_path):
+    def __init__(self, env, molecule_path, reward_delta=False):
         # Initialize molecule's sructure
+        self.reward_delta = reward_delta
+        self.prev_reward = 0
         molecule = parse_molecule(molecule_path)
         try:
             get_rdkit_energy(molecule)
@@ -112,13 +114,24 @@ class ma_gym_rdkit_reward(gym.Wrapper):
         # Update current coordinates
         set_coordinates(self.molecule, self.env.atoms.get_positions())
         rdkit_output = get_rdkit_energy(self.molecule)
-        rewards = {agent: -rdkit_output for agent in obs.keys()}
+        rewards = {agent: self.prev_reward - rdkit_output for agent in obs.keys()}
+        if self.reward_delta:
+            self.prev_reward = rdkit_output
         return obs, rewards, done, infos
+
+    def reset(self):
+        obs = super().reset()
+        if self.reward_delta:
+            set_coordinates(self.molecule, self.env.atoms.get_positions())
+            self.prev_reward = get_rdkit_energy(self.molecule)
+        return obs
 
 
 class gym_rdkit_reward(gym.Wrapper):
-    def __init__(self, env, molecule_path):
+    def __init__(self, env, molecule_path, reward_delta=False):
         # Initialize molecule's sructure
+        self.reward_delta = reward_delta
+        self.prev_reward = 0
         molecule = parse_molecule(molecule_path)
         try:
             get_rdkit_energy(molecule)
@@ -139,8 +152,18 @@ class gym_rdkit_reward(gym.Wrapper):
         info = dict(info, **{self.reward_name: reward})
         # Update current coordinates
         set_coordinates(self.molecule, self.env.atoms.get_positions())
-        rdkit_output = -get_rdkit_energy(self.molecule)
-        return obs, rdkit_output, done, info
+        rdkit_output = get_rdkit_energy(self.molecule)
+        reward = self.prev_reward - rdkit_output
+        if self.reward_delta:
+            self.prev_reward = rdkit_output
+        return obs, reward, done, info
+    
+    def reset(self):
+        obs = super().reset()
+        if self.reward_delta:
+            set_coordinates(self.molecule, self.env.atoms.get_positions())
+            self.prev_reward = get_rdkit_energy(self.molecule)
+        return obs
 
 
 def schnet_reward_wrapper(env, multiagent, schnet_model_path, reward_delta, device):
@@ -151,9 +174,9 @@ def schnet_reward_wrapper(env, multiagent, schnet_model_path, reward_delta, devi
         env = gym_schnet_reward(env, model, reward_delta)
     return env
 
-def rdkit_reward_wrapper(env, multiagent, molecule_path):
+def rdkit_reward_wrapper(env, multiagent, molecule_path, reward_delta):
     if multiagent:
-        env = ma_gym_rdkit_reward(env, molecule_path)
+        env = ma_gym_rdkit_reward(env, molecule_path, reward_delta)
     else:
-        env = gym_rdkit_reward(env, molecule_path)
+        env = gym_rdkit_reward(env, molecule_path, reward_delta)
     return env

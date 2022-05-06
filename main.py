@@ -79,15 +79,19 @@ def main(args, experiment_folder):
         eval_env = schnet_reward_wrapper(eval_env, multiagent=False, schnet_model_path=args.schnet_model_path,
                                                reward_delta=args.reward_delta, device=DEVICE)
     elif args.reward == 'rdkit':
-        env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path)
-        eval_env = rdkit_reward_wrapper(eval_env, multiagent=False, molecule_path=args.molecule_path)
+        env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path,
+                                   reward_delta=args.reward_delta)
+        eval_env = rdkit_reward_wrapper(eval_env, multiagent=False, molecule_path=args.molecule_path,
+                                        reward_delta=args.reward_delta)
     elif args.reward == 'both':
-        env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path)
+        env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path,
+                                   reward_delta=args.reward_delta)
         env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path,
                                     reward_delta=args.reward_delta, device=DEVICE)
-        eval_env = rdkit_reward_wrapper(eval_env, multiagent=False, molecule_path=args.molecule_path)
+        eval_env = rdkit_reward_wrapper(eval_env, multiagent=False, molecule_path=args.molecule_path,
+                                        reward_delta=args.reward_delta)
         eval_env = schnet_reward_wrapper(eval_env, multiagent=False, schnet_model_path=args.schnet_model_path,
-                                         reward_delta=args.reward_delta,  device=DEVICE)
+                                         reward_delta=args.reward_delta, device=DEVICE)
 
     state_dict_names, \
     state_dims, \
