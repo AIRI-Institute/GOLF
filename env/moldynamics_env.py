@@ -48,12 +48,15 @@ class MolecularDynamics(gym.Env):
         self.std_energy = 1.
         if calculate_mean_std:
             self.mean_energy, self.std_energy = self._get_mean_std_energy()
+        self.initial_molecule_conformations = []
         
         assert self.exp_folder is not None, "Provide a name for the experiment in order to save trajectories."
         self.traj_file = os.path.join(exp_folder, 'tmp.traj')
 
-        with connect(self.dbpath) as conn:
-            example_row = conn.get(1)
+        # Store random subset of molecules DB
+        self._get_initial_molecule_conformations()
+        example_row = self.initial_molecule_conformations[0]
+        # Initialize observaition space
         self.atoms_count = sum(example_row.count_atoms().values())
         self.example_atoms = example_row.toatoms()
         self.observation_space = Dict(
@@ -98,19 +101,12 @@ class MolecularDynamics(gym.Env):
             else:
                 os.remove(self.traj_file)
     
-    # Makes sqllite3 database compatible with NFS storages
-    @backoff.on_exception(
-        backoff.expo,
-        exception=DatabaseError,
-        max_tries=5,
-        on_giveup=on_giveup
-    )
     def reset(self, db_idx=None):
         if db_idx is None:
-            db_idx = np.random.randint(1, self.db_len + 1)
-        with connect(self.dbpath) as conn:
-            atoms = conn.get(db_idx).toatoms()
-        self.atoms = atoms
+            db_idx = np.random.randint(len(self.initial_molecule_conformations))
+        self.atoms = self.initial_molecule_conformations[db_idx].toatoms()
+        # Inject noise into the initial state 
+        # to make optimal initital states less optimal
         if self.inject_noise:
             current_positions = self.atoms.get_positions()
             noise = np.random.normal(scale=self.noise_std, size=current_positions.shape)
@@ -134,15 +130,32 @@ class MolecularDynamics(gym.Env):
             db_len = len(conn)
         return db_len
 
+    def _get_initial_molecule_conformations(self):
+        # 50000 is a randomly chosen constant. Should be enough
+        random_sample_size = min(self.db_len, 50000)
+        self.initial_molecule_conformations = []
+        indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
+        for idx in indices:
+            self.initial_molecule_conformations.append(self._get_molecule(idx))
+    
+    # Makes sqllite3 database compatible with NFS storages
+    @backoff.on_exception(
+        backoff.expo,
+        exception=DatabaseError,
+        max_tries=5,
+        on_giveup=on_giveup
+    )
+    def _get_molecule(self, idx):
+        with connect(self.dbpath) as conn:
+            return conn.get(idx)
+
     def _get_mean_std_energy(self):
         energy = []
         # Speed up the computation
-        random_sample_size = self.db_len // 10
-        indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
-        with connect(self.dbpath) as conn:
-            for ind in indices:
-                row = conn.get(int(ind))
-                energy.append(row.data['energy'])
+        indices = np.random.choice(np.arange(1, self.db_len + 1), self.db_len // 10, replace=False)
+        for idx in indices:
+            row = self._get_molecule(idx)
+            energy.append(row.data['energy'])
         energy = np.array(energy)
         return energy.mean(), energy.std()
 
