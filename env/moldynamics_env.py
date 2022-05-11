@@ -113,7 +113,7 @@ class MolecularDynamics(gym.Env):
         self.atoms = atoms
         if self.inject_noise:
             current_positions = self.atoms.get_positions()
-            noise = np.random.normal(loc=self.noise_std, size=current_positions.shape)
+            noise = np.random.normal(scale=self.noise_std, size=current_positions.shape)
             self.atoms.set_positions(current_positions + noise)
         if os.path.exists(self.traj_file):
             os.remove(self.traj_file)
