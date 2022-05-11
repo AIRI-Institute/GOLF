@@ -136,7 +136,7 @@ class MolecularDynamics(gym.Env):
         self.initial_molecule_conformations = []
         indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
         for idx in indices:
-            self.initial_molecule_conformations.append(self._get_molecule(idx))
+            self.initial_molecule_conformations.append(self._get_molecule(int(idx)))
     
     # Makes sqllite3 database compatible with NFS storages
     @backoff.on_exception(
@@ -154,7 +154,7 @@ class MolecularDynamics(gym.Env):
         # Speed up the computation
         indices = np.random.choice(np.arange(1, self.db_len + 1), self.db_len // 10, replace=False)
         for idx in indices:
-            row = self._get_molecule(idx)
+            row = self._get_molecule(int(idx))
             energy.append(row.data['energy'])
         energy = np.array(energy)
         return energy.mean(), energy.std()
