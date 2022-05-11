@@ -73,7 +73,7 @@ def main(args, experiment_folder):
                  done_on_timelimit=args.done_on_timelimit, inject_noise=args.inject_noise, noise_std=args.noise_std, 
                  calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
     eval_env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
-                      done_on_timelimit=args.done_on_timelimit, inject_noise=args.inject_noise, noise_std=args.noise_std,
+                      done_on_timelimit=args.done_on_timelimit, inject_noise=False,
                       calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
     # Seed env
     env.seed(args.seed)
