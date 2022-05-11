@@ -35,22 +35,29 @@ class Logger:
         self.exploration_episode_lengths = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_returns = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_info_returns = deque(maxlen=self._keep_n_episodes)
+        self.exploration_episode_final_energy = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_number = 0
 
     def log(self, metrics):
         metrics['Exploration episodes number'] = self.exploration_episode_number
-        for name, d in zip(['episode length', 'episode return'], [self.exploration_episode_lengths, self.exploration_episode_returns]):
+        for name, d in zip(
+                ['episode length', 'episode return', 'episode final energy'],
+                [self.exploration_episode_lengths,
+                 self.exploration_episode_returns,
+                 self.exploration_episode_final_energy]
+            ):
             metrics[f'Exploration {name}, mean'] = np.mean(d)
             metrics[f'Exploration {name}, std'] = np.std(d)
         with open(self.metrics_file, 'a') as out_metrics:
             json.dump(metrics, out_metrics)
             out_metrics.write('\n')
 
-    def update_evaluation_statistics(self, episode_length, episode_return, episode_info_return):
+    def update_evaluation_statistics(self, episode_length, episode_return, episode_info_return, episode_final_energy):
         self.exploration_episode_number += 1
         self.exploration_episode_lengths.append(episode_length)
         self.exploration_episode_returns.append(episode_return)
         self.exploration_episode_info_returns.append(episode_info_return)
+        self.exploration_episode_final_energy.append(episode_final_energy)
 
 
 def main(args, experiment_folder):
@@ -63,11 +70,11 @@ def main(args, experiment_folder):
     if not os.path.exists(trajectory_dir):
         os.makedirs(trajectory_dir)
     env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
-                 done_on_timelimit=args.done_on_timelimit, calculate_mean_std=args.calculate_mean_std_energy,
-                 exp_folder=trajectory_dir)
+                 done_on_timelimit=args.done_on_timelimit, inject_noise=args.inject_noise, noise_std=args.noise_std, 
+                 calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
     eval_env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
-                      done_on_timelimit=args.done_on_timelimit, calculate_mean_std=args.calculate_mean_std_energy,
-                      exp_folder=trajectory_dir)
+                      done_on_timelimit=args.done_on_timelimit, inject_noise=args.inject_noise, noise_std=args.noise_std,
+                      calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
     # Seed env
     env.seed(args.seed)
     eval_env.seed(args.seed)
@@ -158,7 +165,8 @@ def main(args, experiment_folder):
 
         if ep_end:
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
-            logger.update_evaluation_statistics(episode_timesteps, episode_return, episode_info_return)
+            episode_final_energy = info['final_energy']
+            logger.update_evaluation_statistics(episode_timesteps, episode_return, episode_info_return, episode_final_energy)
             # Reset environment
             state, done = env.reset(), False
 
@@ -192,6 +200,8 @@ if __name__ == "__main__":
     parser.add_argument("--timelimit", default=100, type=int, help="Timelimit for MD env")
     parser.add_argument("--schnet_model_path", default="env/schnet_model/schnet_model_3_blocks", type=str, help="Path to trained schnet model")
     parser.add_argument("--molecule_path", default="env/molecules_xyz/malonaldehyde.xyz", type=str, help="Path to example .xyz file")
+    parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")
+    parser.add_argument("--noise_std", type=float, default=0.1, help="Std of the injected noise")
     parser.add_argument("--calculate_mean_std_energy", type=bool, default=False, help="Calculate mean, std of energy of database")
     parser.add_argument("--reward", default="both", choices=["schnet", "rdkit", "both"], help="Type of reward for MD env")
     parser.add_argument("--reward_delta", type=bool, default=False, help="Use delta of energy as reward")
