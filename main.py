@@ -179,7 +179,7 @@ def main(args, experiment_folder):
         if (t + 1) % args.eval_freq == 0:
             step_metrics['Total_timesteps'] = t + 1
             step_metrics['Evaluation_returns'],\
-            step_metrics['RDKit_evaluation_returns'],
+            step_metrics['RDKit_evaluation_returns'],\
             step_metrics['Evaluation_final_energy'] = eval_policy(actor, eval_env, args.timelimit, args.action_scale)
             logger.log(step_metrics)
 
