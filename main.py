@@ -18,7 +18,7 @@ from tqc import DEVICE
 from tqc.trainer import Trainer
 from tqc.actor_critic import Actor, Critic
 from tqc.replay_buffer import ReplayBuffer
-from tqc.functions import eval_policy
+from tqc.functions import eval_policy, eval_policy_multiple_timelimits
 
 
 class Logger:
@@ -181,6 +181,8 @@ def main(args, experiment_folder):
             step_metrics['Evaluation_returns'],\
             step_metrics['RDKit_evaluation_returns'],\
             step_metrics['Evaluation_final_energy'] = eval_policy(actor, eval_env, args.timelimit, args.action_scale)
+            if args.evaluate_multiple_timelimits:
+                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env, args.action_scale))
             logger.log(step_metrics)
 
         if t in full_checkpoints and args.save_checkpoints:
@@ -217,6 +219,7 @@ if __name__ == "__main__":
     # Other args
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
     parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate
+    parser.add_argument("-evaluate_multiple_timelimits", default=False, type=bool, help="Evaluate policy at multiple timelimits")
     parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
     parser.add_argument("--seed", default=None, type=int)
     parser.add_argument("--n_quantiles", default=25, type=int)
