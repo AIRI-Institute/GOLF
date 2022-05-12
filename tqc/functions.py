@@ -7,6 +7,7 @@ def eval_policy(policy, eval_env, max_episode_steps, action_scale=1.0, eval_epis
     policy.eval()
     avg_reward = 0.
     avg_info_reward = 0.
+    avg_final_energy = 0.
     for _ in range(eval_episodes):
         state, done = eval_env.reset(), False
         t = 0
@@ -18,10 +19,12 @@ def eval_policy(policy, eval_env, max_episode_steps, action_scale=1.0, eval_epis
             if 'rdkit_reward' in info:
                 avg_info_reward += info['rdkit_reward']
             t += 1
+        avg_final_energy += info['final_energy']
     avg_reward /= eval_episodes
     avg_info_reward /= eval_episodes
+    avg_final_energy /= eval_episodes
     policy.train()
-    return avg_reward, avg_info_reward
+    return avg_reward, avg_info_reward, avg_final_energy
 
 
 def quantile_huber_loss_f(quantiles, samples):
