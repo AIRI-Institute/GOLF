@@ -110,7 +110,7 @@ def main(args, experiment_folder):
         'n_gaussians': args.n_gaussians,
     }
 
-    replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE)
+    replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE, args.replay_buffer_size)
     # TMP set action_scale to 1.0
     actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size, action_scale=1.0).to(DEVICE)
     critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
@@ -226,6 +226,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
     parser.add_argument("--n_nets", default=5, type=int)
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
+    parser.add_argument("--replay_buffer_size", default=1e6, type=int, help="Size of replay buffer")
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--light_checkpoint_freq", type=int, default=200000)
