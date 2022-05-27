@@ -1,0 +1,22 @@
+# Ignore all .ipynb
+*.ipynb
+**/.ipynb_checkpoints
+
+# Ingore Jmol --> might remove
+**/Jmol
+
+# Ignore all __pycache__ and .DS_Store
+**/__pycache__
+*.DS_Store
+
+# Ignore logs and env data
+results
+*.json
+env/data
+
+# Ignore figures
+*.png
+*.pdf
+
+# Ignore all trajectories
+*.traj
