@@ -14,6 +14,9 @@ results
 *.json
 env/data
 
+# Ignore models
+models
+
 # Ignore figures
 *.png
 *.pdf
