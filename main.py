@@ -31,11 +31,12 @@ class Logger:
         with open(experiment_folder / 'config.json', 'w') as config_file:
             json.dump(config.__dict__, config_file)
 
-        self._keep_n_episodes = 5
+        self._keep_n_episodes = 10
         self.exploration_episode_lengths = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_returns = deque(maxlen=self._keep_n_episodes)
-        self.exploration_episode_info_returns = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_final_energy = deque(maxlen=self._keep_n_episodes)
+        self.exploration_episode_final_rl_energy = deque(maxlen=self._keep_n_episodes)
+        self.exploration_not_converged = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_number = 0
 
     def log(self, metrics):
@@ -52,12 +53,14 @@ class Logger:
             json.dump(metrics, out_metrics)
             out_metrics.write('\n')
 
-    def update_evaluation_statistics(self, episode_length, episode_return, episode_info_return, episode_final_energy):
+    def update_evaluation_statistics(self, episode_length, episode_return, episode_final_energy,
+                                     episode_final_rl_energy, not_converged):
         self.exploration_episode_number += 1
         self.exploration_episode_lengths.append(episode_length)
         self.exploration_episode_returns.append(episode_return)
-        self.exploration_episode_info_returns.append(episode_info_return)
         self.exploration_episode_final_energy.append(episode_final_energy)
+        self.exploration_episode_final_rl_energy.append(episode_final_rl_energy)
+        self.exploration_not_converged.append(not_converged)
 
 
 def main(args, experiment_folder):
@@ -80,25 +83,10 @@ def main(args, experiment_folder):
     eval_env.seed(args.seed)
 
     # Initialize reward wrapper
-    if args.reward == 'schnet':
-        env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path,
-                                    reward_delta=args.reward_delta, device=DEVICE)
-        eval_env = schnet_reward_wrapper(eval_env, multiagent=False, schnet_model_path=args.schnet_model_path,
-                                               reward_delta=args.reward_delta, device=DEVICE)
-    elif args.reward == 'rdkit':
-        env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path,
-                                   reward_delta=args.reward_delta)
-        eval_env = rdkit_reward_wrapper(eval_env, multiagent=False, molecule_path=args.molecule_path,
-                                        reward_delta=args.reward_delta)
-    elif args.reward == 'both':
-        env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path,
-                                   reward_delta=args.reward_delta)
-        env = schnet_reward_wrapper(env, multiagent=False, schnet_model_path=args.schnet_model_path,
-                                    reward_delta=args.reward_delta, device=DEVICE)
-        eval_env = rdkit_reward_wrapper(eval_env, multiagent=False, molecule_path=args.molecule_path,
-                                        reward_delta=args.reward_delta)
-        eval_env = schnet_reward_wrapper(eval_env, multiagent=False, schnet_model_path=args.schnet_model_path,
-                                         reward_delta=args.reward_delta, device=DEVICE)
+    env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path,
+                                minimize_on_every_step=args.minimize_on_every_step, M=args.M)
+    eval_env = rdkit_reward_wrapper(eval_env, multiagent=False, molecule_path=args.molecule_path,
+                                    minimize_on_every_step=args.minimize_on_every_step, M=args.M)
 
     state_dict_names, \
     state_dims, \
@@ -128,7 +116,6 @@ def main(args, experiment_folder):
 
     state, done = env.reset(), False
     episode_return = 0
-    episode_info_return = 0
     episode_timesteps = 0
     episode_num = 0
 
@@ -152,8 +139,6 @@ def main(args, experiment_folder):
 
         state = next_state
         episode_return += reward
-        if 'rdkit_reward' in info:
-            episode_info_return += info['rdkit_reward']
 
         # Train agent after collecting sufficient data
         if t >= args.batch_size:
@@ -166,12 +151,17 @@ def main(args, experiment_folder):
         if ep_end:
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
             episode_final_energy = info['final_energy']
-            logger.update_evaluation_statistics(episode_timesteps, episode_return, episode_info_return, episode_final_energy)
+            episode_final_rl_energy = info['final_rl_energy']
+            not_converged = info['not_converged']
+            logger.update_evaluation_statistics(episode_timesteps,
+                                                episode_return,
+                                                episode_final_energy,
+                                                episode_final_rl_energy,
+                                                not_converged)
             # Reset environment
             state, done = env.reset(), False
 
             episode_return = 0
-            episode_info_return = 0
             episode_timesteps = 0
             episode_num += 1
 
@@ -206,8 +196,8 @@ if __name__ == "__main__":
     parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")
     parser.add_argument("--noise_std", type=float, default=0.1, help="Std of the injected noise")
     parser.add_argument("--calculate_mean_std_energy", type=bool, default=False, help="Calculate mean, std of energy of database")
-    parser.add_argument("--reward", default="both", choices=["schnet", "rdkit", "both"], help="Type of reward for MD env")
-    parser.add_argument("--reward_delta", type=bool, default=False, help="Use delta of energy as reward")
+    parser.add_argument("--minimize_on_every_step", type=bool, default=False, help="Whether to minimize conformation with rdkit on every step")
+    parser.add_argument("--M", type=int, default=10, help="Number of steps to run rdkit minimization for")
     parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
     # Schnet args
     parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")
@@ -226,7 +216,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
     parser.add_argument("--n_nets", default=5, type=int)
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
-    parser.add_argument("--replay_buffer_size", default=1e6, type=int, help="Size of replay buffer")
+    parser.add_argument("--replay_buffer_size", default=2e5, type=int, help="Size of replay buffer")
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--light_checkpoint_freq", type=int, default=200000)
