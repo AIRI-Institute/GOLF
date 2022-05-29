@@ -85,8 +85,6 @@ def main(args, experiment_folder):
     # Initialize reward wrapper
     env = rdkit_reward_wrapper(env, molecule_path=args.molecule_path,
                                 minimize_on_every_step=args.minimize_on_every_step, M=args.M)
-    print(dir(env))
-    print(env.molecule)
     eval_env = rdkit_reward_wrapper(eval_env, molecule_path=args.molecule_path,
                                     minimize_on_every_step=args.minimize_on_every_step, M=args.M)
 
@@ -171,10 +169,9 @@ def main(args, experiment_folder):
         if (t + 1) % args.eval_freq == 0:
             step_metrics['Total_timesteps'] = t + 1
             step_metrics['Evaluation_returns'],\
-            step_metrics['RDKit_evaluation_returns'],\
             step_metrics['Evaluation_final_energy'] = eval_policy(actor, eval_env, args.timelimit, args.action_scale)
             if args.evaluate_multiple_timelimits:
-                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env, args.action_scale))
+                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env, args.M, args.action_scale))
             logger.log(step_metrics)
 
         if t in full_checkpoints and args.save_checkpoints:

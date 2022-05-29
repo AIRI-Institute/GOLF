@@ -35,7 +35,7 @@ def eval_policy_multiple_timelimits(policy, eval_env, M, action_scale=1.0, eval_
     avg_reward_timelimits = {f'avg_reward_at_{timelimit}' : 0 for timelimit in TIMELIMITS}
     for _ in range(eval_episodes):
         state, done = eval_env.reset(), False
-        initial_energy = eval_episodes.initial_energy
+        initial_energy = eval_env.initial_energy
         t = 0
         while not done and t < max(TIMELIMITS):
             with torch.no_grad():
