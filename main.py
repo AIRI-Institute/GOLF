@@ -12,7 +12,7 @@ from collections import deque
 
 
 from env.moldynamics_env import env_fn
-from env.wrappers import schnet_reward_wrapper, rdkit_reward_wrapper
+from env.wrappers import rdkit_reward_wrapper
 
 from tqc import DEVICE
 from tqc.trainer import Trainer
@@ -83,9 +83,11 @@ def main(args, experiment_folder):
     eval_env.seed(args.seed)
 
     # Initialize reward wrapper
-    env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path,
+    env = rdkit_reward_wrapper(env, molecule_path=args.molecule_path,
                                 minimize_on_every_step=args.minimize_on_every_step, M=args.M)
-    eval_env = rdkit_reward_wrapper(eval_env, multiagent=False, molecule_path=args.molecule_path,
+    print(dir(env))
+    print(env.molecule)
+    eval_env = rdkit_reward_wrapper(eval_env, molecule_path=args.molecule_path,
                                     minimize_on_every_step=args.minimize_on_every_step, M=args.M)
 
     state_dict_names, \
@@ -216,7 +218,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
     parser.add_argument("--n_nets", default=5, type=int)
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
-    parser.add_argument("--replay_buffer_size", default=2e5, type=int, help="Size of replay buffer")
+    parser.add_argument("--replay_buffer_size", default=int(2e5), type=int, help="Size of replay buffer")
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--light_checkpoint_freq", type=int, default=200000)

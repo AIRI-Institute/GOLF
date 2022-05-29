@@ -70,6 +70,6 @@ class rdkit_minization_reward(gym.Wrapper):
         self.initial_energy = get_rdkit_energy(self.molecule)
         return obs
 
-def rdkit_reward_wrapper(env, _, molecule_path, minimize_on_every_step, M):
+def rdkit_reward_wrapper(env, molecule_path, minimize_on_every_step, M):
     env = rdkit_minization_reward(env, molecule_path, minimize_on_every_step, M)
     return env
