@@ -48,19 +48,12 @@ class rdkit_minization_reward(gym.Wrapper):
         else:
             reward = 0.
 
-        # If change 
-        if self.minimize_on_every_step:
-            set_coordinates(self.molecule, self.env.atoms.get_positions())
-            self.initial_energy = get_rdkit_energy(self.molecule)
-
         # If TL is reached log final energy
         if info['env_done']:
             info['final_energy'] = final_energy
             info['not_converged'] = not_converged
-            if not self.minimize_on_every_step:
-                set_coordinates(self.molecule, self.env.atoms.get_positions())
-                self.initial_energy = get_rdkit_energy(self.molecule)
-            info['final_rl_energy'] = self.initial_energy
+            set_coordinates(self.molecule, self.env.atoms.get_positions())
+            info['final_rl_energy'] = get_rdkit_energy(self.molecule)
         
         return obs, reward, done, info
     

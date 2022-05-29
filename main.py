@@ -18,7 +18,7 @@ from tqc import DEVICE
 from tqc.trainer import Trainer
 from tqc.actor_critic import Actor, Critic
 from tqc.replay_buffer import ReplayBuffer
-from tqc.functions import eval_policy, eval_policy_multiple_timelimits
+from tqc.functions import eval_policy, eval_policy_multiple_timelimits, TIMELIMITS
 
 
 class Logger:
@@ -42,10 +42,12 @@ class Logger:
     def log(self, metrics):
         metrics['Exploration episodes number'] = self.exploration_episode_number
         for name, d in zip(
-                ['episode length', 'episode return', 'episode final energy'],
+                ['episode length', 'episode return', 'episode final energy', 'episode final rl energy', 'episode not converged'],
                 [self.exploration_episode_lengths,
                  self.exploration_episode_returns,
-                 self.exploration_episode_final_energy]
+                 self.exploration_episode_final_energy,
+                 self.exploration_episode_final_rl_energy,
+                 self.exploration_not_converged]
             ):
             metrics[f'Exploration {name}, mean'] = np.mean(d)
             metrics[f'Exploration {name}, std'] = np.std(d)
@@ -68,6 +70,7 @@ def main(args, experiment_folder):
     # Tmp set env name
     args.env = "Malonaldehyde"
     logger = Logger(experiment_folder, args)
+
     # Initialize env
     trajectory_dir = experiment_folder / 'trajectory'
     if not os.path.exists(trajectory_dir):
@@ -78,6 +81,10 @@ def main(args, experiment_folder):
     eval_env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
                       done_on_timelimit=False, inject_noise=False,
                       calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
+    # For evaluation on multiple timestamps
+    eval_env_long = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=max(TIMELIMITS),
+                           done_on_timelimit=False, inject_noise=False,
+                           calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
     # Seed env
     env.seed(args.seed)
     eval_env.seed(args.seed)
@@ -87,6 +94,9 @@ def main(args, experiment_folder):
                                 minimize_on_every_step=args.minimize_on_every_step, M=args.M)
     eval_env = rdkit_reward_wrapper(eval_env, molecule_path=args.molecule_path,
                                     minimize_on_every_step=args.minimize_on_every_step, M=args.M)
+    eval_env_long = rdkit_reward_wrapper(eval_env_long, molecule_path=args.molecule_path,
+                                         minimize_on_every_step=args.minimize_on_every_step, M=args.M)
+
 
     state_dict_names, \
     state_dims, \
@@ -171,7 +181,7 @@ def main(args, experiment_folder):
             step_metrics['Evaluation_returns'],\
             step_metrics['Evaluation_final_energy'] = eval_policy(actor, eval_env, args.timelimit, args.action_scale)
             if args.evaluate_multiple_timelimits:
-                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env, args.M, args.action_scale))
+                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env_long, args.M, args.action_scale))
             logger.log(step_metrics)
 
         if t in full_checkpoints and args.save_checkpoints:
