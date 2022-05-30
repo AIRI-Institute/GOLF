@@ -38,15 +38,16 @@ class rdkit_minization_reward(gym.Wrapper):
         
         # Minimize with rdkit and calculate reward
         if self.minimize_on_every_step or info['env_done']:
-            ff = AllChem.MMFFGetMoleculeForceField(self.molecule,
-                    AllChem.MMFFGetMoleculeProperties(self.molecule), confId=0)
-            ff.Initialize()
-            not_converged = ff.Minimize(maxIts=self.M)
+            not_converged = self.minimize()
             # Get energy after minimization
             final_energy = get_rdkit_energy(self.molecule)
             reward = self.initial_energy - final_energy
         else:
             reward = 0.
+
+        # If minimize_on_every step update initial energy
+        if self.minimize_on_every_step:
+            self.initial_energy = final_energy
 
         # If TL is reached log final energy
         if info['env_done']:
@@ -60,8 +61,17 @@ class rdkit_minization_reward(gym.Wrapper):
     def reset(self):
         obs = super().reset()
         set_coordinates(self.molecule, self.env.atoms.get_positions())
+        # Minimize the initial state of the molecule
+        self.minimize()
         self.initial_energy = get_rdkit_energy(self.molecule)
         return obs
+
+    def minimize(self, confId=0):
+        ff = AllChem.MMFFGetMoleculeForceField(self.molecule,
+                AllChem.MMFFGetMoleculeProperties(self.molecule), confId=confId)
+        ff.Initialize()
+        not_converged = ff.Minimize(maxIts=self.M)
+        return not_converged
 
 def rdkit_reward_wrapper(env, molecule_path, minimize_on_every_step, M):
     env = rdkit_minization_reward(env, molecule_path, minimize_on_every_step, M)
