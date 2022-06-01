@@ -163,7 +163,7 @@ def main(exp_folder, args):
     }
     actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size).to(DEVICE)
     actor.load_state_dict(torch.load(args.load_model, map_location=DEVICE))
-    actor.train()
+    actor.eval()
     rdkit_molecule = parse_molecule('env/molecules_xyz/malonaldehyde.xyz')
 
     if args.mode == "energy":
