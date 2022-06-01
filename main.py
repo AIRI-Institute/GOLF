@@ -187,8 +187,8 @@ def main(args, experiment_folder):
         if t in full_checkpoints and args.save_checkpoints:
             trainer_save_name = f'{experiment_folder}/iter_{t}'
             trainer.save(trainer_save_name)
-            with open(f'{experiment_folder}/iter_{t}_replay', 'wb') as outF:
-                pickle.dump(replay_buffer, outF)
+            #with open(f'{experiment_folder}/iter_{t}_replay', 'wb') as outF:
+            #    pickle.dump(replay_buffer, outF)
             # Remove previous checkpoint?
         elif (t + 1) % args.light_checkpoint_freq == 0 and args.save_checkpoints:
             trainer_save_name = f'{experiment_folder}/iter_{t}'
