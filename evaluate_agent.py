@@ -1,9 +1,12 @@
 import argparse
+import datetime
 import json
 import numpy as np
+import os
 import torch
 
 from collections import defaultdict
+from pathlib import Path
 from rdkit.Chem import AllChem
 
 from env.moldynamics_env import env_fn
@@ -15,8 +18,6 @@ from tqc.actor_critic import Actor
 
 
 def rl_minimize(policy, env, timelimit, action_scale=1.0):
-    final_energy = 0.
-
     state, done = env.reset(), False
     initial_state = state
 
@@ -26,7 +27,7 @@ def rl_minimize(policy, env, timelimit, action_scale=1.0):
             action = policy.select_action(state)
         state, _, done, info = env.step(action * action_scale)
         t += 1
-    final_energy += info['final_energy']
+    final_energy = info['final_energy']
     positions = env.atoms.get_positions()
     return initial_state, final_energy, positions
 
@@ -77,7 +78,7 @@ def evaluate_final_energy(env, actor, rdkit_molecule, args):
 
         initial_state_positions = initial_state['_positions'].double()[0].cpu().numpy()
         set_coordinates(rdkit_molecule, initial_state_positions)
-        initial_energy = get_rdkit_energy(rdkit_molecule)
+        _, initial_energy = rdkit_minimize(rdkit_molecule, max_iter=args.M)
         result['initial_energy'].append(initial_energy)
         if args.N > 0:
             result['rl_delta'].append(initial_energy - rl_final_energy)
@@ -149,12 +150,12 @@ def evaluate_convergence(env, actor, rdkit_molecule, args):
         print("Rdkit")
         print("Iterations until convergence: {:.3f} ± {:.3f}".format(rdkit_iterations_mean, rdkit_iterations_std))
 
-def main(args):
+def main(exp_folder, args):
     env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.N,
                       done_on_timelimit=False, inject_noise=args.inject_noise, noise_std=args.noise_std,
                       calculate_mean_std=args.calculate_mean_std_energy, exp_folder='./')
-    env = rdkit_reward_wrapper(env, multiagent=False, molecule_path=args.molecule_path,
-                                        reward_delta=args.reward_delta)
+    env = rdkit_reward_wrapper(env, molecule_path=args.molecule_path,
+                               minimize_on_every_step=False, M=args.M)
     schnet_args = {
         'n_interactions': args.n_interactions,
         'cutoff': args.cutoff,
@@ -173,7 +174,8 @@ def main(args):
         raise NotImplemented()
 
     # Save the result
-    with open(args.output_file, 'w') as fp:
+    output_file = exp_folder / "output.json"
+    with open(output_file, 'w') as fp:
         json.dump(result, fp, sort_keys=True, indent=4)
 
 if __name__ == "__main__":
@@ -185,8 +187,6 @@ if __name__ == "__main__":
     parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")
     parser.add_argument("--noise_std", type=float, default=0.01, help="Std of the injected noise")
     parser.add_argument("--calculate_mean_std_energy", type=bool, default=False, help="Calculate mean, std of energy of database")
-    parser.add_argument("--reward", default="both", choices=["schnet", "rdkit", "both"], help="Type of reward for MD env")
-    parser.add_argument("--reward_delta", type=bool, default=False, help="Use delta of energy as reward")
     parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
     # Schnet args
     parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")
@@ -198,7 +198,8 @@ if __name__ == "__main__":
     parser.add_argument("--n_nets", default=1, type=int)
     # Other args
     parser.add_argument("--mode", choices=["energy", "convergence"], help="Evaluation mode")
-    parser.add_argument("--output_file", default="eval_output.json", type=str, help="Evaluation result file name")
+    parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
+    parser.add_argument("--log_dir", default="evaluation_output", type=str, help="Which directory to store outouts in")
     parser.add_argument("--conf_number", default=int(1e5), type=int, help="Number of conformations to evaluate on")
     parser.add_argument("--N", default=10, type=int, help="Run RL policy for N steps")
     parser.add_argument("--M", default=5, type=int, help="Run RdKit minimization for M steps")
@@ -206,4 +207,11 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", type=bool, default=False)
     args = parser.parse_args()
 
-    main(args)
+    log_dir = Path(args.log_dir)
+    start_time = datetime.datetime.strftime(datetime.datetime.now(), '%Y_%m_%d_%H_%M_%S')
+    exp_folder = log_dir / f'{args.exp_name}_{start_time}'
+    if os.path.exists(exp_folder):
+            raise Exception('Experiment folder exists, apparent seed conflict!')
+    os.makedirs(exp_folder)
+    
+    main(exp_folder, args)
