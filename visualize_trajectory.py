@@ -10,7 +10,7 @@ from rdkit.Chem import AllChem
 
 from env.moldynamics_env import env_fn
 from env.wrappers import rdkit_reward_wrapper
-from env.xyz2mol import parse_molecule, set_coordinates
+from env.xyz2mol import get_rdkit_energy, parse_molecule, set_coordinates
 
 from tqc import DEVICE
 from tqc.actor_critic import Actor
@@ -66,9 +66,16 @@ def main(exp_folder, args):
     for traj_num in range(args.traj_number):
         file_name = exp_folder / f'trajectory_{traj_num}'
         # Write state visited by the RL agent to a file
-        rl_delta_energy, final_energy = rl_minimize(file_name, actor, env, args.N, args.action_scale)
-        initial_positions = env.atoms.get_positions()
+        if args.N > 0:
+            rl_delta_energy, final_energy = rl_minimize(file_name, actor, env, args.N, args.action_scale)
+            initial_positions = env.atoms.get_positions()
+        else:
+            env.reset()
+            initial_positions = env.atoms.get_positions()
         not_converged = rdkit_minimize(file_name, initial_positions, rdkit_molecule, env.atoms, args.M)
+        if args.N == 0:
+            rl_delta_energy = 0
+            final_energy = get_rdkit_energy(rdkit_molecule)
         total_final_energy += final_energy
         total_rl_delta_energy += rl_delta_energy
         total_not_converged += not_converged
