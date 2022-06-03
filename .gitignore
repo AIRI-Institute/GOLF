@@ -11,6 +11,7 @@
 
 # Ignore logs and env data
 results
+trajectories
 *.json
 env/data
 
