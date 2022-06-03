@@ -19,22 +19,27 @@ from tqc.actor_critic import Actor
 def rl_minimize(file_name, policy, env, timelimit, action_scale=1.0):
     total_reward = 0.
     positions_list = []
+    relative_shifts_list = []
+    P_list = []
     traj = Trajectory(file_name, mode='w')
 
     state, done = env.reset(), False
     positions_list.append(env.atoms.get_positions())
+
     traj.write(env.atoms)
     t = 0
     while not done and t < timelimit:
         with torch.no_grad():
-            action = policy.select_action(state)
-        state, reward, done, info = env.step(action * action_scale)
+            action, _, relative_shifts, P = policy(state, return_relative_shifts=True)
+        relative_shifts_list.append(relative_shifts[0].cpu().numpy())
+        P_list.append(P[0].cpu().numpy())
+        state, reward, done, info = env.step(action[0].cpu().numpy() * action_scale)
         total_reward += reward
         positions_list.append(env.atoms.get_positions())
         traj.write(env.atoms)
         t += 1
     final_energy = info['final_energy']
-    return positions_list, total_reward, final_energy
+    return positions_list, relative_shifts_list, P_list, total_reward, final_energy
 
 def rdkit_minimize(file_name, initial_posisitons, molecule, ase_atoms, M):
     positions_list = []
@@ -75,9 +80,15 @@ def main(exp_folder, args):
         file_name = exp_folder / f'trajectory_{traj_num}'
         # Write state visited by the RL agent to a file
         if args.N > 0:
-            rl_positions_list, rl_delta_energy, final_energy = rl_minimize(file_name, actor, env, args.N, args.action_scale)
+            rl_positions_list, relative_shifts_list,\
+            P_list, rl_delta_energy, final_energy = rl_minimize(file_name, actor, env, args.N, args.action_scale)
             positions_list.extend(rl_positions_list)
             initial_positions = env.atoms.get_positions()
+            if args.save_actions:
+                with open(exp_folder / f'traj_{traj_num}_relative_shifts.pickle', 'wb') as f:
+                    pickle.dump(np.array(relative_shifts_list), f, protocol=pickle.HIGHEST_PROTOCOL)
+                with open(exp_folder / f'traj_{traj_num}_P.pickle', 'wb') as f:
+                    pickle.dump(np.array(P_list), f, protocol=pickle.HIGHEST_PROTOCOL)
         else:
             env.reset()
             initial_positions = env.atoms.get_positions()
@@ -122,6 +133,7 @@ if __name__ == "__main__":
     parser.add_argument("--N", default=10, type=int, help="Run RL policy for N steps")
     parser.add_argument("--M", default=10, type=int, help="Run RdKit minimization for M steps")
     parser.add_argument("--load_model", type=str, default=None)
+    parser.add_argument("--save_actions", action='store_true', help="Whether to save actions taken by the RL agent")
     parser.add_argument("--verbose", type=bool, default=False)
     args = parser.parse_args()
 

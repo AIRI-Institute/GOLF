@@ -31,7 +31,7 @@ class Actor(nn.Module):
                             ]
         self.model = spk.atomistic.model.AtomisticModel(schnet, output_modules)
     
-    def forward(self, state_dict):
+    def forward(self, state_dict, return_relative_shifts=False):
         kv = self.model(state_dict)['kv']
         k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 3], dim=-1)
         # Calculate mean and std of shifts relative to other atoms
@@ -56,7 +56,8 @@ class Actor(nn.Module):
         else:
             actions = torch.tanh(actions_mean)
             log_prob = None
-
+        if return_relative_shifts:
+            return actions, log_prob, rel_shifts_mean, P
         return actions, log_prob
 
     def select_action(self, state_dict):
