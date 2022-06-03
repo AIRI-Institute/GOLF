@@ -28,9 +28,9 @@ def plot_trajectories(molecule, trajectory, N, save_figure_path):
     for i in range(molecule.GetNumAtoms()):
         fig.add_trace(
             go.Scatter3d(
-                x=trajectory[:N, i, 0],
-                y=trajectory[:N, i, 1],
-                z=trajectory[:N, i, 2],
+                x=trajectory[:N + 1, i, 0],
+                y=trajectory[:N + 1, i, 1],
+                z=trajectory[:N + 1, i, 2],
                 mode='lines',
                 marker=dict(
                     size=2,
