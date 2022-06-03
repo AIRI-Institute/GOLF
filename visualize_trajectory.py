@@ -1,7 +1,8 @@
 import argparse
 import datetime
-import os
 import numpy as np
+import os
+import pickle
 import torch
 
 from ase.io import Trajectory
@@ -17,9 +18,11 @@ from tqc.actor_critic import Actor
 
 def rl_minimize(file_name, policy, env, timelimit, action_scale=1.0):
     total_reward = 0.
+    positions_list = []
     traj = Trajectory(file_name, mode='w')
 
     state, done = env.reset(), False
+    positions_list.append(env.atoms.get_positions())
     traj.write(env.atoms)
     t = 0
     while not done and t < timelimit:
@@ -27,12 +30,14 @@ def rl_minimize(file_name, policy, env, timelimit, action_scale=1.0):
             action = policy.select_action(state)
         state, reward, done, info = env.step(action * action_scale)
         total_reward += reward
+        positions_list.append(env.atoms.get_positions())
         traj.write(env.atoms)
         t += 1
     final_energy = info['final_energy']
-    return total_reward, final_energy
+    return positions_list, total_reward, final_energy
 
 def rdkit_minimize(file_name, initial_posisitons, molecule, ase_atoms, M):
+    positions_list = []
     traj = Trajectory(file_name, mode='a')
     for i in range(1, M + 1):
         set_coordinates(molecule, initial_posisitons)
@@ -40,9 +45,11 @@ def rdkit_minimize(file_name, initial_posisitons, molecule, ase_atoms, M):
             AllChem.MMFFGetMoleculeProperties(molecule), confId=0)
         ff.Initialize()
         not_converged = ff.Minimize(maxIts=i)
-        ase_atoms.set_positions(molecule.GetConformers()[0].GetPositions())
+        current_positions = molecule.GetConformers()[0].GetPositions()
+        ase_atoms.set_positions(current_positions)
+        positions_list.append(current_positions)
         traj.write(ase_atoms)
-    return not_converged
+    return positions_list, not_converged
 
 def main(exp_folder, args):
     env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.N,
@@ -64,21 +71,28 @@ def main(exp_folder, args):
     total_final_energy = 0.
     total_not_converged = 0.
     for traj_num in range(args.traj_number):
+        positions_list = []
         file_name = exp_folder / f'trajectory_{traj_num}'
         # Write state visited by the RL agent to a file
         if args.N > 0:
-            rl_delta_energy, final_energy = rl_minimize(file_name, actor, env, args.N, args.action_scale)
+            rl_positions_list, rl_delta_energy, final_energy = rl_minimize(file_name, actor, env, args.N, args.action_scale)
+            positions_list.extend(rl_positions_list)
             initial_positions = env.atoms.get_positions()
         else:
             env.reset()
             initial_positions = env.atoms.get_positions()
-        not_converged = rdkit_minimize(file_name, initial_positions, rdkit_molecule, env.atoms, args.M)
+            positions_list.append(initial_positions)
+        rdkit_positions_list, not_converged = rdkit_minimize(file_name, initial_positions, rdkit_molecule, env.atoms, args.M)
+        positions_list.extend(rdkit_positions_list)
         if args.N == 0:
             rl_delta_energy = 0
             final_energy = get_rdkit_energy(rdkit_molecule)
         total_final_energy += final_energy
         total_rl_delta_energy += rl_delta_energy
         total_not_converged += not_converged
+        positions_array = np.array(positions_list)
+        with open(exp_folder / f'traj_{traj_num}.pickle', 'wb') as f:
+            pickle.dump(positions_array, f, protocol=pickle.HIGHEST_PROTOCOL)
     if args.verbose:
         print("Mean final energy: {:.3f}".format(total_final_energy / args.traj_number))
         print("Mean converged: {:.3f}".format(1 - total_not_converged / args.traj_number))
