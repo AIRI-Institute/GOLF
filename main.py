@@ -160,6 +160,7 @@ def main(args, experiment_folder):
         else:
             step_metrics = dict()
         step_metrics['Timestamp'] = str(datetime.datetime.now())
+        step_metrics['Action_scale'] = current_action_scale
         step_metrics['Action_norm'] = np.linalg.norm(action, axis=1).mean().item()
 
         if ep_end:
