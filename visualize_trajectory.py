@@ -69,7 +69,10 @@ def main(exp_folder, args):
     }
     actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size).to(DEVICE)
     actor.load_state_dict(torch.load(args.load_model, map_location=DEVICE))
-    actor.eval()
+    if args.actor_mode == "eval":
+        actor.eval()
+    elif args.actor_mode == "explore":
+        actor.train()
     rdkit_molecule = parse_molecule('env/molecules_xyz/malonaldehyde.xyz')
 
     total_rl_delta_energy = 0.
@@ -130,6 +133,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
     parser.add_argument("--log_dir", default="trajectories", type=str, help="Which directory to store trajectories in")
     parser.add_argument("--traj_number", default=int(1e5), type=int, help="Number of visualized trajectories")
+    parser.add_argument("--actor_mode", choices=["eval", "explore"], default="eval", help="Actor mode")
     parser.add_argument("--N", default=10, type=int, help="Run RL policy for N steps")
     parser.add_argument("--M", default=10, type=int, help="Run RdKit minimization for M steps")
     parser.add_argument("--load_model", type=str, default=None)
