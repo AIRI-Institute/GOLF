@@ -12,6 +12,7 @@ from collections import deque
 
 
 from env.moldynamics_env import env_fn
+from env.utils import ActionScaleScheduler
 from env.wrappers import rdkit_reward_wrapper
 
 from tqc import DEVICE
@@ -97,6 +98,10 @@ def main(args, experiment_folder):
     eval_env_long = rdkit_reward_wrapper(eval_env_long, molecule_path=args.molecule_path,
                                          minimize_on_every_step=args.minimize_on_every_step, M=args.M)
 
+    action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
+                                                  action_scale_end=args.action_scale_end,
+                                                  n_step_end=args.action_scale_n_step_end,
+                                                  mode=args.action_scale_mode)
 
     state_dict_names, \
     state_dims, \
@@ -109,8 +114,7 @@ def main(args, experiment_folder):
     }
 
     replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE, args.replay_buffer_size)
-    # TMP set action_scale to 1.0
-    actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size, action_scale=1.0).to(DEVICE)
+    actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size).to(DEVICE)
     critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
 
@@ -141,8 +145,8 @@ def main(args, experiment_folder):
         with torch.no_grad():
             action = actor.select_action(state)
 
-        # TMP move action scaling to env 
-        next_state, reward, done, info = env.step(action * args.action_scale)
+        current_action_scale = action_scale_scheduler(t)
+        next_state, reward, done, info = env.step(action * current_action_scale)
         episode_timesteps += 1
         ep_end = done or episode_timesteps >= args.timelimit
         replay_buffer.add(state, action, next_state, reward, done)
@@ -179,9 +183,9 @@ def main(args, experiment_folder):
         if (t + 1) % args.eval_freq == 0:
             step_metrics['Total_timesteps'] = t + 1
             step_metrics['Evaluation_returns'],\
-            step_metrics['Evaluation_final_energy'] = eval_policy(actor, eval_env, args.timelimit, args.action_scale)
+            step_metrics['Evaluation_final_energy'] = eval_policy(actor, eval_env, args.timelimit, current_action_scale)
             if args.evaluate_multiple_timelimits:
-                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env_long, args.M, args.action_scale))
+                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env_long, args.M, current_action_scale))
             logger.log(step_metrics)
 
         if t in full_checkpoints and args.save_checkpoints:
@@ -208,13 +212,17 @@ if __name__ == "__main__":
     parser.add_argument("--minimize_on_every_step", type=bool, default=False, help="Whether to minimize conformation with rdkit on every step")
     parser.add_argument("--M", type=int, default=10, help="Number of steps to run rdkit minimization for")
     parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
+    # Action scale args. Action scale bounds actions to [-action_scale, action_scale]
+    parser.add_argument("--action_scale_init", default=0.01, type=float, help="Initial value of action_scale")
+    parser.add_argument("--action_scale_end", default=0.01, type=float, help="Final value of action_scale")
+    parser.add_argument("--action_scale_n_step_end", default=0.01, type=float, help="Step at which the final value of action_scale is reached")
+    parser.add_argument("--action_scale_mode", choices=["constant", "discrete", "continuous"], default="constant", help="Mode of action scale scheduler")
     # Schnet args
     parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")
     parser.add_argument("--cutoff", default=20.0, type=float, help="Cutoff for Schnet in actor/critic")
     parser.add_argument("--n_gaussians", default=50, type=int, help="Number of Gaussians for Schnet in actor/critic")
     # Actor args
     parser.add_argument("--actor_out_embedding_size", default=128, type=int, help="Output embedding size for actor")
-    parser.add_argument("--action_scale", default=0.01, type=float, help="Bounds actions to [-action_scale, action_scale]")
     # Other args
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
     parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate

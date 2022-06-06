@@ -2,8 +2,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Distribution, Normal
 import schnetpack as spk
+
+from math import floor
+from torch.distributions import Distribution, Normal
 
 from tqc import DEVICE
 
@@ -12,9 +14,8 @@ LOG_STD_MIN_MAX = (-20, 2)
 
 
 class Actor(nn.Module):
-    def __init__(self, schnet_args, out_embedding_size, action_scale=1.0):
+    def __init__(self, schnet_args, out_embedding_size):
         super(Actor, self).__init__()
-        self.action_scale = action_scale
         self.out_embedding_size = out_embedding_size
         schnet = spk.SchNet(
                         n_interactions=schnet_args["n_interactions"], #3
