@@ -98,11 +98,13 @@ def main(args, experiment_folder):
     eval_env_long = rdkit_reward_wrapper(env=eval_env_long, molecule_path=args.molecule_path,
                                          minimize_on_every_step=args.minimize_on_every_step, M=args.M)
 
+    # Initialize action_scale scheduler
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
                                                   action_scale_end=args.action_scale_end,
                                                   n_step_end=args.action_scale_n_step_end,
                                                   mode=args.action_scale_mode)
 
+    # Initialize replay buffer
     state_dict_names, \
     state_dims, \
     state_dict_dtypes = (zip(*[(k, box.shape, box.dtype) for k, box in env.observation_space.items()]))
@@ -112,8 +114,9 @@ def main(args, experiment_folder):
         'cutoff': args.cutoff,
         'n_gaussians': args.n_gaussians,
     }
-
     replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE, args.replay_buffer_size)
+
+    # Inititalize actor and critic
     actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler).to(DEVICE)
     critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)

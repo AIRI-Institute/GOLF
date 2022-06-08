@@ -31,12 +31,14 @@ class MolecularDynamics(gym.Env):
                  done_on_timelimit=False,
                  inject_noise=False,
                  noise_std=0.1,
+                 remove_hydrogen=False,
                  exp_folder=None,
                  save_trajectories=False):
         self.TL = timelimit
         self.done_on_timelimit = done_on_timelimit
         self.inject_noise = inject_noise
         self.noise_std = noise_std
+        self.remove_hydrogen = remove_hydrogen
         self.dbpath = db_path
         self.converter = converter
         self.db_len = self._get_db_length()
@@ -55,10 +57,9 @@ class MolecularDynamics(gym.Env):
 
         # Store random subset of molecules DB
         self._get_initial_molecule_conformations()
-        example_row = self.initial_molecule_conformations[0]
+        self.example_atoms = self.initial_molecule_conformations[0]
         # Initialize observaition space
-        self.atoms_count = sum(example_row.count_atoms().values())
-        self.example_atoms = example_row.toatoms()
+        self.atoms_count = self.example_atoms.get_global_number_of_atoms()
         self.observation_space = Dict(
             {
                 '_atomic_numbers': Box(low=0.0, high=9.0, shape=self.example_atoms.get_atomic_numbers().shape, dtype=np.int64),
@@ -104,7 +105,7 @@ class MolecularDynamics(gym.Env):
     def reset(self, db_idx=None):
         if db_idx is None:
             db_idx = np.random.randint(len(self.initial_molecule_conformations))
-        self.atoms = self.initial_molecule_conformations[db_idx].toatoms()
+        self.atoms = self.initial_molecule_conformations[db_idx]
         # Inject noise into the initial state 
         # to make optimal initital states less optimal
         if self.inject_noise:
@@ -132,17 +133,22 @@ class MolecularDynamics(gym.Env):
 
     def _get_initial_molecule_conformations(self):
         # 50000 is a randomly chosen constant. Should be enough
-        random_sample_size = min(self.db_len, 50000)
+        random_sample_size = min(self.db_len, 10000)
         self.initial_molecule_conformations = []
         indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
         for idx in indices:
-            self.initial_molecule_conformations.append(self._get_molecule(int(idx)))
+            atoms = self._get_molecule(int(idx)).toatoms()
+            if self.remove_hydrogen:
+                del atoms[[atom.index for atom in atoms if atom.symbol=='H']]
+            self.initial_molecule_conformations.append(atoms)
     
     # Makes sqllite3 database compatible with NFS storages
     @backoff.on_exception(
-        backoff.expo,
+        backoff.constant,
         exception=DatabaseError,
-        max_tries=5,
+        jitter=backoff.random_jitter,
+        max_tries=500,
+        interval=0.2,
         on_giveup=on_giveup
     )
     def _get_molecule(self, idx):

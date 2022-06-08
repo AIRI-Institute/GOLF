@@ -57,8 +57,10 @@ class Actor(nn.Module):
             log_prob = tanh_normal.log_prob(pre_tanh)
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
         else:
-            actions = torch.tanh(actions_mean)
+            actions = action_scale * torch.tanh(actions_mean)
             log_prob = None
+
+        
         if return_relative_shifts:
             return actions, log_prob, rel_shifts_mean, P
         return actions, log_prob
@@ -126,4 +128,4 @@ class TanhNormal(Distribution):
 
     def rsample(self):
         pretanh = self.normal_mean + self.normal_std * self.standard_normal.sample()
-        return torch.tanh(pretanh), pretanh
+        return self.action_scale * torch.tanh(pretanh), pretanh
