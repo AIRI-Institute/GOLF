@@ -1,6 +1,6 @@
 import torch
 
-from tqc.functions import quantile_huber_loss_f
+from tqc.utils import quantile_huber_loss_f
 from tqc import DEVICE
 
 

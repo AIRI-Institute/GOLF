@@ -1,5 +1,6 @@
 import torch
 
+from math import floor
 from rdkit.Chem import AllChem
 
 from env.xyz2mol import set_coordinates, get_rdkit_energy
@@ -9,7 +10,34 @@ from tqc import DEVICE
 TIMELIMITS = [1, 5, 10, 50, 100]
 
 
-def eval_policy(policy, eval_env, max_episode_steps, action_scale=1.0, eval_episodes=10):
+class ActionScaleScheduler():
+    def __init__(self,  action_scale_init, action_scale_end, n_step_end, mode="discrete"):
+        self.as_init = action_scale_init
+        self.as_end = action_scale_end
+        self.n_step_end = n_step_end
+
+        assert mode in ["constant", "discrete", "continuous"], "Unknown ActionScaleSheduler mode!"
+        self.mode  = mode
+        # For discrete mode
+        if mode == "discrete":
+            n_updates = (self.as_end - self.as_init) / 0.01
+            self.update_interval = self.n_step_end / n_updates
+
+    def update(self, n_step):
+        if self.mode == "constant":
+            current_action_scale = self.as_init
+        elif self.mode == "discrete":
+            current_action_scale = self.as_init + floor(n_step / self.update_interval) * 0.01
+        else:
+            p = max((self.n_step_end - n_step) / self.n_step_end, 0)
+            current_action_scale = p * (self.as_init - self.as_end) + self.as_end
+        self.current_action_scale = current_action_scale
+
+    def get_action_scale(self):
+        return self.current_action_scale
+
+
+def eval_policy(policy, eval_env, max_episode_steps, eval_episodes=10):
     policy.eval()
     avg_delta_energy = 0.
     avg_final_energy = 0.
@@ -20,7 +48,7 @@ def eval_policy(policy, eval_env, max_episode_steps, action_scale=1.0, eval_epis
         while not done and t < max_episode_steps:
             with torch.no_grad():
                 action = policy.select_action(state)
-            state, _, done, info = eval_env.step(action * action_scale)
+            state, _, done, info = eval_env.step(action)
             t += 1
         avg_delta_energy += initial_energy - info['final_energy']
         avg_final_energy += info['final_energy']
@@ -30,7 +58,7 @@ def eval_policy(policy, eval_env, max_episode_steps, action_scale=1.0, eval_epis
     return avg_delta_energy, avg_final_energy
 
 
-def eval_policy_multiple_timelimits(policy, eval_env, M, action_scale=1.0, eval_episodes=10):
+def eval_policy_multiple_timelimits(policy, eval_env, M, eval_episodes=10):
     policy.eval()
     avg_reward_timelimits = {f'avg_reward_at_{timelimit}' : 0 for timelimit in TIMELIMITS}
     for _ in range(eval_episodes):
@@ -40,8 +68,9 @@ def eval_policy_multiple_timelimits(policy, eval_env, M, action_scale=1.0, eval_
         while not done and t < max(TIMELIMITS):
             with torch.no_grad():
                 action = policy.select_action(state)
-            state, _, done, _ = eval_env.step(action * action_scale)
+            state, _, done, _ = eval_env.step(action)
             if (t + 1 in TIMELIMITS):
+                # Minimize molecule
                 set_coordinates(eval_env.molecule, state['_positions'].double()[0].cpu().numpy())
                 ff = AllChem.MMFFGetMoleculeForceField(eval_env.molecule,
                         AllChem.MMFFGetMoleculeProperties(eval_env.molecule), confId=0)

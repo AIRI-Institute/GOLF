@@ -12,14 +12,14 @@ from collections import deque
 
 
 from env.moldynamics_env import env_fn
-from env.utils import ActionScaleScheduler
 from env.wrappers import rdkit_reward_wrapper
 
 from tqc import DEVICE
 from tqc.trainer import Trainer
 from tqc.actor_critic import Actor, Critic
 from tqc.replay_buffer import ReplayBuffer
-from tqc.functions import eval_policy, eval_policy_multiple_timelimits, TIMELIMITS
+from tqc.utils import eval_policy, eval_policy_multiple_timelimits
+from tqc.utils import ActionScaleScheduler, TIMELIMITS
 
 
 class Logger:
@@ -91,11 +91,11 @@ def main(args, experiment_folder):
     eval_env.seed(args.seed)
 
     # Initialize reward wrapper
-    env = rdkit_reward_wrapper(env, molecule_path=args.molecule_path,
+    env = rdkit_reward_wrapper(env=env, molecule_path=args.molecule_path,
                                 minimize_on_every_step=args.minimize_on_every_step, M=args.M)
-    eval_env = rdkit_reward_wrapper(eval_env, molecule_path=args.molecule_path,
+    eval_env = rdkit_reward_wrapper(env=eval_env, molecule_path=args.molecule_path,
                                     minimize_on_every_step=args.minimize_on_every_step, M=args.M)
-    eval_env_long = rdkit_reward_wrapper(eval_env_long, molecule_path=args.molecule_path,
+    eval_env_long = rdkit_reward_wrapper(env=eval_env_long, molecule_path=args.molecule_path,
                                          minimize_on_every_step=args.minimize_on_every_step, M=args.M)
 
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
@@ -114,11 +114,12 @@ def main(args, experiment_folder):
     }
 
     replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE, args.replay_buffer_size)
-    actor = Actor(schnet_args, out_embedding_size=args.actor_out_embedding_size).to(DEVICE)
+    actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler).to(DEVICE)
     critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
+    target_entropy = (-np.prod(env.action_space.shape) * (1 - np.log([args.target_entropy_action_scale]))).item()
 
     trainer = Trainer(actor=actor,
                       critic=critic,
@@ -126,7 +127,7 @@ def main(args, experiment_folder):
                       top_quantiles_to_drop=top_quantiles_to_drop,
                       discount=args.discount,
                       tau=args.tau,
-                      target_entropy=-np.prod(env.action_space.shape).item())
+                      target_entropy=target_entropy)
 
     state, done = env.reset(), False
     episode_return = 0
@@ -142,11 +143,11 @@ def main(args, experiment_folder):
     else:
         start_iter = 0
     for t in range(start_iter, int(args.max_timesteps)):
+        action_scale_scheduler.update(t)
         with torch.no_grad():
             action = actor.select_action(state)
 
-        current_action_scale = action_scale_scheduler(t)
-        next_state, reward, done, info = env.step(action * current_action_scale)
+        next_state, reward, done, info = env.step(action)
         episode_timesteps += 1
         ep_end = done or episode_timesteps >= args.timelimit
         replay_buffer.add(state, action, next_state, reward, done)
@@ -160,7 +161,7 @@ def main(args, experiment_folder):
         else:
             step_metrics = dict()
         step_metrics['Timestamp'] = str(datetime.datetime.now())
-        step_metrics['Action_scale'] = current_action_scale
+        step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
         step_metrics['Action_norm'] = np.linalg.norm(action, axis=1).mean().item()
 
         if ep_end:
@@ -184,9 +185,9 @@ def main(args, experiment_folder):
         if (t + 1) % args.eval_freq == 0:
             step_metrics['Total_timesteps'] = t + 1
             step_metrics['Evaluation_returns'],\
-            step_metrics['Evaluation_final_energy'] = eval_policy(actor, eval_env, args.timelimit, current_action_scale)
+            step_metrics['Evaluation_final_energy'] = eval_policy(actor, eval_env, args.timelimit)
             if args.evaluate_multiple_timelimits:
-                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env_long, args.M, current_action_scale))
+                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env_long, args.M))
             logger.log(step_metrics)
 
         if t in full_checkpoints and args.save_checkpoints:
@@ -218,6 +219,7 @@ if __name__ == "__main__":
     parser.add_argument("--action_scale_end", default=0.01, type=float, help="Final value of action_scale")
     parser.add_argument("--action_scale_n_step_end", default=0.01, type=float, help="Step at which the final value of action_scale is reached")
     parser.add_argument("--action_scale_mode", choices=["constant", "discrete", "continuous"], default="constant", help="Mode of action scale scheduler")
+    parser.add_argument("--target_entropy_action_scale", default=0.01, type=float, help="Controls target entropy of the distribution")
     # Schnet args
     parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")
     parser.add_argument("--cutoff", default=20.0, type=float, help="Cutoff for Schnet in actor/critic")

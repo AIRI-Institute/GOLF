@@ -14,8 +14,9 @@ LOG_STD_MIN_MAX = (-20, 2)
 
 
 class Actor(nn.Module):
-    def __init__(self, schnet_args, out_embedding_size):
+    def __init__(self, schnet_args, out_embedding_size, action_scale_scheduler):
         super(Actor, self).__init__()
+        self.action_scale_scheduler = action_scale_scheduler
         self.out_embedding_size = out_embedding_size
         schnet = spk.SchNet(
                         n_interactions=schnet_args["n_interactions"], #3
@@ -33,6 +34,7 @@ class Actor(nn.Module):
         self.model = spk.atomistic.model.AtomisticModel(schnet, output_modules)
     
     def forward(self, state_dict, return_relative_shifts=False):
+        action_scale = self.action_scale_scheduler.get_action_scale()
         kv = self.model(state_dict)['kv']
         k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 3], dim=-1)
         # Calculate mean and std of shifts relative to other atoms
@@ -50,7 +52,7 @@ class Actor(nn.Module):
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
             # Sample bounded actions and calculate log prob
-            tanh_normal = TanhNormal(actions_mean, actions_std)
+            tanh_normal = TanhNormal(actions_mean, actions_std, action_scale)
             actions, pre_tanh = tanh_normal.rsample()
             log_prob = tanh_normal.log_prob(pre_tanh)
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
@@ -107,16 +109,18 @@ class Critic(nn.Module):
 class TanhNormal(Distribution):
     arg_constraints = {}
 
-    def __init__(self, normal_mean, normal_std):
+    def __init__(self, normal_mean, normal_std, action_scale=1.0):
         super().__init__()
         self.normal_mean = normal_mean
+        self.action_scale = torch.FloatTensor([action_scale]).to(DEVICE)
         self.normal_std = normal_std
         self.standard_normal = Normal(torch.zeros_like(self.normal_mean, device=DEVICE),
                                       torch.ones_like(self.normal_std, device=DEVICE))
         self.normal = Normal(normal_mean, normal_std)
 
     def log_prob(self, pre_tanh):
-        log_det = 2 * np.log(2) + F.logsigmoid(2 * pre_tanh) + F.logsigmoid(-2 * pre_tanh)
+        log_det = 2 * np.log(2) + F.logsigmoid(2 * pre_tanh) + F.logsigmoid(-2 * pre_tanh) +\
+                  torch.log(self.action_scale)
         result = self.normal.log_prob(pre_tanh) - log_det
         return result
 
