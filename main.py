@@ -76,27 +76,46 @@ def main(args, experiment_folder):
     trajectory_dir = experiment_folder / 'trajectory'
     if not os.path.exists(trajectory_dir):
         os.makedirs(trajectory_dir)
-    env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
-                 done_on_timelimit=args.done_on_timelimit, inject_noise=args.inject_noise, noise_std=args.noise_std, 
-                 calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
-    eval_env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.timelimit,
-                      done_on_timelimit=False, inject_noise=False,
-                      calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
+    
+    env_kwargs = {
+        'db_path': args.db_path,
+        'timelimit': args.timelimit,
+        'done_on_timelimit': args.done_on_timelimit,
+        'inject_noise': args.inject_noise,
+        'noise_std': args.noise_std,
+        'remove_hydrogen': args.remove_hydrogen,
+        'calculate_mean_std': args.calculate_mean_std_energy,
+        'exp_folder': trajectory_dir
+    }
+    env = env_fn(DEVICE, multiagent=False, **env_kwargs)
+    
+    # Initialize eval envs
+    env_kwargs['inject_noise'] = False
+    eval_env = env_fn(DEVICE, multiagent=False, **env_kwargs)
     # For evaluation on multiple timestamps
-    eval_env_long = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=max(TIMELIMITS),
-                           done_on_timelimit=False, inject_noise=False,
-                           calculate_mean_std=args.calculate_mean_std_energy, exp_folder=trajectory_dir)
+    env_kwargs['timelimit'] = max(TIMELIMITS)
+    eval_env_long = env_fn(DEVICE, multiagent=False, **env_kwargs)
+    
     # Seed env
     env.seed(args.seed)
     eval_env.seed(args.seed)
+    eval_env_long.seed(args.seed)
 
     # Initialize reward wrapper
-    env = rdkit_reward_wrapper(env=env, molecule_path=args.molecule_path,
-                                minimize_on_every_step=args.minimize_on_every_step, M=args.M)
-    eval_env = rdkit_reward_wrapper(env=eval_env, molecule_path=args.molecule_path,
-                                    minimize_on_every_step=args.minimize_on_every_step, M=args.M)
-    eval_env_long = rdkit_reward_wrapper(env=eval_env_long, molecule_path=args.molecule_path,
-                                         minimize_on_every_step=args.minimize_on_every_step, M=args.M)
+    reward_wrapper_kwargs = {
+        'env': env,
+        'molecule_path': args.molecule_path,
+        'minimize_on_every_step': args.minimize_on_every_step,
+        'remove_hydrogen': args.remove_hydrogen,
+        'M': args.M
+    }
+    env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
+    
+    # Initialize reward wrappers for evaluation
+    reward_wrapper_kwargs['env'] = eval_env
+    eval_env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
+    reward_wrapper_kwargs['env'] = eval_env_long
+    eval_env_long = rdkit_reward_wrapper(**reward_wrapper_kwargs)
 
     # Initialize action_scale scheduler
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
@@ -109,14 +128,14 @@ def main(args, experiment_folder):
     state_dims, \
     state_dict_dtypes = (zip(*[(k, box.shape, box.dtype) for k, box in env.observation_space.items()]))
     action_dim = env.action_space.shape
+    replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE, args.replay_buffer_size)
+
+    # Inititalize actor and critic
     schnet_args = {
         'n_interactions': args.n_interactions,
         'cutoff': args.cutoff,
         'n_gaussians': args.n_gaussians,
     }
-    replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE, args.replay_buffer_size)
-
-    # Inititalize actor and critic
     actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler).to(DEVICE)
     critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
@@ -209,14 +228,15 @@ if __name__ == "__main__":
     # Env args
     parser.add_argument("--db_path", default="env/data/malonaldehyde.db", type=str, help="Path to molecules database")
     parser.add_argument("--timelimit", default=100, type=int, help="Timelimit for MD env")
-    parser.add_argument("--schnet_model_path", default="env/schnet_model/schnet_model_3_blocks", type=str, help="Path to trained schnet model")
-    parser.add_argument("--molecule_path", default="env/molecules_xyz/malonaldehyde.xyz", type=str, help="Path to example .xyz file")
+    parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
     parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")
     parser.add_argument("--noise_std", type=float, default=0.1, help="Std of the injected noise")
     parser.add_argument("--calculate_mean_std_energy", type=bool, default=False, help="Calculate mean, std of energy of database")
+    parser.add_argument("--remove_hydrogen", type=bool, default=False, help="Whether to remove hydrogen atoms from the molecule")
+    # Reward args
+    parser.add_argument("--molecule_path", default="env/molecules_xyz/malonaldehyde.xyz", type=str, help="Path to example .xyz file")
     parser.add_argument("--minimize_on_every_step", type=bool, default=False, help="Whether to minimize conformation with rdkit on every step")
     parser.add_argument("--M", type=int, default=10, help="Number of steps to run rdkit minimization for")
-    parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
     # Action scale args. Action scale bounds actions to [-action_scale, action_scale]
     parser.add_argument("--action_scale_init", default=0.01, type=float, help="Initial value of action_scale")
     parser.add_argument("--action_scale_end", default=0.01, type=float, help="Final value of action_scale")

@@ -133,7 +133,7 @@ class MolecularDynamics(gym.Env):
 
     def _get_initial_molecule_conformations(self):
         # 50000 is a randomly chosen constant. Should be enough
-        random_sample_size = min(self.db_len, 10000)
+        random_sample_size = min(self.db_len, 50000)
         self.initial_molecule_conformations = []
         indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
         for idx in indices:

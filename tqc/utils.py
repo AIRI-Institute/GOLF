@@ -1,7 +1,7 @@
 import torch
 
 from math import floor
-from rdkit.Chem import AllChem
+from rdkit.Chem import rdmolops
 
 from env.xyz2mol import set_coordinates, get_rdkit_energy
 from tqc import DEVICE
@@ -72,12 +72,12 @@ def eval_policy_multiple_timelimits(policy, eval_env, M, eval_episodes=10):
             if (t + 1 in TIMELIMITS):
                 # Minimize molecule
                 set_coordinates(eval_env.molecule, state['_positions'].double()[0].cpu().numpy())
-                ff = AllChem.MMFFGetMoleculeForceField(eval_env.molecule,
-                        AllChem.MMFFGetMoleculeProperties(eval_env.molecule), confId=0)
-                ff.Initialize()
-                ff.Minimize(maxIts=M)
+                eval_env.minimize(eval_env.remove_hydrogen, M)
                 # Get energy after minimization
                 final_energy = get_rdkit_energy(eval_env.molecule)
+                if eval_env.remove_hydrogen:
+                    # Remove hydrogens after minimization
+                    eval_env.molecule = rdmolops.RemoveHs(eval_env.molecule)
                 avg_reward_timelimits[f'avg_reward_at_{t + 1}'] += initial_energy - final_energy
             t += 1
     avg_reward_timelimits = {k: v / eval_episodes for k, v in avg_reward_timelimits.items()}
