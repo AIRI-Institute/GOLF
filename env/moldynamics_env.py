@@ -105,7 +105,7 @@ class MolecularDynamics(gym.Env):
     def reset(self, db_idx=None):
         if db_idx is None:
             db_idx = np.random.randint(len(self.initial_molecule_conformations))
-        self.atoms = self.initial_molecule_conformations[db_idx]
+        self.atoms = self.initial_molecule_conformations[db_idx].copy()
         # Inject noise into the initial state 
         # to make optimal initital states less optimal
         if self.inject_noise:

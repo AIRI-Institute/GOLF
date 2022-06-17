@@ -101,7 +101,7 @@ def main(args, experiment_folder):
     eval_env.seed(args.seed)
     eval_env_long.seed(args.seed)
 
-    # Initialize reward wrapper
+    # Initialize reward wrapper for training
     reward_wrapper_kwargs = {
         'env': env,
         'molecule_path': args.molecule_path,

@@ -87,6 +87,17 @@ class rdkit_minization_reward(gym.Wrapper):
             self.molecule = rdmolops.RemoveHs(self.molecule)
         return obs
 
+    def set_initial_positions(self, positions):
+        self.env.reset()
+        self.env.atoms.set_positions(positions)
+        set_coordinates(self.molecule, positions)
+        # Minimize the initial state of the molecule
+        self.minimize(self.remove_hydrogen)
+        self.initial_energy = get_rdkit_energy(self.molecule)
+        if self.remove_hydrogen:
+            # Remove hydrogens after minimization
+            self.molecule = rdmolops.RemoveHs(self.molecule)
+
     def minimize(self, remove_hydrogen, M=None, confId=0):
         # Set number of minization iterations
         if M is None:

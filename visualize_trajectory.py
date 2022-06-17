@@ -129,7 +129,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Env args
     parser.add_argument("--db_path", default="env/data/malonaldehyde.db", type=str, help="Path to molecules database")
-    parser.add_argument("--schnet_model_path", default="env/schnet_model/schnet_model_3_blocks", type=str, help="Path to trained schnet model")
     parser.add_argument("--molecule_path", default="env/molecules_xyz/malonaldehyde.xyz", type=str, help="Path to example .xyz file")
     parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")
     parser.add_argument("--noise_std", type=float, default=0.01, help="Std of the injected noise")
