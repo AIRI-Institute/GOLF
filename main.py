@@ -18,7 +18,7 @@ from tqc import DEVICE
 from tqc.trainer import Trainer
 from tqc.actor_critic import Actor, Critic
 from tqc.replay_buffer import ReplayBuffer
-from tqc.utils import eval_policy, eval_policy_multiple_timelimits
+from tqc.utils import run_policy_eval_and_explore, eval_policy_multiple_timelimits
 from tqc.utils import ActionScaleScheduler, TIMELIMITS
 
 
@@ -206,10 +206,9 @@ def main(args, experiment_folder):
         # Evaluate episode
         if (t + 1) % args.eval_freq == 0:
             step_metrics['Total_timesteps'] = t + 1
-            step_metrics['Evaluation_returns'],\
-            step_metrics['Evaluation_final_energy'] = eval_policy(actor, eval_env, args.timelimit)
+            step_metrics.update(run_policy_eval_and_explore(actor, eval_env, args.timelimit, args.n_eval_runs))
             if args.evaluate_multiple_timelimits:
-                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env_long, args.M))
+                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env_long, args.M, args.n_eval_runs))
             logger.log(step_metrics)
 
         if t in full_checkpoints and args.save_checkpoints:
@@ -253,6 +252,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
     parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate
     parser.add_argument("--evaluate_multiple_timelimits", default=False, type=bool, help="Evaluate policy at multiple timelimits")
+    parser.add_argument("--n_eval_runs", default=10, type=int, help="Number of evaluation episodes")
     parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
     parser.add_argument("--seed", default=None, type=int)
     parser.add_argument("--n_quantiles", default=25, type=int)

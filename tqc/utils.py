@@ -1,5 +1,7 @@
 import torch
 
+import numpy as np
+
 from math import floor
 from rdkit.Chem import rdmolops
 
@@ -36,27 +38,47 @@ class ActionScaleScheduler():
     def get_action_scale(self):
         return self.current_action_scale
 
+def run_policy(env, actor, state, fixed_positions, max_timestamps):
+    done = False
+    delta_energy = 0
+    t = 0
+    env.set_initial_positions(fixed_positions)
+    state['_positions'] = torch.FloatTensor(fixed_positions).unsqueeze(0)
+    while not done and t < max_timestamps:
+        with torch.no_grad():
+            action = actor.select_action(state)
+        state, reward, done, info = env.step(action)
+        delta_energy += reward
+        t += 1
+    return delta_energy, info['final_energy'], info['final_rl_energy']
 
-def eval_policy(policy, eval_env, max_episode_steps, eval_episodes=10):
-    policy.eval()
-    avg_delta_energy = 0.
-    avg_final_energy = 0.
+def run_policy_eval_and_explore(actor, env, max_timestamps, eval_episodes=10, n_explore_runs=10):
+    result = {
+        'avg_eval_delta_energy': 0.,
+        'avg_eval_final_energy': 0.,
+        'avg_eval_final_rl_energy': 0.,
+        'avg_explore_delta_energy': 0.,
+        'avg_explore_final_energy': 0.,
+        'avg_explore_final_rl_energy': 0.
+    }
     for _ in range(eval_episodes):
-        state, done = eval_env.reset(), False
-        t = 0
-        initial_energy = eval_env.initial_energy
-        while not done and t < max_episode_steps:
-            with torch.no_grad():
-                action = policy.select_action(state)
-            state, _, done, info = eval_env.step(action)
-            t += 1
-        avg_delta_energy += initial_energy - info['final_energy']
-        avg_final_energy += info['final_energy']
-    avg_delta_energy /= eval_episodes
-    avg_final_energy /= eval_episodes
-    policy.train()
-    return avg_delta_energy, avg_final_energy
-
+        state = env.reset()
+        fixed_positions = state['_positions'][0].double().numpy()
+        actor.eval()
+        eval_delta_energy, eval_final_energy, eval_final_rl_energy = run_policy(env, actor, state, fixed_positions, max_timestamps=max_timestamps)
+        actor.train()
+        explore_results = np.array([run_policy(env, actor, state, fixed_positions, max_timestamps=max_timestamps) for _ in range(n_explore_runs)])
+        explore_delta_energy, explore_final_energy, explore_final_rl_energy = explore_results.mean(axis=0)
+        
+        result['avg_eval_delta_energy'] += eval_delta_energy
+        result['avg_eval_final_energy'] += eval_final_energy
+        result['avg_eval_final_rl_energy'] += eval_final_rl_energy
+        result['avg_explore_delta_energy'] += explore_delta_energy
+        result['avg_explore_final_energy'] += explore_final_energy
+        result['avg_explore_final_rl_energy'] += explore_final_rl_energy
+    
+    result = {k: v / eval_episodes for k, v in result.items()}
+    return result
 
 def eval_policy_multiple_timelimits(policy, eval_env, M, eval_episodes=10):
     policy.eval()
