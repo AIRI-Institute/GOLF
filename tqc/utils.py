@@ -80,33 +80,24 @@ def run_policy_eval_and_explore(actor, env, max_timestamps, eval_episodes=10, n_
     result = {k: v / eval_episodes for k, v in result.items()}
     return result
 
-def eval_policy_multiple_timelimits(policy, eval_env, M, eval_episodes=10):
-    policy.eval()
-    avg_reward_timelimits = {f'avg_reward_at_{timelimit}' : 0 for timelimit in TIMELIMITS}
+def eval_policy_multiple_timelimits(actor, eval_env, M, eval_episodes=10):
+    actor.eval()
+    avg_delta_energy_timelimits = {f'avg_reward_at_{timelimit}' : 0 for timelimit in TIMELIMITS}
     for _ in range(eval_episodes):
         state, done = eval_env.reset(), False
-        initial_energy = eval_env.initial_energy
+        delta_energy = 0
         t = 0
         while not done and t < max(TIMELIMITS):
             with torch.no_grad():
-                action = policy.select_action(state)
-            state, _, done, _ = eval_env.step(action)
+                action = actor.select_action(state)
+            state, reward, done, _ = eval_env.step(action)
+            delta_energy += reward
             if (t + 1 in TIMELIMITS):
-                # Minimize molecule
-                set_coordinates(eval_env.molecule, state['_positions'].double()[0].cpu().numpy())
-                eval_env.minimize(eval_env.remove_hydrogen, M)
-                # Get energy after minimization
-                final_energy = get_rdkit_energy(eval_env.molecule)
-                if eval_env.remove_hydrogen:
-                    # Remove hydrogens after minimization
-                    eval_env.molecule = rdmolops.RemoveHs(eval_env.molecule)
-                avg_reward_timelimits[f'avg_reward_at_{t + 1}'] += initial_energy - final_energy
+                avg_delta_energy_timelimits[f'avg_reward_at_{t + 1}'] += delta_energy
             t += 1
-    avg_reward_timelimits = {k: v / eval_episodes for k, v in avg_reward_timelimits.items()}
-    policy.train()
-    return avg_reward_timelimits
-
-
+    avg_delta_energy_timelimits = {k: v / eval_episodes for k, v in avg_delta_energy_timelimits.items()}
+    actor.train()
+    return avg_delta_energy_timelimits
 
 def quantile_huber_loss_f(quantiles, samples):
     pairwise_delta = samples[:, None, None, :] - quantiles[:, :, :, None]  # batch x nets x quantiles x samples
