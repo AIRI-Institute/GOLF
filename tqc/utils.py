@@ -43,7 +43,7 @@ def run_policy(env, actor, state, fixed_positions, max_timestamps):
     delta_energy = 0
     t = 0
     env.set_initial_positions(fixed_positions)
-    state['_positions'] = torch.FloatTensor(fixed_positions).unsqueeze(0)
+    state['_positions'] = torch.FloatTensor(fixed_positions).unsqueeze(0).to(DEVICE)
     while not done and t < max_timestamps:
         with torch.no_grad():
             action = actor.select_action(state)
