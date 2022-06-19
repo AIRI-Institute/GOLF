@@ -63,7 +63,7 @@ def run_policy_eval_and_explore(actor, env, max_timestamps, eval_episodes=10, n_
     }
     for _ in range(eval_episodes):
         state = env.reset()
-        fixed_positions = state['_positions'][0].double().numpy()
+        fixed_positions = state['_positions'][0].double().cpu().detach().numpy()
         actor.eval()
         eval_delta_energy, eval_final_energy, eval_final_rl_energy = run_policy(env, actor, state, fixed_positions, max_timestamps=max_timestamps)
         actor.train()
