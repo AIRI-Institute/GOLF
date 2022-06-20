@@ -144,11 +144,10 @@ class MolecularDynamics(gym.Env):
     
     # Makes sqllite3 database compatible with NFS storages
     @backoff.on_exception(
-        backoff.constant,
+        backoff.expo,
         exception=DatabaseError,
-        jitter=backoff.random_jitter,
-        max_tries=500,
-        interval=0.2,
+        jitter=backoff.full_jitter,
+        max_tries=10,
         on_giveup=on_giveup
     )
     def _get_molecule(self, idx):
