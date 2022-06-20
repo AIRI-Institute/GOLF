@@ -13,13 +13,14 @@ class Trainer(object):
 		critic_target,
 		discount,
 		tau,
+		log_alpha,
 		top_quantiles_to_drop,
 		target_entropy,
 	):
 		self.actor = actor
 		self.critic = critic
 		self.critic_target = critic_target
-		self.log_alpha = torch.zeros((1,), requires_grad=True, device=DEVICE)
+		self.log_alpha = torch.tensor([log_alpha], requires_grad=True, device=DEVICE)
 
 		# TODO: check hyperparams
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4)

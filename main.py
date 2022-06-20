@@ -149,6 +149,7 @@ def main(args, experiment_folder):
                       top_quantiles_to_drop=top_quantiles_to_drop,
                       discount=args.discount,
                       tau=args.tau,
+                      log_alpha=np.log([args.initial_alpha]).item(),
                       target_entropy=target_entropy)
 
     state, done = env.reset(), False
@@ -262,6 +263,7 @@ if __name__ == "__main__":
     parser.add_argument("--replay_buffer_size", default=int(2e5), type=int, help="Size of replay buffer")
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
+    parser.add_argument("--initial_alpha", default=1.0, type=float, help="Initial value for alpha")
     parser.add_argument("--light_checkpoint_freq", type=int, default=200000)
     parser.add_argument("--save_checkpoints", type=bool, default=False, help="Save light and full checkpoints")
     parser.add_argument("--load_model", type=str, default=None)
