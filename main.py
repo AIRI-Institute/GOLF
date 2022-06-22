@@ -79,7 +79,7 @@ def main(args, experiment_folder):
     
     env_kwargs = {
         'db_path': args.db_path,
-        'num_initial_conformation': args.num_initial_conformation,
+        'num_initial_conformations': args.num_initial_conformations,
         'timelimit': args.timelimit,
         'done_on_timelimit': args.done_on_timelimit,
         'inject_noise': args.inject_noise,
@@ -88,14 +88,14 @@ def main(args, experiment_folder):
         'calculate_mean_std': args.calculate_mean_std_energy,
         'exp_folder': trajectory_dir
     }
-    env = env_fn(DEVICE, multiagent=False, **env_kwargs)
+    env = env_fn(DEVICE, **env_kwargs)
     
     # Initialize eval envs
     env_kwargs['inject_noise'] = False
-    eval_env = env_fn(DEVICE, multiagent=False, **env_kwargs)
+    eval_env = env_fn(DEVICE, **env_kwargs)
     # For evaluation on multiple timestamps
     env_kwargs['timelimit'] = max(TIMELIMITS)
-    eval_env_long = env_fn(DEVICE, multiagent=False, **env_kwargs)
+    eval_env_long = env_fn(DEVICE, **env_kwargs)
     
     # Seed env
     env.seed(args.seed)
@@ -228,7 +228,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Env args
     parser.add_argument("--db_path", default="env/data/malonaldehyde.db", type=str, help="Path to molecules database")
-    parser.add_argument("--num_initial_conformation", default=50000, type=int, help="Number of initial molecule conformations to sample from DB")
+    parser.add_argument("--num_initial_conformations", default=50000, type=int, help="Number of initial molecule conformations to sample from DB")
     parser.add_argument("--timelimit", default=100, type=int, help="Timelimit for MD env")
     parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
     parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")

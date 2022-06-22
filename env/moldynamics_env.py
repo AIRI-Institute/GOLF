@@ -25,7 +25,7 @@ class MolecularDynamics(gym.Env):
                  db_path,
                  converter, 
                  timelimit=100,
-                 num_initial_conformation=50000,
+                 num_initial_conformations=50000,
                  calculate_mean_std=False,
                  done_on_timelimit=False,
                  inject_noise=False,
@@ -37,7 +37,7 @@ class MolecularDynamics(gym.Env):
         self.done_on_timelimit = done_on_timelimit
         self.inject_noise = inject_noise
         self.noise_std = noise_std
-        self.num_initial_conformations = num_initial_conformation
+        self.num_initial_conformations = num_initial_conformations
         self.remove_hydrogen = remove_hydrogen
         self.dbpath = db_path
         self.converter = converter
