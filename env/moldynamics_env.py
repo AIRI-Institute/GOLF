@@ -13,8 +13,6 @@ from gym.spaces import Box, Dict
 from sqlite3 import DatabaseError
 from schnetpack.data.atoms import AtomsConverter
 
-from .ma_moldynamics import MAMolecularDynamics
-
 
 def on_giveup(details):
     print("Giving Up after {} tries. Time elapsed: {:.3f} :(".format(details['tries'], details['elapsed']))
@@ -27,6 +25,7 @@ class MolecularDynamics(gym.Env):
                  db_path,
                  converter, 
                  timelimit=100,
+                 num_initial_conformation=50000,
                  calculate_mean_std=False,
                  done_on_timelimit=False,
                  inject_noise=False,
@@ -38,6 +37,7 @@ class MolecularDynamics(gym.Env):
         self.done_on_timelimit = done_on_timelimit
         self.inject_noise = inject_noise
         self.noise_std = noise_std
+        self.num_initial_conformations = num_initial_conformation
         self.remove_hydrogen = remove_hydrogen
         self.dbpath = db_path
         self.converter = converter
@@ -132,8 +132,7 @@ class MolecularDynamics(gym.Env):
         return db_len
 
     def _get_initial_molecule_conformations(self):
-        # 50000 is a randomly chosen constant. Should be enough
-        random_sample_size = min(self.db_len, 50000)
+        random_sample_size = min(self.db_len, self.num_initial_conformations)
         self.initial_molecule_conformations = []
         indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
         for idx in indices:
@@ -170,14 +169,11 @@ class MolecularDynamics(gym.Env):
         np.random.seed(seed)
         return seed
 
-def env_fn(device, multiagent=False, **kwargs):
+def env_fn(device, **kwargs):
     '''
     To support the AEC API, the raw_env() function just uses the from_parallel
     function to convert from a ParallelEnv to an AEC env
     '''
     converter = AtomsConverter(device=device)
-    if multiagent is True:
-        env = MAMolecularDynamics(converter=converter, **kwargs)
-    else:
-        env = MolecularDynamics(converter=converter, **kwargs)
+    env = MolecularDynamics(converter=converter, **kwargs)
     return env
