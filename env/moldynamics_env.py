@@ -26,6 +26,7 @@ class MolecularDynamics(gym.Env):
                  converter, 
                  timelimit=100,
                  num_initial_conformations=50000,
+                 initial_conformation_index=None,
                  calculate_mean_std=False,
                  done_on_timelimit=False,
                  inject_noise=False,
@@ -55,6 +56,13 @@ class MolecularDynamics(gym.Env):
         assert self.exp_folder is not None, "Provide a name for the experiment in order to save trajectories."
         self.traj_file = os.path.join(exp_folder, 'tmp.traj')
 
+        # For a debugging experiment with single initial_conformation
+        if self.num_initial_conformations == 1:
+            if initial_conformation_index is not None:
+                self.fixed_index = np.array([initial_conformation_index])
+            else:
+                # Randomly chosen conformation
+                self.fixed_index = np.array([283573])
         # Store random subset of molecules DB
         self._get_initial_molecule_conformations()
         self.example_atoms = self.initial_molecule_conformations[0]
@@ -135,6 +143,9 @@ class MolecularDynamics(gym.Env):
         random_sample_size = min(self.db_len, self.num_initial_conformations)
         self.initial_molecule_conformations = []
         indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
+        # For a debugging experiment with single initial_conformation
+        if self.num_initial_conformations == 1:
+            indices = self.fixed_index
         for idx in indices:
             atoms = self._get_molecule(int(idx)).toatoms()
             if self.remove_hydrogen:
