@@ -7,7 +7,7 @@ from .moldynamics_env import MolecularDynamics
 from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates
 
 
-class rdkit_minization_reward(gym.Wrapper):
+class RdkitMinizationReward(gym.Wrapper):
     def __init__(self,
                  env,
                  molecule_path,
@@ -113,6 +113,66 @@ class rdkit_minization_reward(gym.Wrapper):
         not_converged = ff.Minimize(maxIts=n_its)
         return not_converged
 
-def rdkit_reward_wrapper(**kwargs):
-    env = rdkit_minization_reward(**kwargs)
+
+# Simplified version of reward for debugging
+class RdkitEnergyReward(gym.Wrapper):
+    def __init__(self,
+                 env,
+                 molecule_path,
+                 **kwrags):
+        # Initialize molecule's sructure
+        self.initial_energy = 0
+        molecule = parse_molecule(molecule_path)
+
+        # Check if the provided molecule is valid
+        try:
+            get_rdkit_energy(molecule)
+        except AttributeError:
+            raise ValueError("Provided molucule was not parsed correctly")
+        self.molecule = molecule
+
+        # Check parent class to name the reward correctly
+        if isinstance(env, MolecularDynamics):
+            self.reward_name = 'env_reward'
+        else:
+            self.reward_name = 'unknown_reward'
+        super().__init__(env)
+    
+    def step(self, action):
+        obs, reward, done, info = super().step(action)
+        info = dict(info, **{self.reward_name: reward})
+        
+        # Update current coordinates
+        set_coordinates(self.molecule, self.env.atoms.get_positions())
+        final_energy = get_rdkit_energy(self.molecule)
+        reward = self.initial_energy - final_energy
+        self.initial_energy = final_energy
+
+        # If TL is reached log final energy
+        if info['env_done']:
+            info['final_energy'] = final_energy
+            set_coordinates(self.molecule, self.env.atoms.get_positions())
+            info['final_rl_energy'] = get_rdkit_energy(self.molecule)
+        
+        return obs, reward, done, info
+    
+    def reset(self):
+        obs = super().reset()
+        set_coordinates(self.molecule, self.env.atoms.get_positions())
+        self.initial_energy = get_rdkit_energy(self.molecule)
+        return obs
+
+    def set_initial_positions(self, positions):
+        self.env.reset()
+        self.env.atoms.set_positions(positions)
+        set_coordinates(self.molecule, positions)
+        # Minimize the initial state of the molecule
+        self.initial_energy = get_rdkit_energy(self.molecule)
+
+
+def rdkit_reward_wrapper(mode="minimize", **kwargs):
+    if mode == "minimize":
+        env = RdkitMinizationReward(**kwargs)
+    elif mode == "energy":
+        env = RdkitEnergyReward(**kwargs)
     return env

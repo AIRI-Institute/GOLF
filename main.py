@@ -116,13 +116,13 @@ def main(args, experiment_folder):
         'remove_hydrogen': args.remove_hydrogen,
         'M': args.M
     }
-    env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
+    env = rdkit_reward_wrapper(args.mode, **reward_wrapper_kwargs)
     
     # Initialize reward wrappers for evaluation
     reward_wrapper_kwargs['env'] = eval_env
-    eval_env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
+    eval_env = rdkit_reward_wrapper(args.mode, **reward_wrapper_kwargs)
     reward_wrapper_kwargs['env'] = eval_env_long
-    eval_env_long = rdkit_reward_wrapper(**reward_wrapper_kwargs)
+    eval_env_long = rdkit_reward_wrapper(args.mode, **reward_wrapper_kwargs)
 
     # Initialize action_scale scheduler
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
@@ -198,7 +198,10 @@ def main(args, experiment_folder):
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
             episode_final_energy = info['final_energy']
             episode_final_rl_energy = info['final_rl_energy']
-            not_converged = info['not_converged']
+            if 'not_converged' in info:
+                not_converged = info['not_converged']
+            else:
+                not_converged = 1.0
             logger.update_evaluation_statistics(episode_timesteps,
                                                 episode_return,
                                                 episode_final_energy,
@@ -243,13 +246,14 @@ if __name__ == "__main__":
     parser.add_argument("--calculate_mean_std_energy", type=bool, default=False, help="Calculate mean, std of energy of database")
     parser.add_argument("--remove_hydrogen", type=bool, default=False, help="Whether to remove hydrogen atoms from the molecule")
     # Reward args
+    parser.add_argument("--mode", default="minimize", choices=["energy", "minimize"], help="Reward wrapper mode")
     parser.add_argument("--molecule_path", default="env/molecules_xyz/malonaldehyde.xyz", type=str, help="Path to example .xyz file")
     parser.add_argument("--minimize_on_every_step", type=bool, default=False, help="Whether to minimize conformation with rdkit on every step")
     parser.add_argument("--M", type=int, default=10, help="Number of steps to run rdkit minimization for")
     # Action scale args. Action scale bounds actions to [-action_scale, action_scale]
     parser.add_argument("--action_scale_init", default=0.01, type=float, help="Initial value of action_scale")
-    parser.add_argument("--action_scale_end", default=0.01, type=float, help="Final value of action_scale")
-    parser.add_argument("--action_scale_n_step_end", default=0.01, type=float, help="Step at which the final value of action_scale is reached")
+    parser.add_argument("--action_scale_end", default=0.05, type=float, help="Final value of action_scale")
+    parser.add_argument("--action_scale_n_step_end", default=int(8e5), type=int, help="Step at which the final value of action_scale is reached")
     parser.add_argument("--action_scale_mode", choices=["constant", "discrete", "continuous"], default="constant", help="Mode of action scale scheduler")
     parser.add_argument("--target_entropy_action_scale", default=0.01, type=float, help="Controls target entropy of the distribution")
     # Schnet args
