@@ -14,6 +14,7 @@ class Trainer(object):
 		discount,
 		tau,
 		log_alpha,
+		alpha_lr,
 		top_quantiles_to_drop,
 		target_entropy,
 	):
@@ -25,7 +26,7 @@ class Trainer(object):
 		# TODO: check hyperparams
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4)
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
-		self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=3e-4)
+		self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)
 
 		self.discount = discount
 		self.tau = tau
