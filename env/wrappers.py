@@ -151,8 +151,6 @@ class RdkitEnergyReward(gym.Wrapper):
         # If TL is reached log final energy
         if info['env_done']:
             info['final_energy'] = final_energy
-            set_coordinates(self.molecule, self.env.atoms.get_positions())
-            info['final_rl_energy'] = get_rdkit_energy(self.molecule)
         
         return obs, reward, done, info
     

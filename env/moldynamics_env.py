@@ -24,27 +24,25 @@ class MolecularDynamics(gym.Env):
     def __init__(self,
                  db_path,
                  converter, 
-                 timelimit=100,
+                 timelimit=10,
+                 done_on_timelimit=False,
                  num_initial_conformations=50000,
                  initial_conformation_index=None,
-                 calculate_mean_std=False,
-                 done_on_timelimit=False,
                  inject_noise=False,
                  noise_std=0.1,
-                 remove_hydrogen=False,
-                 exp_folder=None,
-                 save_trajectories=False):
+                 calculate_mean_std=False,
+                 remove_hydrogen=False):
+        self.db_path = db_path
+        self.converter = converter
         self.TL = timelimit
         self.done_on_timelimit = done_on_timelimit
+        self.num_initial_conformations = num_initial_conformations
+        self.initial_conformation_index = initial_conformation_index
         self.inject_noise = inject_noise
         self.noise_std = noise_std
-        self.num_initial_conformations = num_initial_conformations
         self.remove_hydrogen = remove_hydrogen
-        self.dbpath = db_path
-        self.converter = converter
+        
         self.db_len = self._get_db_length()
-        self.exp_folder = exp_folder
-        self.save_trajectories = save_trajectories
         self.env_done = True
         self.atoms = None
         self.mean_energy = 0.
@@ -52,17 +50,7 @@ class MolecularDynamics(gym.Env):
         if calculate_mean_std:
             self.mean_energy, self.std_energy = self._get_mean_std_energy()
         self.initial_molecule_conformations = []
-        
-        assert self.exp_folder is not None, "Provide a name for the experiment in order to save trajectories."
-        self.traj_file = os.path.join(exp_folder, 'tmp.traj')
 
-        # For a debugging experiment with single initial_conformation
-        if self.num_initial_conformations == 1:
-            if initial_conformation_index is not None:
-                self.fixed_index = np.array([initial_conformation_index])
-            else:
-                # Randomly chosen conformation
-                self.fixed_index = np.array([283573])
         # Store random subset of molecules DB
         self._get_initial_molecule_conformations()
         self.example_atoms = self.initial_molecule_conformations[0]
@@ -82,16 +70,13 @@ class MolecularDynamics(gym.Env):
         self.action_space = Box(low=-1.0, high=1.0, shape=(self.atoms_count, 3), dtype=np.float32)
 
     def step(self, actions):
-        current_postitions = self.atoms.get_positions()
-        current_postitions += actions
-        self.atoms.set_positions(current_postitions)
-        self.trajectory.write(self.atoms)
+        self.atoms.set_positions(self.atoms.get_positions() + actions)
 
         self.env_steps += 1
         self.env_done = self.env_steps >= self.TL
 
-        reward = None
         obs = self.converter(self.atoms)
+        reward = None
         if self.done_on_timelimit:
             done = self.env_done
         else:
@@ -100,42 +85,23 @@ class MolecularDynamics(gym.Env):
 
         return obs, reward, done, info
 
-    def render(self, mode="human"):
-        if self.env_done:
-            trajectory = Trajectory(self.traj_file, "r")
-            view(trajectory)
-            if self.save_trajectories:
-                new_traj_file = os.path.join(self.exp_folder, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.traj')
-                os.replace(self.traj_file, new_traj_file)
-            else:
-                os.remove(self.traj_file)
-    
     def reset(self, db_idx=None):
         if db_idx is None:
             db_idx = np.random.randint(len(self.initial_molecule_conformations))
+        # Copy to avoid changing the atoms object inplace
         self.atoms = self.initial_molecule_conformations[db_idx].copy()
-        # Inject noise into the initial state 
-        # to make optimal initital states less optimal
+        # Inject noise into the initial state
         if self.inject_noise:
             current_positions = self.atoms.get_positions()
             noise = np.random.normal(scale=self.noise_std, size=current_positions.shape)
             self.atoms.set_positions(current_positions + noise)
-        if os.path.exists(self.traj_file):
-            os.remove(self.traj_file)
-        self.trajectory = Trajectory(self.traj_file, 'w')
-        self.trajectory.write(self.atoms)
-
         self.env_steps = 0
         self.env_done = False
         obs = self.converter(self.atoms)
         return obs
 
-    def close(self):
-        if os.path.exists(self.traj_file):
-            os.remove(self.traj_file)
-
     def _get_db_length(self):
-        with connect(self.dbpath) as conn:
+        with connect(self.db_path) as conn:
             db_len = len(conn)
         return db_len
 
@@ -143,9 +109,14 @@ class MolecularDynamics(gym.Env):
         random_sample_size = min(self.db_len, self.num_initial_conformations)
         self.initial_molecule_conformations = []
         indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
-        # For a debugging experiment with single initial_conformation
+        # For a debugging experiment with a single initial conformation
         if self.num_initial_conformations == 1:
-            indices = self.fixed_index
+            if self.initial_conformation_index is not None:
+                indices[0] = np.array([self.initial_conformation_index])
+            else:
+                # Randomly chosen conformation
+                indices[0] = np.array([323573])
+
         for idx in indices:
             atoms = self._get_molecule(int(idx)).toatoms()
             if self.remove_hydrogen:
@@ -161,7 +132,7 @@ class MolecularDynamics(gym.Env):
         on_giveup=on_giveup
     )
     def _get_molecule(self, idx):
-        with connect(self.dbpath) as conn:
+        with connect(self.db_path) as conn:
             return conn.get(idx)
 
     def _get_mean_std_energy(self):

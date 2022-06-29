@@ -43,7 +43,11 @@ class Logger:
     def log(self, metrics):
         metrics['Exploration episodes number'] = self.exploration_episode_number
         for name, d in zip(
-                ['episode length', 'episode return', 'episode final energy', 'episode final rl energy', 'episode not converged'],
+                ['episode length',
+                 'episode return',
+                 'episode final energy',
+                 'episode final rl energy',
+                 'episode not converged'],
                 [self.exploration_episode_lengths,
                  self.exploration_episode_returns,
                  self.exploration_episode_final_energy,
@@ -67,16 +71,12 @@ class Logger:
 
 
 def main(args, experiment_folder):
-    # --- Init ---
     # Tmp set env name
     args.env = "Malonaldehyde"
+    # Initialize logger
     logger = Logger(experiment_folder, args)
-
-    # Initialize env
-    trajectory_dir = experiment_folder / 'trajectory'
-    if not os.path.exists(trajectory_dir):
-        os.makedirs(trajectory_dir)
     
+    # Initialize env
     # For a debugging experiment with single initial_conformation
     if args.sample_initial_conformation:
         init_conf_index = np.random.randint(950000)
@@ -84,15 +84,14 @@ def main(args, experiment_folder):
         init_conf_index = None
     env_kwargs = {
         'db_path': args.db_path,
-        'num_initial_conformations': args.num_initial_conformations,
-        'initial_conformation_index': init_conf_index,
         'timelimit': args.timelimit,
         'done_on_timelimit': args.done_on_timelimit,
+        'num_initial_conformations': args.num_initial_conformations,
+        'initial_conformation_index': init_conf_index,
         'inject_noise': args.inject_noise,
         'noise_std': args.noise_std,
-        'remove_hydrogen': args.remove_hydrogen,
         'calculate_mean_std': args.calculate_mean_std_energy,
-        'exp_folder': trajectory_dir
+        'remove_hydrogen': args.remove_hydrogen,
     }
     env = env_fn(DEVICE, **env_kwargs)
     
@@ -143,8 +142,9 @@ def main(args, experiment_folder):
         'cutoff': args.cutoff,
         'n_gaussians': args.n_gaussians,
     }
+    # SchNet backbone is shared between actor and all critics
     actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler).to(DEVICE)
-    critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
+    critic = Critic(actor.schnet, args.n_nets, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
@@ -209,7 +209,7 @@ def main(args, experiment_folder):
                                                 episode_final_rl_energy,
                                                 not_converged)
             # Reset environment
-            state, done = env.reset(), False
+            state, done = env.reset(db_idx=t % args.num_initial_conformations), False
 
             episode_return = 0
             episode_timesteps = 0
