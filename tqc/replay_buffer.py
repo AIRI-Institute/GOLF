@@ -29,10 +29,10 @@ class ReplayBuffer(object):
 
     def add(self, state, action, next_state, reward, done):
         # Convert action to torch tensor for Critic
-        action, reward, done = torch.FloatTensor(action), torch.FloatTensor([reward]), torch.FloatTensor([done])
-        # TODO[store_representation] Representation is the output of schnet layer (before atomwise).
-        #                            It might be useful to store it to optimize computations.
-        # Sort keys in state and next_state and skip representation
+        action, reward, done = torch.FloatTensor(action),\
+                               torch.FloatTensor([reward]), \
+                               torch.BoolTensor([done])
+
         sorted_state_values = [state[key].squeeze() for key in sorted(state) if key != "representation"]
         sorted_next_state_values = [next_state[key].squeeze() for key in sorted(next_state) if key != "representation"]
         values = (*sorted_state_values, action, *sorted_next_state_values, reward, 1. - done)
