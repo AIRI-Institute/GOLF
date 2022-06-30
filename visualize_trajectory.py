@@ -44,6 +44,7 @@ def rl_minimize(file_name, policy, env, timelimit):
 
 def rdkit_minimize(file_name, initial_posisitons, molecule, ase_atoms, M):
     positions_list = []
+    not_converged = 1
     traj = Trajectory(file_name, mode='a')
     for i in range(1, M + 1):
         set_coordinates(molecule, initial_posisitons)
@@ -58,16 +59,25 @@ def rdkit_minimize(file_name, initial_posisitons, molecule, ase_atoms, M):
     return positions_list, not_converged
 
 def main(exp_folder, args):
-    env = env_fn(DEVICE, multiagent=False, db_path=args.db_path, timelimit=args.N,
-                      done_on_timelimit=False, inject_noise=args.inject_noise, noise_std=args.noise_std,
-                      calculate_mean_std=args.calculate_mean_std_energy, exp_folder='./')
-    env = rdkit_reward_wrapper(env=env, molecule_path=args.molecule_path,
-                               minimize_on_every_step=False, M=args.M)
+    env = env_fn(DEVICE,
+                 db_path=args.db_path,
+                 timelimit=args.N,
+                 done_on_timelimit=False,
+                 inject_noise=args.inject_noise,
+                 noise_std=args.noise_std,
+                 calculate_mean_std=args.calculate_mean_std_energy)
+    env = rdkit_reward_wrapper(args.mode,
+                               env=env,
+                               molecule_path=args.molecule_path,
+                               minimize_on_every_step=False,
+                               M=args.M)
     
     schnet_args = {
         'n_interactions': args.n_interactions,
         'cutoff': args.cutoff,
         'n_gaussians': args.n_gaussians,
+        #'add_timestep': args.add_timestep,
+        #'max_timestep': args.timelimit,
     }
     # Initialize constant action_scale scheduler for actor
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale,
@@ -96,6 +106,8 @@ def main(exp_folder, args):
         if args.N > 0:
             rl_positions_list, relative_shifts_list,\
             P_list, rl_delta_energy, final_energy = rl_minimize(file_name, actor, env, args.N)
+            if args.verbose:
+                print("Conformation #{:d} delta energy: {:.4f}".format(traj_num, rl_delta_energy))
             positions_list.extend(rl_positions_list)
             initial_positions = env.atoms.get_positions()
             if args.save_actions:
@@ -129,6 +141,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Env args
     parser.add_argument("--db_path", default="env/data/malonaldehyde.db", type=str, help="Path to molecules database")
+    parser.add_argument("--mode", default="minimize", choices=["energy", "minimize"], help="Reward wrapper mode")
     parser.add_argument("--molecule_path", default="env/molecules_xyz/malonaldehyde.xyz", type=str, help="Path to example .xyz file")
     parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")
     parser.add_argument("--noise_std", type=float, default=0.01, help="Std of the injected noise")
