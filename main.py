@@ -146,7 +146,7 @@ def main(args, experiment_folder):
     }
     # SchNet backbone is shared between actor and all critics
     actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler).to(DEVICE)
-    critic = Critic(actor.schnet, args.n_nets, args.n_quantiles).to(DEVICE)
+    critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
@@ -181,8 +181,10 @@ def main(args, experiment_folder):
             action = actor.select_action(state)
 
         next_state, reward, done, info = env.step(action)
+        # Done on every step or at the end of the episode
+        done = done or args.greedy is True
         episode_timesteps += 1
-        ep_end = done or episode_timesteps >= args.timelimit
+        ep_end = episode_timesteps >= args.timelimit
         replay_buffer.add(state, action, next_state, reward, done)
 
         state = next_state
@@ -197,7 +199,22 @@ def main(args, experiment_folder):
         step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
         step_metrics['Action_norm'] = np.linalg.norm(action, axis=1).mean().item()
 
-        if ep_end:
+        if done:
+            # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
+            if not 'final_energy' in info:
+                info['final_energy'] = 10.0
+            if not 'final_rl_energy' in info:
+                info['final_rl_energy'] = 10.0
+            if not 'not_converged' in info:
+                info['not_converged'] = 1.0
+
+            logger.update_evaluation_statistics(episode_timesteps,
+                                                episode_return,
+                                                info['final_energy'],
+                                                info['final_rl_energy'],
+                                                info['not_converged'])
+        
+        if done:
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
             episode_final_energy = info['final_energy']
             episode_final_rl_energy = info['final_rl_energy']
@@ -210,12 +227,14 @@ def main(args, experiment_folder):
                                                 episode_final_energy,
                                                 episode_final_rl_energy,
                                                 not_converged)
-            # Reset environment
-            state, done = env.reset(), False
 
             episode_return = 0
-            episode_timesteps = 0
             episode_num += 1
+
+        if ep_end:
+            episode_timesteps = 0
+            # Reset environment
+            state, done = env.reset(), False
 
         # Evaluate episode
         if (t + 1) % args.eval_freq == 0:
@@ -271,6 +290,7 @@ if __name__ == "__main__":
     parser.add_argument("--evaluate_multiple_timelimits", default=False, type=bool, help="Evaluate policy at multiple timelimits")
     parser.add_argument("--n_eval_runs", default=10, type=int, help="Number of evaluation episodes")
     parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
+    parser.add_argument("--greedy", default=False, type=bool, help="Returns done on every step independent of the timelimit")
     parser.add_argument("--seed", default=None, type=int)
     parser.add_argument("--n_quantiles", default=25, type=int)
     parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
