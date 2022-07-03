@@ -1,13 +1,8 @@
 import backoff
 import gym
 import numpy as np
-import os
-
-from datetime import datetime
 
 from ase.db import connect
-from ase.io import Trajectory
-from ase.visualize import view
 
 from gym.spaces import Box, Dict
 from sqlite3 import DatabaseError
@@ -105,6 +100,9 @@ class MolecularDynamics(gym.Env):
             db_len = len(conn)
         return db_len
 
+    def _get_env_step(self):
+        return self.env_steps
+
     def _get_initial_molecule_conformations(self):
         random_sample_size = min(self.db_len, self.num_initial_conformations)
         self.initial_molecule_conformations = []
@@ -123,6 +121,16 @@ class MolecularDynamics(gym.Env):
                 del atoms[[atom.index for atom in atoms if atom.symbol=='H']]
             self.initial_molecule_conformations.append(atoms)
     
+    def _get_mean_std_energy(self):
+        energy = []
+        # Speed up the computation
+        indices = np.random.choice(np.arange(1, self.db_len + 1), self.db_len // 10, replace=False)
+        for idx in indices:
+            row = self._get_molecule(int(idx))
+            energy.append(row.data['energy'])
+        energy = np.array(energy)
+        return energy.mean(), energy.std()
+    
     # Makes sqllite3 database compatible with NFS storages
     @backoff.on_exception(
         backoff.expo,
@@ -134,16 +142,6 @@ class MolecularDynamics(gym.Env):
     def _get_molecule(self, idx):
         with connect(self.db_path) as conn:
             return conn.get(idx)
-
-    def _get_mean_std_energy(self):
-        energy = []
-        # Speed up the computation
-        indices = np.random.choice(np.arange(1, self.db_len + 1), self.db_len // 10, replace=False)
-        for idx in indices:
-            row = self._get_molecule(int(idx))
-            energy.append(row.data['energy'])
-        energy = np.array(energy)
-        return energy.mean(), energy.std()
 
     def seed(self, seed=None):
         if seed is None:

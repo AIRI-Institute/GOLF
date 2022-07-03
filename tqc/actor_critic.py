@@ -8,6 +8,7 @@ from math import floor
 from torch.distributions import Distribution, Normal
 
 from tqc import DEVICE
+#from tqc.schnet import SchNet, AtomisticModel
 
 
 LOG_STD_MIN_MAX = (-20, 2)
@@ -19,20 +20,22 @@ class Actor(nn.Module):
         self.action_scale_scheduler = action_scale_scheduler
         self.out_embedding_size = out_embedding_size
         # SchNet backbone is shared between actor and all critics
-        self.schnet = spk.SchNet(
+        schnet = spk.SchNet(
                         n_interactions=schnet_args["n_interactions"], #3
                         cutoff=schnet_args["cutoff"], #20.0
                         n_gaussians=schnet_args["n_gaussians"] #50
+                        #add_timestep=schnet_args["add_timestep"],
+                        #max_timestep=schnet_args["max_timestep"]
                     )
         output_modules = [ 
                                 spk.atomistic.Atomwise(
-                                    n_in=self.schnet.n_atom_basis,
+                                    n_in=schnet.n_atom_basis,
                                     n_out=out_embedding_size * 2 + 3,
                                     n_neurons=[out_embedding_size],
                                     contributions='kv'
                                 )
                             ]
-        self.model = spk.atomistic.model.AtomisticModel(self.schnet, output_modules)
+        self.model = spk.atomistic.model.AtomisticModel(schnet, output_modules)
     
     def forward(self, state_dict, return_relative_shifts=False):
         action_scale = self.action_scale_scheduler.get_action_scale()
@@ -72,28 +75,27 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, schnet_backbone, n_nets, n_quantiles, mean=None, stddev=None):
+    def __init__(self, schnet_args, n_nets, n_quantiles, mean=None, stddev=None):
         super(Critic, self).__init__()
         self.nets = []
         self.n_quantiles = n_quantiles
         self.n_nets = n_nets
         for i in range(self.n_nets):
-            # schnet = spk.SchNet(
-            #                 n_interactions=schnet_args["n_interactions"], #3
-            #                 cutoff=schnet_args["cutoff"], #20.0
-            #                 n_gaussians=schnet_args["n_gaussians"] #50
-            #             )
-            # Shared SchNet backbone
+            schnet = spk.SchNet(
+                            n_interactions=schnet_args["n_interactions"], #3
+                            cutoff=schnet_args["cutoff"], #20.0
+                            n_gaussians=schnet_args["n_gaussians"] #50
+                        )
             output_modules = [ 
                                     spk.atomistic.Atomwise(
-                                        n_in=schnet_backbone.n_atom_basis,
+                                        n_in=schnet.n_atom_basis,
                                         n_out=self.n_quantiles,
                                         property='quantiles',
                                         mean=mean,
                                         stddev=stddev
                                     )
                                 ]
-            net = spk.atomistic.model.AtomisticModel(schnet_backbone, output_modules)
+            net = spk.atomistic.model.AtomisticModel(schnet, output_modules)
             self.add_module(f'qf{i}', net)
             self.nets.append(net)
 

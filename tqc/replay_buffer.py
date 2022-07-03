@@ -23,7 +23,7 @@ class ReplayBuffer(object):
         self.transition_names = (*state_names, 'action', *next_state_names, 'reward', 'not_done')
         sizes = (*state_dims, action_dim, *state_dims, [1], [1])
         torch_state_dict_dtypes = [self.numpy_to_torch_dtype_dict[t.type] for t in state_dict_dtypes]
-        dtypes = (*torch_state_dict_dtypes, torch.float32, *torch_state_dict_dtypes, torch.float32, torch.bool)
+        dtypes = (*torch_state_dict_dtypes, torch.float32, *torch_state_dict_dtypes, torch.float32, torch.float32)
         for name, size, dtype in zip(self.transition_names, sizes, dtypes):
             setattr(self, name, torch.empty((max_size, *size), dtype=dtype))
 
@@ -31,7 +31,7 @@ class ReplayBuffer(object):
         # Convert action to torch tensor for Critic
         action, reward, done = torch.FloatTensor(action),\
                                torch.FloatTensor([reward]), \
-                               torch.BoolTensor([done])
+                               torch.FloatTensor([done])
 
         sorted_state_values = [state[key].squeeze() for key in sorted(state) if key != "representation"]
         sorted_next_state_values = [next_state[key].squeeze() for key in sorted(next_state) if key != "representation"]

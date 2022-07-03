@@ -151,6 +151,8 @@ class RdkitEnergyReward(gym.Wrapper):
         # If TL is reached log final energy
         if info['env_done']:
             info['final_energy'] = final_energy
+            # For compatability with the other wrapper
+            info['final_rl_energy'] = final_energy
         
         return obs, reward, done, info
     

@@ -141,6 +141,8 @@ def main(args, experiment_folder):
         'n_interactions': args.n_interactions,
         'cutoff': args.cutoff,
         'n_gaussians': args.n_gaussians,
+        #'add_timestep': args.add_timestep,
+        #'max_timestep': args.timelimit
     }
     # SchNet backbone is shared between actor and all critics
     actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler).to(DEVICE)
@@ -209,7 +211,7 @@ def main(args, experiment_folder):
                                                 episode_final_rl_energy,
                                                 not_converged)
             # Reset environment
-            state, done = env.reset(db_idx=t % args.num_initial_conformations), False
+            state, done = env.reset(), False
 
             episode_return = 0
             episode_timesteps = 0
