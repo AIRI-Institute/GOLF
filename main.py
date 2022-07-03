@@ -213,20 +213,6 @@ def main(args, experiment_folder):
                                                 info['final_energy'],
                                                 info['final_rl_energy'],
                                                 info['not_converged'])
-        
-        if done:
-            # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
-            episode_final_energy = info['final_energy']
-            episode_final_rl_energy = info['final_rl_energy']
-            if 'not_converged' in info:
-                not_converged = info['not_converged']
-            else:
-                not_converged = 1.0
-            logger.update_evaluation_statistics(episode_timesteps,
-                                                episode_return,
-                                                episode_final_energy,
-                                                episode_final_rl_energy,
-                                                not_converged)
 
             episode_return = 0
             episode_num += 1
