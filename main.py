@@ -199,7 +199,7 @@ def main(args, experiment_folder):
         step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
         step_metrics['Action_norm'] = np.linalg.norm(action, axis=1).mean().item()
 
-        if done:
+        if done or (not args.greedy and ep_end):
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
             if not 'final_energy' in info:
                 info['final_energy'] = 10.0
