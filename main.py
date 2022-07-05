@@ -35,6 +35,7 @@ class Logger:
         self._keep_n_episodes = 10
         self.exploration_episode_lengths = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_returns = deque(maxlen=self._keep_n_episodes)
+        self.exploration_episode_mean_Q = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_final_energy = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_final_rl_energy = deque(maxlen=self._keep_n_episodes)
         self.exploration_not_converged = deque(maxlen=self._keep_n_episodes)
@@ -45,11 +46,13 @@ class Logger:
         for name, d in zip(
                 ['episode length',
                  'episode return',
+                 'episode mean Q',
                  'episode final energy',
                  'episode final rl energy',
                  'episode not converged'],
                 [self.exploration_episode_lengths,
                  self.exploration_episode_returns,
+                 self.exploration_episode_mean_Q,
                  self.exploration_episode_final_energy,
                  self.exploration_episode_final_rl_energy,
                  self.exploration_not_converged]
@@ -60,11 +63,17 @@ class Logger:
             json.dump(metrics, out_metrics)
             out_metrics.write('\n')
 
-    def update_evaluation_statistics(self, episode_length, episode_return, episode_final_energy,
-                                     episode_final_rl_energy, not_converged):
+    def update_evaluation_statistics(self,
+                                     episode_length,
+                                     episode_return,
+                                     episode_mean_Q,
+                                     episode_final_energy,
+                                     episode_final_rl_energy,
+                                     not_converged):
         self.exploration_episode_number += 1
         self.exploration_episode_lengths.append(episode_length)
         self.exploration_episode_returns.append(episode_return)
+        self.exploration_episode_mean_Q.append(episode_mean_Q)
         self.exploration_episode_final_energy.append(episode_final_energy)
         self.exploration_episode_final_rl_energy.append(episode_final_rl_energy)
         self.exploration_not_converged.append(not_converged)
@@ -164,6 +173,7 @@ def main(args, experiment_folder):
 
     state, done = env.reset(), False
     episode_return = 0
+    episode_mean_Q = 0
     episode_timesteps = 0
     episode_num = 0
 
@@ -179,6 +189,7 @@ def main(args, experiment_folder):
         action_scale_scheduler.update(t)
         with torch.no_grad():
             action = actor.select_action(state)
+            mean_Q = critic_target(state, torch.FloatTensor(action).unsqueeze(0).to(DEVICE)).mean().item()
 
         next_state, reward, done, info = env.step(action)
         # Done on every step or at the end of the episode
@@ -189,6 +200,7 @@ def main(args, experiment_folder):
 
         state = next_state
         episode_return += reward
+        episode_mean_Q += mean_Q
 
         # Train agent after collecting sufficient data
         if t >= args.batch_size:
@@ -210,6 +222,7 @@ def main(args, experiment_folder):
 
             logger.update_evaluation_statistics(episode_timesteps,
                                                 episode_return,
+                                                episode_mean_Q,
                                                 info['final_energy'],
                                                 info['final_rl_energy'],
                                                 info['not_converged'])
