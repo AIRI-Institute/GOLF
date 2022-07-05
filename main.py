@@ -193,7 +193,7 @@ def main(args, experiment_folder):
 
         next_state, reward, done, info = env.step(action)
         # Done on every step or at the end of the episode
-        done = done or args.greedy is True
+        done = done or args.greedy
         episode_timesteps += 1
         ep_end = episode_timesteps >= args.timelimit
         replay_buffer.add(state, action, next_state, reward, done)
@@ -228,6 +228,7 @@ def main(args, experiment_folder):
                                                 info['not_converged'])
 
             episode_return = 0
+            episode_mean_Q = 0
             episode_num += 1
 
         if ep_end:
