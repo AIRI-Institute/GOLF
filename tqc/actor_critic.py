@@ -24,8 +24,6 @@ class Actor(nn.Module):
                         n_interactions=schnet_args["n_interactions"], #3
                         cutoff=schnet_args["cutoff"], #20.0
                         n_gaussians=schnet_args["n_gaussians"] #50
-                        #add_timestep=schnet_args["add_timestep"],
-                        #max_timestep=schnet_args["max_timestep"]
                     )
         output_modules = [ 
                                 spk.atomistic.Atomwise(
