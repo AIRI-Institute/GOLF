@@ -50,24 +50,20 @@ class Actor(nn.Module):
         actions_mean = (P * rel_shifts_mean[..., None]).sum(-2)
         # Bound means with tanh
         actions_mean = torch.tanh(actions_mean)
-        # print("Actions mean: ")
-        # print(actions_mean)
 
         if self.training:
             # Clamp and exp log_std
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
-            # print("Actions std: ")
-            # print(actions_std)
             # Sample bounded actions and calculate log prob
-            scaled_normal = ScaledNormal(actions_mean, actions_std, action_scale)
+            # scaled_normal = ScaledNormal(actions_mean, actions_std, action_scale)
+            # actions, pre_action_scale = scaled_normal.rsample()
+            # log_prob = scaled_normal.log_prob(pre_action_scale)
+            
+            scaled_normal = Normal(actions_mean * action_scale, actions_std * action_scale)
             actions = scaled_normal.rsample()
-            # print("Actions: ")
-            # print(actions)
             log_prob = scaled_normal.log_prob(actions)
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
-            # print("Log prob: ")
-            # print(log_prob)
         else:
             actions = action_scale * actions_mean
             log_prob = None
@@ -137,4 +133,4 @@ class ScaledNormal(Distribution):
 
     def rsample(self):
         value = self.normal_mean + self.normal_std * self.standard_normal.sample()
-        return self.scale * value
+        return self.scale * value, value
