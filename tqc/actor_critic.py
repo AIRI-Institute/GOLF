@@ -48,20 +48,29 @@ class Actor(nn.Module):
         P /= norm[..., None]
         # Project actions
         actions_mean = (P * rel_shifts_mean[..., None]).sum(-2)
+        # Bound means with tanh
+        actions_mean = torch.tanh(actions_mean)
+        # print("Actions mean: ")
+        # print(actions_mean)
 
         if self.training:
             # Clamp and exp log_std
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
+            # print("Actions std: ")
+            # print(actions_std)
             # Sample bounded actions and calculate log prob
-            tanh_normal = TanhNormal(actions_mean, actions_std, action_scale)
-            actions, pre_tanh = tanh_normal.rsample()
-            log_prob = tanh_normal.log_prob(pre_tanh)
+            scaled_normal = ScaledNormal(actions_mean, actions_std, action_scale)
+            actions = scaled_normal.rsample()
+            # print("Actions: ")
+            # print(actions)
+            log_prob = scaled_normal.log_prob(actions)
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
+            # print("Log prob: ")
+            # print(log_prob)
         else:
-            actions = action_scale * torch.tanh(actions_mean)
+            actions = action_scale * actions_mean
             log_prob = None
-
         
         if return_relative_shifts:
             return actions, log_prob, rel_shifts_mean, P
@@ -110,24 +119,22 @@ class Critic(nn.Module):
         return quantiles
 
 
-class TanhNormal(Distribution):
+class ScaledNormal(Distribution):
     arg_constraints = {}
 
-    def __init__(self, normal_mean, normal_std, action_scale=1.0):
+    def __init__(self, normal_mean, normal_std, scale=1.0):
         super().__init__()
         self.normal_mean = normal_mean
-        self.action_scale = torch.FloatTensor([action_scale]).to(DEVICE)
         self.normal_std = normal_std
+        self.scale = torch.FloatTensor([scale]).to(DEVICE)
         self.standard_normal = Normal(torch.zeros_like(self.normal_mean, device=DEVICE),
                                       torch.ones_like(self.normal_std, device=DEVICE))
         self.normal = Normal(normal_mean, normal_std)
-
-    def log_prob(self, pre_tanh):
-        log_det = 2 * np.log(2) + F.logsigmoid(2 * pre_tanh) + F.logsigmoid(-2 * pre_tanh) +\
-                  torch.log(self.action_scale)
-        result = self.normal.log_prob(pre_tanh) - log_det
-        return result
+    
+    def log_prob(self, value):
+        log_det = torch.log(self.scale)
+        return self.normal.log_prob(value) - log_det
 
     def rsample(self):
-        pretanh = self.normal_mean + self.normal_std * self.standard_normal.sample()
-        return self.action_scale * torch.tanh(pretanh), pretanh
+        value = self.normal_mean + self.normal_std * self.standard_normal.sample()
+        return self.scale * value
