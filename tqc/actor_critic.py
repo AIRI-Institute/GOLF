@@ -6,6 +6,7 @@ import schnetpack as spk
 
 from math import floor
 from torch.distributions import Distribution, Normal
+from schnetpack.nn.blocks import MLP
 
 from tqc import DEVICE
 #from tqc.schnet import SchNet, AtomisticModel
@@ -78,11 +79,14 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, schnet_args, n_nets, n_quantiles, mean=None, stddev=None):
+    def __init__(self, schnet_args, n_nets, schnet_out_embedding_size, n_quantiles, mean=None, stddev=None):
         super(Critic, self).__init__()
-        self.nets = []
-        self.n_quantiles = n_quantiles
+        self.nets_s = []
+        self.nets_ns = []
+        self.mlps = []
         self.n_nets = n_nets
+        self.schnet_out_embedding_size = schnet_out_embedding_size
+        self.n_quantiles = n_quantiles
         for i in range(self.n_nets):
             schnet = spk.SchNet(
                             n_interactions=schnet_args["n_interactions"], #3
@@ -92,25 +96,34 @@ class Critic(nn.Module):
             output_modules = [ 
                                     spk.atomistic.Atomwise(
                                         n_in=schnet.n_atom_basis,
-                                        n_out=self.n_quantiles,
-                                        property='quantiles',
+                                        n_out=self.schnet_out_embedding_size,
+                                        property='embedding',
                                         mean=mean,
                                         stddev=stddev
                                     )
                                 ]
-            net = spk.atomistic.model.AtomisticModel(schnet, output_modules)
-            self.add_module(f'qf{i}', net)
-            self.nets.append(net)
+            net_state = spk.atomistic.model.AtomisticModel(schnet, output_modules)
+            net_next_state = spk.atomistic.model.AtomisticModel(schnet, output_modules)
+            mlp = MLP(2 * self.schnet_out_embedding_size, self.n_quantiles)
+            self.add_module(f'qf_s_{i}', net_state)
+            self.add_module(f'qf_ns_{i}', net_next_state)
+            self.add_module(f'mlp_{i}', mlp)
+            self.nets_s.append(net_state)
+            self.nets_ns.append(net_next_state)
+            self.mlps.append(mlp)
 
     def forward(self, state_dict, actions):
         quantiles_list = []
-        for net in self.nets:
+        for i in range(self.n_nets):
             # Schnet changes the state_dict so a deepcopy
             # has to be passed to each net in order to do .backwards()
-            next_state = {k:  v.detach().clone() for k, v in state_dict.items()}
+            state = {k: v.detach().clone() for k, v in state_dict.items()}
+            next_state = {k: v.detach().clone() for k, v in state_dict.items()}
             # Change state here to keep the gradients flowing
             next_state["_positions"] += actions
-            quantiles_list.append(net(next_state)['quantiles'])
+            state_emb = self.nets_s[i](state)['embedding']
+            next_state_emb = self.nets_ns[i](next_state)['embedding']
+            quantiles_list.append(self.mlps[i](torch.concat((state_emb, next_state_emb), dim=-1)))
         quantiles = torch.stack(quantiles_list, dim=1)
         return quantiles
 

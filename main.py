@@ -153,7 +153,7 @@ def main(args, experiment_folder):
     }
     # SchNet backbone is shared between actor and all critics
     actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler).to(DEVICE)
-    critic = Critic(schnet_args, args.n_nets, args.n_quantiles).to(DEVICE)
+    critic = Critic(schnet_args, args.n_nets, args.critic_out_embedding_size, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
@@ -260,6 +260,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_initial_conformations", default=50000, type=int, help="Number of initial molecule conformations to sample from DB")
     parser.add_argument("--sample_initial_conformation", default=False, type=bool, help="Sample new conformation for every seed")
     parser.add_argument("--timelimit", default=100, type=int, help="Timelimit for MD env")
+    parser.add_argument("--greedy", default=False, type=bool, help="Returns done on every step independent of the timelimit")
     parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
     parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")
     parser.add_argument("--noise_std", type=float, default=0.1, help="Std of the injected noise")
@@ -282,23 +283,26 @@ if __name__ == "__main__":
     parser.add_argument("--n_gaussians", default=50, type=int, help="Number of Gaussians for Schnet in actor/critic")
     # Actor args
     parser.add_argument("--actor_out_embedding_size", default=128, type=int, help="Output embedding size for actor")
-    # Other args
-    parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
-    parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate
-    parser.add_argument("--evaluate_multiple_timelimits", default=False, type=bool, help="Evaluate policy at multiple timelimits")
-    parser.add_argument("--n_eval_runs", default=10, type=int, help="Number of evaluation episodes")
-    parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
-    parser.add_argument("--greedy", default=False, type=bool, help="Returns done on every step independent of the timelimit")
-    parser.add_argument("--seed", default=None, type=int)
+    # Critic args
     parser.add_argument("--n_quantiles", default=25, type=int)
     parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
     parser.add_argument("--n_nets", default=5, type=int)
+    parser.add_argument("--critic_out_embedding_size", default=128, type=int, help="Critic out embedding size")
+    # Eval args
+    parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate
+    parser.add_argument("--evaluate_multiple_timelimits", default=False, type=bool, help="Evaluate policy at multiple timelimits")
+    parser.add_argument("--n_eval_runs", default=10, type=int, help="Number of evaluation episodes")
+    # Trainer args
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
     parser.add_argument("--replay_buffer_size", default=int(2e5), type=int, help="Size of replay buffer")
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--initial_alpha", default=1.0, type=float, help="Initial value for alpha")
     parser.add_argument("--alpha_lr", default=3e-4, type=float, help="Alpha learning rate")
+    # Other args
+    parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
+    parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
+    parser.add_argument("--seed", default=None, type=int)
     parser.add_argument("--light_checkpoint_freq", type=int, default=200000)
     parser.add_argument("--save_checkpoints", type=bool, default=False, help="Save light and full checkpoints")
     parser.add_argument("--load_model", type=str, default=None)
