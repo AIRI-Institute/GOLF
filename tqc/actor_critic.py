@@ -123,7 +123,7 @@ class Critic(nn.Module):
             next_state["_positions"] += actions
             state_emb = self.nets_s[i](state)['embedding']
             next_state_emb = self.nets_ns[i](next_state)['embedding']
-            quantiles_list.append(self.mlps[i](torch.concat((state_emb, next_state_emb), dim=-1)))
+            quantiles_list.append(self.mlps[i](torch.cat((state_emb, next_state_emb), dim=-1)))
         quantiles = torch.stack(quantiles_list, dim=1)
         return quantiles
 
