@@ -7,7 +7,7 @@ from .moldynamics_env import MolecularDynamics
 from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates
 
 
-class RdkitMinizationReward(gym.Wrapper):
+class RdkitMinimizationReward(gym.Wrapper):
     def __init__(self,
                  env,
                  molecule_path,
@@ -47,13 +47,8 @@ class RdkitMinizationReward(gym.Wrapper):
         
         # Minimize with rdkit and calculate reward
         if self.minimize_on_every_step or info['env_done']:
-            not_converged = self.minimize(self.remove_hydrogen)
-            # Get energy after minimization
-            final_energy = get_rdkit_energy(self.molecule)
+            not_converged, final_energy = self.minimize()
             reward = self.initial_energy - final_energy
-            if self.remove_hydrogen:
-                # Remove hydrogens after minimization
-                self.molecule = rdmolops.RemoveHs(self.molecule)
         else:
             reward = 0.
 
@@ -80,11 +75,7 @@ class RdkitMinizationReward(gym.Wrapper):
         obs = super().reset()
         set_coordinates(self.molecule, self.env.atoms.get_positions())
         # Minimize the initial state of the molecule
-        self.minimize(self.remove_hydrogen)
-        self.initial_energy = get_rdkit_energy(self.molecule)
-        if self.remove_hydrogen:
-            # Remove hydrogens after minimization
-            self.molecule = rdmolops.RemoveHs(self.molecule)
+        _, self.initial_energy = self.minimize()
         return obs
 
     def set_initial_positions(self, positions):
@@ -92,26 +83,26 @@ class RdkitMinizationReward(gym.Wrapper):
         self.env.atoms.set_positions(positions)
         set_coordinates(self.molecule, positions)
         # Minimize the initial state of the molecule
-        self.minimize(self.remove_hydrogen)
-        self.initial_energy = get_rdkit_energy(self.molecule)
-        if self.remove_hydrogen:
-            # Remove hydrogens after minimization
-            self.molecule = rdmolops.RemoveHs(self.molecule)
+        _, self.initial_energy = self.minimize()
 
-    def minimize(self, remove_hydrogen, M=None, confId=0):
+    def minimize(self, M=None, confId=0):
         # Set number of minization iterations
         if M is None:
             n_its = self.M
         else:
             n_its = M    
-        if remove_hydrogen:
+        if self.remove_hydrogen:
             # Add hydrogens back to the molecule
             self.molecule = rdmolops.AddHs(self.molecule, addCoords=True)
         ff = AllChem.MMFFGetMoleculeForceField(self.molecule,
                 AllChem.MMFFGetMoleculeProperties(self.molecule), confId=confId)
         ff.Initialize()
         not_converged = ff.Minimize(maxIts=n_its)
-        return not_converged
+        energy = get_rdkit_energy(self.molecule)
+        if self.remove_hydrogen:
+            # Remove hydrogens after minimization
+            self.molecule = rdmolops.RemoveHs(self.molecule)
+        return not_converged, energy
 
 
 # Simplified version of reward for debugging
@@ -172,7 +163,7 @@ class RdkitEnergyReward(gym.Wrapper):
 
 def rdkit_reward_wrapper(mode="minimize", **kwargs):
     if mode == "minimize":
-        env = RdkitMinizationReward(**kwargs)
+        env = RdkitMinimizationReward(**kwargs)
     elif mode == "energy":
         env = RdkitEnergyReward(**kwargs)
     return env

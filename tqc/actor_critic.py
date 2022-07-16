@@ -81,8 +81,7 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     def __init__(self, schnet_args, n_nets, schnet_out_embedding_size, n_quantiles, mean=None, stddev=None):
         super(Critic, self).__init__()
-        self.nets_s = []
-        self.nets_ns = []
+        self.nets = []
         self.mlps = []
         self.n_nets = n_nets
         self.schnet_out_embedding_size = schnet_out_embedding_size
@@ -102,14 +101,11 @@ class Critic(nn.Module):
                                         stddev=stddev
                                     )
                                 ]
-            net_state = spk.atomistic.model.AtomisticModel(schnet, output_modules)
-            net_next_state = spk.atomistic.model.AtomisticModel(schnet, output_modules)
+            net = spk.atomistic.model.AtomisticModel(schnet, output_modules)
             mlp = MLP(2 * self.schnet_out_embedding_size, self.n_quantiles)
-            self.add_module(f'qf_s_{i}', net_state)
-            self.add_module(f'qf_ns_{i}', net_next_state)
+            self.add_module(f'qf_{i}', net)
             self.add_module(f'mlp_{i}', mlp)
-            self.nets_s.append(net_state)
-            self.nets_ns.append(net_next_state)
+            self.nets.append(net)
             self.mlps.append(mlp)
 
     def forward(self, state_dict, actions):
@@ -121,8 +117,8 @@ class Critic(nn.Module):
             next_state = {k: v.detach().clone() for k, v in state_dict.items()}
             # Change state here to keep the gradients flowing
             next_state["_positions"] += actions
-            state_emb = self.nets_s[i](state)['embedding']
-            next_state_emb = self.nets_ns[i](next_state)['embedding']
+            state_emb = self.nets[i](state)['embedding']
+            next_state_emb = self.nets[i](next_state)['embedding']
             quantiles_list.append(self.mlps[i](torch.cat((state_emb, next_state_emb), dim=-1)))
         quantiles = torch.stack(quantiles_list, dim=1)
         return quantiles
