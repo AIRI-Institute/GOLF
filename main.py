@@ -108,7 +108,10 @@ def main(args, experiment_folder):
     env_kwargs['inject_noise'] = False
     eval_env = env_fn(DEVICE, **env_kwargs)
     # For evaluation on multiple timestamps
-    env_kwargs['timelimit'] = max(TIMELIMITS)
+    env_kwargs.update({
+        'timelimit': max(TIMELIMITS),
+        'minimize_on_every_step': True
+    })
     eval_env_long = env_fn(DEVICE, **env_kwargs)
     
     # Seed env
