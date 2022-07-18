@@ -108,10 +108,7 @@ def main(args, experiment_folder):
     env_kwargs['inject_noise'] = False
     eval_env = env_fn(DEVICE, **env_kwargs)
     # For evaluation on multiple timestamps
-    env_kwargs.update({
-        'timelimit': max(TIMELIMITS),
-        'minimize_on_every_step': True
-    })
+    env_kwargs['timelimit'] = max(TIMELIMITS)
     eval_env_long = env_fn(DEVICE, **env_kwargs)
     
     # Seed env
@@ -133,6 +130,10 @@ def main(args, experiment_folder):
     reward_wrapper_kwargs['env'] = eval_env
     eval_env = rdkit_reward_wrapper(args.mode, **reward_wrapper_kwargs)
     reward_wrapper_kwargs['env'] = eval_env_long
+    reward_wrapper_kwargs.update({
+        'env': eval_env_long,
+        'minimize_on_every_step': True
+    })
     eval_env_long = rdkit_reward_wrapper(args.mode, **reward_wrapper_kwargs)
 
     # Initialize action_scale scheduler
