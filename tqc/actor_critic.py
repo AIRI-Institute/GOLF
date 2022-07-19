@@ -56,11 +56,8 @@ class Actor(nn.Module):
             # Clamp and exp log_std
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
-            # Sample bounded actions and calculate log prob
-            # scaled_normal = ScaledNormal(actions_mean, actions_std, action_scale)
-            # actions, pre_action_scale = scaled_normal.rsample()
-            # log_prob = scaled_normal.log_prob(pre_action_scale)
-            
+            self.actions_std = actions_std
+            # Sample actions and calculate log prob
             scaled_normal = Normal(actions_mean * action_scale, actions_std * action_scale)
             actions = scaled_normal.rsample()
             log_prob = scaled_normal.log_prob(actions)
