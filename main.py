@@ -171,6 +171,8 @@ def main(args, experiment_folder):
                       tau=args.tau,
                       log_alpha=np.log([args.initial_alpha]).item(),
                       alpha_lr=args.alpha_lr,
+                      actor_lr=args.actor_lr,
+                      critic_lr=args.critic_lr,
                       target_entropy=target_entropy)
 
     state, done = env.reset(), False
@@ -289,7 +291,6 @@ if __name__ == "__main__":
     parser.add_argument("--actor_out_embedding_size", default=128, type=int, help="Output embedding size for actor")
     # Critic args
     parser.add_argument("--n_quantiles", default=25, type=int)
-    parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
     parser.add_argument("--n_nets", default=5, type=int)
     parser.add_argument("--critic_out_embedding_size", default=128, type=int, help="Critic out embedding size")
     # Eval args
@@ -297,12 +298,15 @@ if __name__ == "__main__":
     parser.add_argument("--evaluate_multiple_timelimits", default=False, type=bool, help="Evaluate policy at multiple timelimits")
     parser.add_argument("--n_eval_runs", default=10, type=int, help="Number of evaluation episodes")
     # Trainer args
+    parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
     parser.add_argument("--replay_buffer_size", default=int(2e5), type=int, help="Size of replay buffer")
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
-    parser.add_argument("--initial_alpha", default=1.0, type=float, help="Initial value for alpha")
+    parser.add_argument("--actor_lr", default=3e-4, type=float, help="Actor learning rate")
+    parser.add_argument("--critic_lr", default=3e-4, type=float, help="Critic learning rate")
     parser.add_argument("--alpha_lr", default=3e-4, type=float, help="Alpha learning rate")
+    parser.add_argument("--initial_alpha", default=1.0, type=float, help="Initial value for alpha")
     # Other args
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
     parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
