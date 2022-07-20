@@ -1,6 +1,6 @@
 import torch
 
-from tqc.utils import quantile_huber_loss_f
+from tqc.utils import quantile_huber_loss_f, calculate_gradient_norm
 from tqc import DEVICE
 
 
@@ -69,17 +69,19 @@ class Trainer(object):
 		# --- Update critic --- 
 		self.critic_optimizer.zero_grad()
 		critic_loss.backward()
+		metrics['critic_grad_norm'] = calculate_gradient_norm(self.critic).item()
 		self.critic_optimizer.step()
 
 		# --- Policy loss ---
 		new_action, log_pi = self.actor(state)
-		metrics['actor_entropy'] = - log_pi.mean().item()
+		metrics['actor_entropy'] = self.actor.scaled_normal.entropy().sum(dim=(1, 2)).mean().item()
 		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
 		metrics['actor_loss'] = actor_loss.item()
 
 		# --- Update actor ---
 		self.actor_optimizer.zero_grad()
 		actor_loss.backward()
+		metrics['actor_grad_norm'] = calculate_gradient_norm(self.actor).item()
 		self.actor_optimizer.step()
 
 		# --- Alpha loss ---

@@ -110,3 +110,12 @@ def quantile_huber_loss_f(quantiles, samples):
     tau = torch.arange(n_quantiles, device=DEVICE).float() / n_quantiles + 1 / 2 / n_quantiles
     loss = (torch.abs(tau[None, None, :, None] - (pairwise_delta < 0).float()) * huber_loss).mean()
     return loss
+
+def calculate_gradient_norm(model):
+    total_norm = 0.0
+    params = [p for p in model.parameters() if p.grad is not None and p.requires_grad]
+    for p in params:
+        param_norm = p.grad.detach().data.norm(2)
+        total_norm += param_norm ** 2
+    total_norm = total_norm ** (0.5)
+    return total_norm

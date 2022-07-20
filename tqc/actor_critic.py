@@ -41,7 +41,7 @@ class Actor(nn.Module):
         kv = self.model(state_dict)['kv']
         k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 3], dim=-1)
         # Calculate mean and std of shifts relative to other atoms
-        rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2))
+        rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)]))
 
         # Calculate matrix of 1-vectors to other atoms
         P = state_dict['_positions'][:, :, None, :] - state_dict['_positions'][:, None, :, :]
@@ -58,9 +58,9 @@ class Actor(nn.Module):
             actions_std = torch.exp(actions_log_std)
             self.actions_std = actions_std
             # Sample actions and calculate log prob
-            scaled_normal = Normal(actions_mean * action_scale, actions_std * action_scale)
-            actions = scaled_normal.rsample()
-            log_prob = scaled_normal.log_prob(actions)
+            self.scaled_normal = Normal(actions_mean * action_scale, actions_std * action_scale)
+            actions = self.scaled_normal.rsample()
+            log_prob = self.scaled_normal.log_prob(actions)
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
         else:
             actions = action_scale * actions_mean
