@@ -170,8 +170,6 @@ def main(args, experiment_folder):
                       actor_lr=args.actor_lr,
                       critic_lr= args.critic_lr,
                       alpha_lr=args.alpha_lr,
-                      actor_lr=args.actor_lr,
-                      critic_lr=args.critic_lr,
                       target_entropy=target_entropy)
 
     state, done = env.reset(), False
