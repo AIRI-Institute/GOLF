@@ -38,12 +38,12 @@ class ActionScaleScheduler():
     def get_action_scale(self):
         return self.current_action_scale
 
-def run_policy(env, actor, state, fixed_positions, max_timestamps):
+def run_policy(env, actor, state, fixed_atoms, max_timestamps):
     done = False
     delta_energy = 0
     t = 0
-    env.set_initial_positions(fixed_positions)
-    state['_positions'] = torch.FloatTensor(fixed_positions).unsqueeze(0).to(DEVICE)
+    env.set_initial_positions(fixed_atoms)
+    state['_positions'] = torch.FloatTensor(fixed_atoms.get_positions()).unsqueeze(0).to(DEVICE)
     while not done and t < max_timestamps:
         with torch.no_grad():
             action = actor.select_action(state)
@@ -52,7 +52,7 @@ def run_policy(env, actor, state, fixed_positions, max_timestamps):
         t += 1
     return delta_energy, info['final_energy'], info['final_rl_energy']
 
-def run_policy_eval_and_explore(actor, env, max_timestamps, eval_episodes=10, n_explore_runs=10):
+def run_policy_eval_and_explore(actor, env, max_timestamps, eval_episodes=10, n_explore_runs=5):
     result = {
         'avg_eval_delta_energy': 0.,
         'avg_eval_final_energy': 0.,
@@ -63,11 +63,12 @@ def run_policy_eval_and_explore(actor, env, max_timestamps, eval_episodes=10, n_
     }
     for _ in range(eval_episodes):
         state = env.reset()
-        fixed_positions = state['_positions'][0].double().cpu().detach().numpy()
+        fixed_atoms = env.atoms.copy()
+        #fixed_positions = state['_positions'][0].double().cpu().detach().numpy()
         actor.eval()
-        eval_delta_energy, eval_final_energy, eval_final_rl_energy = run_policy(env, actor, state, fixed_positions, max_timestamps=max_timestamps)
+        eval_delta_energy, eval_final_energy, eval_final_rl_energy = run_policy(env, actor, state, fixed_atoms, max_timestamps=max_timestamps)
         actor.train()
-        explore_results = np.array([run_policy(env, actor, state, fixed_positions, max_timestamps=max_timestamps) for _ in range(n_explore_runs)])
+        explore_results = np.array([run_policy(env, actor, state, fixed_atoms, max_timestamps=max_timestamps) for _ in range(n_explore_runs)])
         explore_delta_energy, explore_final_energy, explore_final_rl_energy = explore_results.mean(axis=0)
         
         result['avg_eval_delta_energy'] += eval_delta_energy

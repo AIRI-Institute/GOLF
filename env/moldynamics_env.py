@@ -9,6 +9,7 @@ from sqlite3 import DatabaseError
 from schnetpack.data.atoms import AtomsConverter
 
 
+# For backoff exceptions
 def on_giveup(details):
     print("Giving Up after {} tries. Time elapsed: {:.3f} :(".format(details['tries'], details['elapsed']))
 
@@ -31,7 +32,6 @@ class MolecularDynamics(gym.Env):
         self.converter = converter
         self.TL = timelimit
         self.done_on_timelimit = done_on_timelimit
-        self.num_initial_conformations = num_initial_conformations
         self.initial_conformation_index = initial_conformation_index
         self.inject_noise = inject_noise
         self.noise_std = noise_std
@@ -47,22 +47,7 @@ class MolecularDynamics(gym.Env):
         self.initial_molecule_conformations = []
 
         # Store random subset of molecules DB
-        self._get_initial_molecule_conformations()
-        self.example_atoms = self.initial_molecule_conformations[0]
-        # Initialize observaition space
-        self.atoms_count = self.example_atoms.get_global_number_of_atoms()
-        self.observation_space = Dict(
-            {
-                '_atomic_numbers': Box(low=0.0, high=9.0, shape=self.example_atoms.get_atomic_numbers().shape, dtype=np.int64),
-                '_positions': Box(low=-np.inf, high=np.inf, shape=self.example_atoms.get_positions().shape, dtype=np.float32),
-                '_neighbors': Box(low=0.0, high=self.atoms_count - 1, shape=(self.atoms_count, self.atoms_count - 1), dtype=np.int64),
-                '_cell': Box(low=-np.inf, high=np.inf, shape=(3, 3), dtype=np.float32),
-                '_cell_offset': Box(low=-np.inf, high=np.inf, shape=(self.atoms_count, self.atoms_count - 1, 3), dtype=np.float32),
-                '_atom_mask': Box(low=0.0, high=1.0, shape=(self.atoms_count, ), dtype=np.float32),
-                '_neighbor_mask': Box(low=0.0, high=1.0, shape=(self.atoms_count, self.atoms_count - 1), dtype=np.float32)
-            }
-        )
-        self.action_space = Box(low=-1.0, high=1.0, shape=(self.atoms_count, 3), dtype=np.float32)
+        self._get_initial_molecule_conformations(num_initial_conformations)
 
     def step(self, actions):
         self.atoms.set_positions(self.atoms.get_positions() + actions)
@@ -103,18 +88,13 @@ class MolecularDynamics(gym.Env):
     def _get_env_step(self):
         return self.env_steps
 
-    def _get_initial_molecule_conformations(self):
-        random_sample_size = min(self.db_len, self.num_initial_conformations)
+    def _get_initial_molecule_conformations(self, num_initial_conformations):
+        if num_initial_conformations == -1:
+            random_sample_size = self.db_len
+        else:
+            random_sample_size = min(self.db_len, num_initial_conformations)
         self.initial_molecule_conformations = []
         indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
-        # For a debugging experiment with a single initial conformation
-        if self.num_initial_conformations == 1:
-            if self.initial_conformation_index is not None:
-                indices[0] = np.array([self.initial_conformation_index])
-            else:
-                # Randomly chosen conformation
-                indices[0] = np.array([323573])
-
         for idx in indices:
             atoms = self._get_molecule(int(idx)).toatoms()
             if self.remove_hydrogen:

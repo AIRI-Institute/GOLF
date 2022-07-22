@@ -1,3 +1,4 @@
+from turtle import position
 import gym
 import torch
 
@@ -8,9 +9,21 @@ from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates
 
 
 class RdkitMinimizationReward(gym.Wrapper):
+    molecules_xyz = {
+        'C7O3C2OH8': 'env/molecules_xyz/aspirin.xyz',
+        'N2C12H10': 'env/molecules_xyz/azobenzene.xyz',
+        'C6H6': 'env/molecules_xyz/benzene.xyz',
+        'C2OH6': 'env/molecules_xyz/ethanol.xyz',
+        'C3O2H4': 'env/molecules_xyz/malonaldehyde.xyz',
+        'C10H8': 'env/molecules_xyz/naphthalene.xyz',
+        'C2ONC4OC2H9': 'env/molecules_xyz/paracetamol.xyz',
+        'C3OC4O2H6': 'env/molecules_xyz/salicylic_acid.xyz',
+        'C7H8': 'env/molecules_xyz/toluene.xyz',
+        'C2NCNCO2H4': 'env/molecules_xyz/uracil.xyz'
+    }
+
     def __init__(self,
                  env,
-                 molecule_path,
                  minimize_on_every_step=False,
                  remove_hydrogen=False,
                  M=10):
@@ -19,17 +32,20 @@ class RdkitMinimizationReward(gym.Wrapper):
         self.minimize_on_every_step = minimize_on_every_step
         self.remove_hydrogen = remove_hydrogen
         self.initial_energy = 0
-        molecule = parse_molecule(molecule_path)
-
-        # Check if the provided molecule is valid
-        try:
-            get_rdkit_energy(molecule)
-        except AttributeError:
-            raise ValueError("Provided molucule was not parsed correctly")
-        self.molecule = molecule
-        if self.remove_hydrogen:
-            # Remove hydrogen atoms from the molecule
-            self.molecule = rdmolops.RemoveHs(molecule)
+        # Parse molecules
+        self.molecules = {}
+        for formula, path in RdkitMinimizationReward.molecules_xyz.items():
+            molecule = parse_molecule(path)
+            # Check if the provided molecule is valid
+            try:
+                get_rdkit_energy(molecule)
+            except AttributeError:
+                raise ValueError("Provided molucule was not parsed correctly")
+            if self.remove_hydrogen:
+                # Remove hydrogen atoms from the molecule
+                self.molecule = rdmolops.RemoveHs(molecule)
+            self.molecules[formula] = molecule
+        self.molecule = None
 
         # Check parent class to name the reward correctly
         if isinstance(env, MolecularDynamics):
@@ -73,15 +89,18 @@ class RdkitMinimizationReward(gym.Wrapper):
     
     def reset(self):
         obs = super().reset()
+        self.molecule = self.molecules[str(self.env.atoms.symbols)]
         set_coordinates(self.molecule, self.env.atoms.get_positions())
         # Minimize the initial state of the molecule
         _, self.initial_energy = self.minimize()
         return obs
 
-    def set_initial_positions(self, positions):
+    def set_initial_positions(self, atoms):
         self.env.reset()
-        self.env.atoms.set_positions(positions)
-        set_coordinates(self.molecule, positions)
+        self.env.atoms = atoms.copy()
+
+        self.molecule = self.molecules[str(self.env.atoms.symbols)]
+        set_coordinates(self.molecule, self.env.atoms.get_positions())
         # Minimize the initial state of the molecule
         _, self.initial_energy = self.minimize()
 
@@ -105,65 +124,6 @@ class RdkitMinimizationReward(gym.Wrapper):
         return not_converged, energy
 
 
-# Simplified version of reward for debugging
-class RdkitEnergyReward(gym.Wrapper):
-    def __init__(self,
-                 env,
-                 molecule_path,
-                 **kwrags):
-        # Initialize molecule's sructure
-        self.initial_energy = 0
-        molecule = parse_molecule(molecule_path)
-
-        # Check if the provided molecule is valid
-        try:
-            get_rdkit_energy(molecule)
-        except AttributeError:
-            raise ValueError("Provided molucule was not parsed correctly")
-        self.molecule = molecule
-
-        # Check parent class to name the reward correctly
-        if isinstance(env, MolecularDynamics):
-            self.reward_name = 'env_reward'
-        else:
-            self.reward_name = 'unknown_reward'
-        super().__init__(env)
-    
-    def step(self, action):
-        obs, reward, done, info = super().step(action)
-        info = dict(info, **{self.reward_name: reward})
-        
-        # Update current coordinates
-        set_coordinates(self.molecule, self.env.atoms.get_positions())
-        final_energy = get_rdkit_energy(self.molecule)
-        reward = self.initial_energy - final_energy
-        self.initial_energy = final_energy
-
-        # If TL is reached log final energy
-        if info['env_done']:
-            info['final_energy'] = final_energy
-            # For compatability with the other wrapper
-            info['final_rl_energy'] = final_energy
-        
-        return obs, reward, done, info
-    
-    def reset(self):
-        obs = super().reset()
-        set_coordinates(self.molecule, self.env.atoms.get_positions())
-        self.initial_energy = get_rdkit_energy(self.molecule)
-        return obs
-
-    def set_initial_positions(self, positions):
-        self.env.reset()
-        self.env.atoms.set_positions(positions)
-        set_coordinates(self.molecule, positions)
-        # Minimize the initial state of the molecule
-        self.initial_energy = get_rdkit_energy(self.molecule)
-
-
-def rdkit_reward_wrapper(mode="minimize", **kwargs):
-    if mode == "minimize":
-        env = RdkitMinimizationReward(**kwargs)
-    elif mode == "energy":
-        env = RdkitEnergyReward(**kwargs)
+def rdkit_reward_wrapper(**kwargs):
+    env = RdkitMinimizationReward(**kwargs)
     return env

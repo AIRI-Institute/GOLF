@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 
+from schnetpack.data.loader import _collate_aseatoms
 
 class ReplayBuffer(object):
     numpy_to_torch_dtype_dict = {
@@ -9,23 +10,17 @@ class ReplayBuffer(object):
         np.float32    : torch.float32,
     }
 
-    def __init__(self, state_dict_names, state_dict_dtypes, state_dims, action_dim, device, max_size=int(1e6)):
+    def __init__(self, device, max_size=int(1e6)):
         self.device = device
         self.max_size = max_size
         self.ptr = 0
         self.size = 0
-        self.state_dict_names = state_dict_names
 
-        # State dict names sorted in alphabetic order
-        state_names = ['state' + name for name in state_dict_names]
-        next_state_names = ['next_state' + name for name in state_dict_names]
-
-        self.transition_names = (*state_names, 'action', *next_state_names, 'reward', 'not_done')
-        sizes = (*state_dims, action_dim, *state_dims, [1], [1])
-        torch_state_dict_dtypes = [self.numpy_to_torch_dtype_dict[t.type] for t in state_dict_dtypes]
-        dtypes = (*torch_state_dict_dtypes, torch.float32, *torch_state_dict_dtypes, torch.float32, torch.float32)
-        for name, size, dtype in zip(self.transition_names, sizes, dtypes):
-            setattr(self, name, torch.empty((max_size, *size), dtype=dtype))
+        self.states = [None] * self.max_size
+        self.next_states = [None] * self.max_size
+        self.actions = [None] * self.max_size
+        self.reward = torch.empty((max_size, 1), dtype=torch.float32)
+        self.not_done = torch.empty((max_size, 1), dtype=torch.float32)
 
     def add(self, state, action, next_state, reward, done):
         # Convert action to torch tensor for Critic
@@ -33,18 +28,30 @@ class ReplayBuffer(object):
                                torch.FloatTensor([reward]), \
                                torch.FloatTensor([done])
 
-        sorted_state_values = [state[key].squeeze() for key in sorted(state) if key != "representation"]
-        sorted_next_state_values = [next_state[key].squeeze() for key in sorted(next_state) if key != "representation"]
-        values = (*sorted_state_values, action, *sorted_next_state_values, reward, 1. - done)
-        for name, value in zip(self.transition_names, values):
-            getattr(self, name)[self.ptr] = value.detach().cpu()
+        self.states[self.ptr] = {k:v.squeeze(0).detach().cpu() for k, v in state.items() if k != "representation"}
+        self.next_states[self.ptr] = {k:v.squeeze(0).detach().cpu() for k, v in next_state.items() if k != "representation"}
+        self.actions[self.ptr] = action
+        self.reward[self.ptr] = reward
+        self.not_done[self.ptr] = 1. - done
 
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
 
     def sample(self, batch_size):
         ind = np.random.choice(self.size, batch_size, replace=False)
-        state_dict = {name: getattr(self, 'state' + name)[ind].to(self.device) for name in self.state_dict_names}
-        next_state_dict = {name: getattr(self, 'next_state' + name)[ind].to(self.device) for name in self.state_dict_names}
-        action, reward, not_done = [getattr(self, name)[ind].to(self.device) for name in ('action', 'reward', 'not_done')]
-        return (state_dict, action, next_state_dict, reward, not_done)
+        states = [self.states[i] for i in ind]
+        state_batch = {k:v.to(self.device) for k, v in _collate_aseatoms(states).items()}
+        next_states = [self.next_states[i] for i in ind]
+        next_state_batch = {k:v.to(self.device) for k, v in _collate_aseatoms(next_states).items()}
+        actions = [self.actions[i] for i in ind]
+        action_batch = _collate_actions(actions).to(self.device)
+        reward, not_done = [getattr(self, name)[ind].to(self.device) for name in ('reward', 'not_done')]
+        return (state_batch, action_batch, next_state_batch, reward, not_done)
+
+
+def _collate_actions(actions):
+    max_size = max([action.shape[0] for action in actions])
+    actions_batch = torch.zeros(len(actions), max_size, actions[0].shape[1])
+    for i, action in enumerate(actions):
+        actions_batch[i, slice(0, action.shape[0])] = action
+    return actions_batch

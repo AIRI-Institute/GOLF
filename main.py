@@ -119,22 +119,21 @@ def main(args, experiment_folder):
     # Initialize reward wrapper for training
     reward_wrapper_kwargs = {
         'env': env,
-        'molecule_path': args.molecule_path,
         'minimize_on_every_step': args.minimize_on_every_step,
         'remove_hydrogen': args.remove_hydrogen,
         'M': args.M
     }
-    env = rdkit_reward_wrapper(args.mode, **reward_wrapper_kwargs)
+    env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
     
     # Initialize reward wrappers for evaluation
     reward_wrapper_kwargs['env'] = eval_env
-    eval_env = rdkit_reward_wrapper(args.mode, **reward_wrapper_kwargs)
+    eval_env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
     reward_wrapper_kwargs['env'] = eval_env_long
     reward_wrapper_kwargs.update({
         'env': eval_env_long,
         'minimize_on_every_step': True
     })
-    eval_env_long = rdkit_reward_wrapper(args.mode, **reward_wrapper_kwargs)
+    eval_env_long = rdkit_reward_wrapper(**reward_wrapper_kwargs)
 
     # Initialize action_scale scheduler
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
@@ -143,11 +142,7 @@ def main(args, experiment_folder):
                                                   mode=args.action_scale_mode)
 
     # Initialize replay buffer
-    state_dict_names, \
-    state_dims, \
-    state_dict_dtypes = (zip(*[(k, box.shape, box.dtype) for k, box in env.observation_space.items()]))
-    action_dim = env.action_space.shape
-    replay_buffer = ReplayBuffer(state_dict_names, state_dict_dtypes, state_dims, action_dim, DEVICE, args.replay_buffer_size)
+    replay_buffer = ReplayBuffer(DEVICE, args.replay_buffer_size)
 
     # Inititalize actor and critic
     schnet_args = {
@@ -161,7 +156,8 @@ def main(args, experiment_folder):
     critic_target = copy.deepcopy(critic)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
-    target_entropy = (-np.prod(env.action_space.shape) * (1 - np.log([args.target_entropy_action_scale]))).item()
+
+    target_entropy = (-27 * (1 - np.log([args.target_entropy_action_scale]))).item()
 
     trainer = Trainer(actor=actor,
                       critic=critic,
@@ -273,8 +269,6 @@ if __name__ == "__main__":
     parser.add_argument("--calculate_mean_std_energy", type=bool, default=False, help="Calculate mean, std of energy of database")
     parser.add_argument("--remove_hydrogen", type=bool, default=False, help="Whether to remove hydrogen atoms from the molecule")
     # Reward args
-    parser.add_argument("--mode", default="minimize", choices=["energy", "minimize"], help="Reward wrapper mode")
-    parser.add_argument("--molecule_path", default="env/molecules_xyz/malonaldehyde.xyz", type=str, help="Path to example .xyz file")
     parser.add_argument("--minimize_on_every_step", type=bool, default=False, help="Whether to minimize conformation with rdkit on every step")
     parser.add_argument("--M", type=int, default=10, help="Number of steps to run rdkit minimization for")
     # Action scale args. Action scale bounds actions to [-action_scale, action_scale]
