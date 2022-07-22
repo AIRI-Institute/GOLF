@@ -81,7 +81,8 @@ class Logger:
 
 def main(args, experiment_folder):
     # Tmp set env name
-    args.env = "Malonaldehyde"
+    args.env = args.db_path.split('/')[-1].split('.')[0]
+    print(args.env)
     # Initialize logger
     logger = Logger(experiment_folder, args)
     
