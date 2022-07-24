@@ -25,6 +25,7 @@ class RdkitMinimizationReward(gym.Wrapper):
                  env,
                  minimize_on_every_step=False,
                  remove_hydrogen=False,
+                 molecules_xyz_prefix='',
                  M=10):
         # Initialize molecule's sructure
         self.M = M
@@ -35,7 +36,7 @@ class RdkitMinimizationReward(gym.Wrapper):
         self.molecules = {}
         for formula, path in RdkitMinimizationReward.molecules_xyz.items():
 
-            molecule = parse_molecule(os.path.join(os.getcwd(), path))
+            molecule = parse_molecule(os.path.join(molecules_xyz_prefix, path))
             # Check if the provided molecule is valid
             try:
                 get_rdkit_energy(molecule)

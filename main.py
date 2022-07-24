@@ -122,6 +122,7 @@ def main(args, experiment_folder):
         'env': env,
         'minimize_on_every_step': args.minimize_on_every_step,
         'remove_hydrogen': args.remove_hydrogen,
+        'molecules_xyz_prefix': args.molecules_xyz_prefix,
         'M': args.M
     }
     env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
@@ -272,6 +273,7 @@ if __name__ == "__main__":
     # Reward args
     parser.add_argument("--minimize_on_every_step", type=bool, default=False, help="Whether to minimize conformation with rdkit on every step")
     parser.add_argument("--M", type=int, default=10, help="Number of steps to run rdkit minimization for")
+    parser.add_argument("--molecules_xyz_prefix", type=str, default="", help="Path to env/ folder. For cluster compatability")
     # Action scale args. Action scale bounds actions to [-action_scale, action_scale]
     parser.add_argument("--action_scale_init", default=0.01, type=float, help="Initial value of action_scale")
     parser.add_argument("--action_scale_end", default=0.05, type=float, help="Final value of action_scale")
