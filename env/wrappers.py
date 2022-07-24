@@ -1,6 +1,5 @@
-from turtle import position
 import gym
-import torch
+import os
 
 from rdkit.Chem import AllChem, rdmolops
 
@@ -35,7 +34,8 @@ class RdkitMinimizationReward(gym.Wrapper):
         # Parse molecules
         self.molecules = {}
         for formula, path in RdkitMinimizationReward.molecules_xyz.items():
-            molecule = parse_molecule(path)
+
+            molecule = parse_molecule(os.path.join(os.getcwd(), path))
             # Check if the provided molecule is valid
             try:
                 get_rdkit_energy(molecule)
