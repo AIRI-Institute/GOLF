@@ -44,14 +44,29 @@ class ReplayBuffer(object):
         next_states = [self.next_states[i] for i in ind]
         next_state_batch = {k:v.to(self.device) for k, v in _collate_aseatoms(next_states).items()}
         actions = [self.actions[i] for i in ind]
-        action_batch = _collate_actions(actions).to(self.device)
+        # State batch must include atomic counts to calculate target entropy
+        action_batch, atoms_count, mask = [tensor.to(self.device) for tensor in _collate_actions(actions)]
+        state_batch.update({
+            '_atoms_count': atoms_count,
+            '_actions_mask': mask
+        })
+        next_state_batch.update({
+            '_atoms_count': atoms_count,
+            '_actions_mask': mask
+        })
         reward, not_done = [getattr(self, name)[ind].to(self.device) for name in ('reward', 'not_done')]
         return (state_batch, action_batch, next_state_batch, reward, not_done)
 
 
 def _collate_actions(actions):
+    atoms_count = []
     max_size = max([action.shape[0] for action in actions])
     actions_batch = torch.zeros(len(actions), max_size, actions[0].shape[1])
     for i, action in enumerate(actions):
+        atoms_count.append(action.shape[0])
         actions_batch[i, slice(0, action.shape[0])] = action
-    return actions_batch
+    # Create action mask for critic
+    atoms_count = torch.FloatTensor(atoms_count)
+    mask = torch.arange(max_size).expand(len(atoms_count), max_size) < atoms_count.unsqueeze(1)
+    mask = mask.unsqueeze(-1).repeat(1, 1, 3)
+    return actions_batch, atoms_count, mask

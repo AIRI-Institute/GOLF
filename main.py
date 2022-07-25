@@ -158,9 +158,9 @@ def main(args, experiment_folder):
     critic_target = copy.deepcopy(critic)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
-
-    target_entropy = (-27 * (1 - np.log([args.target_entropy_action_scale]))).item()
-
+    # Target entropy must differ for molecules of different sizes.
+    # To achieve this we fix per-atom entropy instead of the entropy of the molecule.
+    per_atom_target_entropy = 3 * (-1 + np.log([args.target_entropy_action_scale])).item()
     trainer = Trainer(actor=actor,
                       critic=critic,
                       critic_target=critic_target,
@@ -171,7 +171,7 @@ def main(args, experiment_folder):
                       actor_lr=args.actor_lr,
                       critic_lr= args.critic_lr,
                       alpha_lr=args.alpha_lr,
-                      target_entropy=target_entropy)
+                      per_atom_target_entropy=per_atom_target_entropy)
 
     state, done = env.reset(), False
     episode_return = 0

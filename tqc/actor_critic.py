@@ -57,7 +57,7 @@ class Actor(nn.Module):
             # Clamp and exp log_std
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
-            self.actions_std = actions_std
+            # self.actions_std = actions_std
             # Sample actions and calculate log prob
             self.scaled_normal = Normal(actions_mean * action_scale, actions_std * action_scale)
             actions = self.scaled_normal.rsample()
@@ -66,9 +66,9 @@ class Actor(nn.Module):
         else:
             actions = action_scale * actions_mean
             log_prob = None
-        
         if return_relative_shifts:
             return actions, log_prob, rel_shifts_mean, P
+        
         return actions, log_prob
 
     def select_action(self, state_dict):
