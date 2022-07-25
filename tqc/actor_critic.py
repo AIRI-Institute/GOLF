@@ -38,6 +38,10 @@ class Actor(nn.Module):
     
     def forward(self, state_dict, return_relative_shifts=False):
         action_scale = self.action_scale_scheduler.get_action_scale()
+        if '_actions_mask' not in state_dict:
+            actions_mask = torch.ones_like(state_dict['_positions'])
+        else:
+            actions_mask = state_dict['_actions_mask']
         kv = self.model(state_dict)['kv']
         k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 3], dim=-1)
         # Calculate mean and std of shifts relative to other atoms
@@ -57,18 +61,19 @@ class Actor(nn.Module):
             # Clamp and exp log_std
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
-            # self.actions_std = actions_std
             # Sample actions and calculate log prob
             self.scaled_normal = Normal(actions_mean * action_scale, actions_std * action_scale)
             actions = self.scaled_normal.rsample()
             log_prob = self.scaled_normal.log_prob(actions)
+            log_prob *= actions_mask
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
         else:
             actions = action_scale * actions_mean
             log_prob = None
+        actions *= actions_mask
+
         if return_relative_shifts:
             return actions, log_prob, rel_shifts_mean, P
-        
         return actions, log_prob
 
     def select_action(self, state_dict):

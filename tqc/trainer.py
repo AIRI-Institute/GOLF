@@ -54,7 +54,6 @@ class Trainer(object):
 		with torch.no_grad():
 			# get policy action
 			new_next_action, next_log_pi = self.actor(next_state)
-			new_next_action *= next_state['_actions_mask']
 			# compute and cut quantiles at the next state
 			next_z = self.critic_target(next_state, new_next_action)
 			sorted_z, _ = torch.sort(next_z.reshape(batch_size, -1))
@@ -75,8 +74,6 @@ class Trainer(object):
 
 		# --- Policy loss ---
 		new_action, log_pi = self.actor(state)
-		# Mask actions
-		new_action *= state['_actions_mask']
 		metrics['actor_entropy'] = self.actor.scaled_normal.entropy().sum(dim=(1, 2)).mean().item()
 		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
 		metrics['actor_loss'] = actor_loss.item()
