@@ -74,7 +74,7 @@ class Trainer(object):
 
 		# --- Policy loss ---
 		new_action, log_pi = self.actor(state)
-		metrics['actor_entropy'] = self.actor.scaled_normal.entropy().sum(dim=(1, 2)).mean().item()
+		metrics['actor_entropy'] = - log_pi.mean().item()
 		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
 		metrics['actor_loss'] = actor_loss.item()
 
