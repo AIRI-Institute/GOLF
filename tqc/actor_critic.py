@@ -1,10 +1,7 @@
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import schnetpack as spk
 
-from math import floor
 from torch.distributions import Distribution, Normal
 from schnetpack.nn.blocks import MLP
 
@@ -38,11 +35,13 @@ class Actor(nn.Module):
     
     def forward(self, state_dict, return_relative_shifts=False):
         action_scale = self.action_scale_scheduler.get_action_scale()
-        if '_actions_mask' not in state_dict:
-            actions_mask = torch.ones_like(state_dict['_positions'])
+        if '_atoms_mask' not in state_dict:
+            atoms_mask = torch.ones(state_dict['_positions'].shape[:2]).to(DEVICE)
         else:
-            actions_mask = state_dict['_actions_mask']
+            atoms_mask = state_dict['_atoms_mask']
         kv = self.model(state_dict)['kv']
+        # Mask kv
+        kv *= atoms_mask[..., None]
         k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 3], dim=-1)
         # Calculate mean and std of shifts relative to other atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
@@ -65,12 +64,12 @@ class Actor(nn.Module):
             self.scaled_normal = Normal(actions_mean * action_scale, actions_std * action_scale)
             actions = self.scaled_normal.rsample()
             log_prob = self.scaled_normal.log_prob(actions)
-            log_prob *= actions_mask
+            log_prob *= atoms_mask[..., None]
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
         else:
             actions = action_scale * actions_mean
             log_prob = None
-        actions *= actions_mask
+        actions *= atoms_mask[..., None]
 
         if return_relative_shifts:
             return actions, log_prob, rel_shifts_mean, P
