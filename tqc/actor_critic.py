@@ -2,11 +2,10 @@ import torch
 import torch.nn as nn
 import schnetpack as spk
 
-from torch.distributions import Distribution, Normal
+from torch.distributions import Normal
 from schnetpack.nn.blocks import MLP
 
 from tqc import DEVICE
-#from tqc.schnet import SchNet, AtomisticModel
 
 
 LOG_STD_MIN_MAX = (-20, 2)
@@ -126,22 +125,22 @@ class Critic(nn.Module):
         return quantiles
 
 
-class ScaledNormal(Distribution):
+class NormalWithSave(Normal):
     arg_constraints = {}
 
-    def __init__(self, normal_mean, normal_std, scale=1.0):
-        super().__init__()
+    def __init__(self, normal_mean, normal_std):
+        super().__init__(normal_mean, normal_std)
         self.normal_mean = normal_mean
         self.normal_std = normal_std
-        self.scale = torch.FloatTensor([scale]).to(DEVICE)
         self.standard_normal = Normal(torch.zeros_like(self.normal_mean, device=DEVICE),
                                       torch.ones_like(self.normal_std, device=DEVICE))
         self.normal = Normal(normal_mean, normal_std)
-    
-    def log_prob(self, value):
-        log_det = torch.log(self.scale)
-        return self.normal.log_prob(value) - log_det
 
-    def rsample(self):
-        value = self.normal_mean + self.normal_std * self.standard_normal.sample()
-        return self.scale * value, value
+    def rsample(self, file):
+        sn_noise = torch.load(file)
+        padding = torch.ones(sn_noise.shape[0], self.normal_mean.shape[1] - sn_noise.shape[1], sn_noise.shape[2]).to(DEVICE)
+        sn_noise = torch.cat((sn_noise, padding), dim=1)
+        #sn_noise = self.standard_normal.sample()
+        #torch.save(sn_noise, '/Users/artem/Desktop/work/MARL/MolDynamics/sn_noise.pt')
+        value = self.normal_mean + self.normal_std * sn_noise
+        return value

@@ -3,13 +3,13 @@ import copy
 import datetime
 import json
 import numpy as np
-import torch
 import os
 import pickle
 import random
+import torch
+
 from pathlib import Path
 from collections import deque
-
 
 from env.moldynamics_env import env_fn
 from env.wrappers import rdkit_reward_wrapper
@@ -88,16 +88,11 @@ def main(args, experiment_folder):
     
     # Initialize env
     # For a debugging experiment with single initial_conformation
-    if args.sample_initial_conformation:
-        init_conf_index = np.random.randint(950000)
-    else:
-        init_conf_index = None
     env_kwargs = {
         'db_path': args.db_path,
         'timelimit': args.timelimit,
         'done_on_timelimit': args.done_on_timelimit,
         'num_initial_conformations': args.num_initial_conformations,
-        'initial_conformation_index': init_conf_index,
         'inject_noise': args.inject_noise,
         'noise_std': args.noise_std,
         'calculate_mean_std': args.calculate_mean_std_energy,
@@ -111,11 +106,6 @@ def main(args, experiment_folder):
     # For evaluation on multiple timestamps
     env_kwargs['timelimit'] = max(TIMELIMITS)
     eval_env_long = env_fn(DEVICE, **env_kwargs)
-    
-    # Seed env
-    env.seed(args.seed)
-    eval_env.seed(args.seed)
-    eval_env_long.seed(args.seed)
 
     # Initialize reward wrapper for training
     reward_wrapper_kwargs = {
@@ -318,6 +308,10 @@ if __name__ == "__main__":
     log_dir = Path(args.log_dir)
     if args.seed is None:
         args.seed = random.randint(0, 1000000)
+     # Seed everything
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
     #args.git_sha = get_current_gitsha()
 
     start_time = datetime.datetime.strftime(datetime.datetime.now(), '%Y_%m_%d_%H_%M_%S')

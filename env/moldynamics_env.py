@@ -4,7 +4,6 @@ import numpy as np
 
 from ase.db import connect
 
-from gym.spaces import Box, Dict
 from sqlite3 import DatabaseError
 from schnetpack.data.atoms import AtomsConverter
 
@@ -23,7 +22,6 @@ class MolecularDynamics(gym.Env):
                  timelimit=10,
                  done_on_timelimit=False,
                  num_initial_conformations=50000,
-                 initial_conformation_index=None,
                  inject_noise=False,
                  noise_std=0.1,
                  calculate_mean_std=False,
@@ -32,7 +30,6 @@ class MolecularDynamics(gym.Env):
         self.converter = converter
         self.TL = timelimit
         self.done_on_timelimit = done_on_timelimit
-        self.initial_conformation_index = initial_conformation_index
         self.inject_noise = inject_noise
         self.noise_std = noise_std
         self.remove_hydrogen = remove_hydrogen
