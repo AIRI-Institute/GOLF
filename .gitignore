@@ -25,3 +25,6 @@ models
 
 # Ignore all trajectories
 *.traj
+
+# Ignore saved torch tensors
+*.pt
