@@ -38,67 +38,77 @@ class ActionScaleScheduler():
     def get_action_scale(self):
         return self.current_action_scale
 
-def run_policy(env, actor, state, fixed_atoms, max_timestamps):
+def run_policy(env, actor, fixed_atoms, max_timestamps):
     done = False
     delta_energy = 0
     t = 0
-    env.set_initial_positions(fixed_atoms)
-    state['_positions'] = torch.FloatTensor(fixed_atoms.get_positions()).unsqueeze(0).to(DEVICE)
+    state = env.set_initial_positions(fixed_atoms)
     while not done and t < max_timestamps:
         with torch.no_grad():
             action = actor.select_action(state)
         state, reward, done, info = env.step(action)
         delta_energy += reward
         t += 1
+    
     return delta_energy, info['final_energy'], info['final_rl_energy']
 
-def run_policy_eval_and_explore(actor, env, max_timestamps, eval_episodes=10, n_explore_runs=5):
+def run_minimization_until_convergence(env, fixed_atoms, M_init=100):
+    M = M_init
+    env.set_initial_positions(fixed_atoms, M=0)
+    initial_energy = env.initial_energy
+    not_converged, final_energy = env.minimize(M=M)
+    while not_converged:
+        M *= 2
+        not_converged, final_energy = env.minimize(M=M)
+        if M > 2000:
+            print("Minimization did not converge!")
+            return final_energy
+    return initial_energy, final_energy
+
+def eval_policy(actor, env, max_timestamps, eval_episodes=10, n_explore_runs=5):
     result = {
-        'avg_eval_delta_energy': 0.,
-        'avg_eval_final_energy': 0.,
-        'avg_eval_final_rl_energy': 0.,
-        'avg_explore_delta_energy': 0.,
-        'avg_explore_final_energy': 0.,
-        'avg_explore_final_rl_energy': 0.
+        'eval/delta_energy': 0.,
+        'eval/final_energy': 0.,
+        'eval/final_rl_energy': 0.,
+        'eval/pct_of_minimized_energy': 0,
+        'explore/delta_energy': 0.,
+        'explore/final_energy': 0.,
+        'explore/final_rl_energy': 0.,
     }
+    # For evaluation at multiple timesteps
+    result.update({f'eval/delta_energy_at_{timelimit}' : 0 for timelimit in TIMELIMITS})
+    result.update({f'eval/pct_of_minimized_energy_at_{timelimit}' : 0 for timelimit in TIMELIMITS})
     for _ in range(eval_episodes):
-        state = env.reset()
+        env.reset()
         fixed_atoms = env.atoms.copy()
-        #fixed_positions = state['_positions'][0].double().cpu().detach().numpy()
+        # Compute minimal energy of the molecule
+        initial_energy, final_energy = run_minimization_until_convergence(env, fixed_atoms)
+        # Evaluate policy in eval mode
         actor.eval()
-        eval_delta_energy, eval_final_energy, eval_final_rl_energy = run_policy(env, actor, state, fixed_atoms, max_timestamps=max_timestamps)
+        eval_delta_energy, eval_final_energy, eval_final_rl_energy = run_policy(env, actor, fixed_atoms, max_timestamps=max_timestamps)
+        result['eval/delta_energy'] += eval_delta_energy
+        result['eval/final_energy'] += eval_final_energy
+        result['eval/final_rl_energy'] += eval_final_rl_energy
+        result['eval/pct_of_minimized_energy'] += (initial_energy - eval_final_energy) / (initial_energy - final_energy)
+        # Evaluate policy at multiple timelimits
+        for timelimit in TIMELIMITS:
+            # Set env's TL to current timelimit
+            env.env.TL = timelimit
+            delta_energy_at, final_energy_at, _ = run_policy(env, actor, fixed_atoms, max_timestamps=timelimit)
+            result[f'eval/delta_energy_at_{timelimit}'] += delta_energy_at
+            result[f'eval/pct_of_minimized_energy_at_{timelimit}'] += (initial_energy - final_energy_at)  / (initial_energy - final_energy)
+        # Set env's TL to original value
+        env.env.TL = max_timestamps
+        # Evaluate policy in explore mode
         actor.train()
-        explore_results = np.array([run_policy(env, actor, state, fixed_atoms, max_timestamps=max_timestamps) for _ in range(n_explore_runs)])
+        explore_results = np.array([run_policy(env, actor, fixed_atoms, max_timestamps=max_timestamps) for _ in range(n_explore_runs)])
         explore_delta_energy, explore_final_energy, explore_final_rl_energy = explore_results.mean(axis=0)
+        result['explore/delta_energy'] += explore_delta_energy
+        result['explore/final_energy'] += explore_final_energy
+        result['explore/final_rl_energy'] += explore_final_rl_energy
         
-        result['avg_eval_delta_energy'] += eval_delta_energy
-        result['avg_eval_final_energy'] += eval_final_energy
-        result['avg_eval_final_rl_energy'] += eval_final_rl_energy
-        result['avg_explore_delta_energy'] += explore_delta_energy
-        result['avg_explore_final_energy'] += explore_final_energy
-        result['avg_explore_final_rl_energy'] += explore_final_rl_energy
-    
     result = {k: v / eval_episodes for k, v in result.items()}
     return result
-
-def eval_policy_multiple_timelimits(actor, eval_env, M, eval_episodes=10):
-    actor.eval()
-    avg_delta_energy_timelimits = {f'avg_reward_at_{timelimit}' : 0 for timelimit in TIMELIMITS}
-    for _ in range(eval_episodes):
-        state, done = eval_env.reset(), False
-        delta_energy = 0
-        t = 0
-        while not done and t < max(TIMELIMITS):
-            with torch.no_grad():
-                action = actor.select_action(state)
-            state, reward, done, _ = eval_env.step(action)
-            delta_energy += reward
-            if (t + 1 in TIMELIMITS):
-                avg_delta_energy_timelimits[f'avg_reward_at_{t + 1}'] += delta_energy
-            t += 1
-    avg_delta_energy_timelimits = {k: v / eval_episodes for k, v in avg_delta_energy_timelimits.items()}
-    actor.train()
-    return avg_delta_energy_timelimits
 
 def quantile_huber_loss_f(quantiles, samples):
     pairwise_delta = samples[:, None, None, :] - quantiles[:, :, :, None]  # batch x nets x quantiles x samples

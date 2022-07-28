@@ -96,14 +96,17 @@ class RdkitMinimizationReward(gym.Wrapper):
         _, self.initial_energy = self.minimize()
         return obs
 
-    def set_initial_positions(self, atoms):
+    def set_initial_positions(self, atoms, M=None):
         self.env.reset()
         self.env.atoms = atoms.copy()
+        obs = self.env.converter(self.env.atoms)
 
         self.molecule = self.molecules[str(self.env.atoms.symbols)]
         set_coordinates(self.molecule, self.env.atoms.get_positions())
         # Minimize the initial state of the molecule
-        _, self.initial_energy = self.minimize()
+        _, self.initial_energy = self.minimize(M)
+
+        return obs
 
     def minimize(self, M=None, confId=0):
         # Set number of minization iterations

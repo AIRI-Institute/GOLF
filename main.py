@@ -18,7 +18,7 @@ from tqc import DEVICE
 from tqc.trainer import Trainer
 from tqc.actor_critic import Actor, Critic
 from tqc.replay_buffer import ReplayBuffer
-from tqc.utils import run_policy_eval_and_explore, eval_policy_multiple_timelimits
+from tqc.utils import eval_policy
 from tqc.utils import ActionScaleScheduler, TIMELIMITS
 
 
@@ -99,13 +99,9 @@ def main(args, experiment_folder):
         'remove_hydrogen': args.remove_hydrogen,
     }
     env = env_fn(DEVICE, **env_kwargs)
-    
-    # Initialize eval envs
+    # Initialize eval env
     env_kwargs['inject_noise'] = False
     eval_env = env_fn(DEVICE, **env_kwargs)
-    # For evaluation on multiple timestamps
-    env_kwargs['timelimit'] = max(TIMELIMITS)
-    eval_env_long = env_fn(DEVICE, **env_kwargs)
 
     # Initialize reward wrapper for training
     reward_wrapper_kwargs = {
@@ -116,15 +112,9 @@ def main(args, experiment_folder):
         'M': args.M
     }
     env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
-    
     # Initialize reward wrappers for evaluation
     reward_wrapper_kwargs['env'] = eval_env
     eval_env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
-    reward_wrapper_kwargs.update({
-        'env': eval_env_long,
-        'minimize_on_every_step': True
-    })
-    eval_env_long = rdkit_reward_wrapper(**reward_wrapper_kwargs)
 
     # Initialize action_scale scheduler
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
@@ -205,20 +195,12 @@ def main(args, experiment_folder):
 
         if done or (not args.greedy and ep_end):
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
-            if not 'final_energy' in info:
-                info['final_energy'] = 10.0
-            if not 'final_rl_energy' in info:
-                info['final_rl_energy'] = 10.0
-            if not 'not_converged' in info:
-                info['not_converged'] = 1.0
-
             logger.update_evaluation_statistics(episode_timesteps,
                                                 episode_return,
                                                 episode_mean_Q,
                                                 info['final_energy'],
                                                 info['final_rl_energy'],
                                                 info['not_converged'])
-
             episode_return = 0
             episode_mean_Q = 0
             episode_num += 1
@@ -231,9 +213,7 @@ def main(args, experiment_folder):
         # Evaluate episode
         if (t + 1) % args.eval_freq == 0:
             step_metrics['Total_timesteps'] = t + 1
-            step_metrics.update(run_policy_eval_and_explore(actor, eval_env, args.timelimit, args.n_eval_runs))
-            if args.evaluate_multiple_timelimits:
-                step_metrics.update(eval_policy_multiple_timelimits(actor, eval_env_long, args.M, args.n_eval_runs))
+            step_metrics.update(eval_policy(actor, eval_env, args.timelimit, args.n_eval_runs))
             logger.log(step_metrics)
 
         if t in full_checkpoints and args.save_checkpoints:
@@ -282,7 +262,6 @@ if __name__ == "__main__":
     parser.add_argument("--critic_out_embedding_size", default=128, type=int, help="Critic out embedding size")
     # Eval args
     parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate
-    parser.add_argument("--evaluate_multiple_timelimits", default=False, type=bool, help="Evaluate policy at multiple timelimits")
     parser.add_argument("--n_eval_runs", default=10, type=int, help="Number of evaluation episodes")
     # Trainer args
     parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
