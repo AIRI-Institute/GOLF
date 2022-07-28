@@ -65,7 +65,7 @@ def _collate_actions(actions):
     for i, action in enumerate(actions):
         atoms_count.append(action.shape[0])
         actions_batch[i, slice(0, action.shape[0])] = action
-    atoms_count = torch.FloatTensor(atoms_count)
+    atoms_count = torch.LongTensor(atoms_count)
     # Create action mask for critic
     mask = torch.arange(max_size).expand(len(atoms_count), max_size) < atoms_count.unsqueeze(1)
     return actions_batch, atoms_count, mask

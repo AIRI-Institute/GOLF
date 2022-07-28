@@ -120,7 +120,6 @@ def main(args, experiment_folder):
     # Initialize reward wrappers for evaluation
     reward_wrapper_kwargs['env'] = eval_env
     eval_env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
-    reward_wrapper_kwargs['env'] = eval_env_long
     reward_wrapper_kwargs.update({
         'env': eval_env_long,
         'minimize_on_every_step': True
