@@ -151,7 +151,8 @@ def main(args, experiment_folder):
                       critic_lr= args.critic_lr,
                       alpha_lr=args.alpha_lr,
                       per_atom_target_entropy=per_atom_target_entropy,
-                      actor_clip_value=args.actor_clip_value)
+                      actor_clip_value=args.actor_clip_value,
+                      critic_clip_value=args.critic_clip_value)
 
     state, done = env.reset(), False
     episode_return = 0
@@ -270,8 +271,9 @@ if __name__ == "__main__":
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--actor_lr", default=3e-4, type=float, help="Actor learning rate")
-    parser.add_argument("--actor_clip_value", default=10, type=float, help="Clipping value for actor gradients")
+    parser.add_argument("--actor_clip_value", default=None, help="Clipping value for actor gradients")
     parser.add_argument("--critic_lr", default=3e-4, type=float, help="Critic learning rate")
+    parser.add_argument("--critic_clip_value", default=None, help="Clipping value for critic gradients")
     parser.add_argument("--alpha_lr", default=3e-4, type=float, help="Alpha learning rate")
     parser.add_argument("--initial_alpha", default=1.0, type=float, help="Initial value for alpha")
     # Other args

@@ -19,7 +19,8 @@ class Trainer(object):
 		alpha_lr,
 		top_quantiles_to_drop,
 		per_atom_target_entropy,
-		actor_clip_value
+		actor_clip_value=None,
+		critic_clip_value=None
 	):
 		self.actor = actor
 		self.critic = critic
@@ -36,6 +37,7 @@ class Trainer(object):
 		self.top_quantiles_to_drop = top_quantiles_to_drop
 		self.per_atom_target_entropy = per_atom_target_entropy
 		self.actor_clip_value = actor_clip_value
+		self.critic_clip_value = critic_clip_value
 
 		self.quantiles_total = critic.n_quantiles * critic.n_nets
 
@@ -72,6 +74,8 @@ class Trainer(object):
 		self.critic_optimizer.zero_grad()
 		critic_loss.backward()
 		metrics['critic_grad_norm'] = calculate_gradient_norm(self.critic).item()
+		if self.critic_clip_value is not None:
+			torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.critic_clip_value)
 		self.critic_optimizer.step()
 
 		# --- Policy loss ---
@@ -84,7 +88,8 @@ class Trainer(object):
 		self.actor_optimizer.zero_grad()
 		actor_loss.backward()
 		metrics['actor_grad_norm'] = calculate_gradient_norm(self.actor).item()
-		torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_clip_value)
+		if self.actor_clip_value is not None:
+			torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_clip_value)
 		self.actor_optimizer.step()
 
 		# --- Alpha loss ---
