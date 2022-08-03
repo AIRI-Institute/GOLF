@@ -87,7 +87,6 @@ def main(args, experiment_folder):
     logger = Logger(experiment_folder, args)
     
     # Initialize env
-    # For a debugging experiment with single initial_conformation
     env_kwargs = {
         'db_path': args.db_path,
         'timelimit': args.timelimit,
@@ -107,6 +106,7 @@ def main(args, experiment_folder):
     reward_wrapper_kwargs = {
         'env': env,
         'minimize_on_every_step': args.minimize_on_every_step,
+        'greedy': args.greedy,
         'remove_hydrogen': args.remove_hydrogen,
         'molecules_xyz_prefix': args.molecules_xyz_prefix,
         'M': args.M

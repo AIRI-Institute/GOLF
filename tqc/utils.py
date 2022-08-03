@@ -1,11 +1,9 @@
 import torch
-
 import numpy as np
 
+from collections import defaultdict
 from math import floor
-from rdkit.Chem import rdmolops
 
-from env.xyz2mol import set_coordinates, get_rdkit_energy
 from tqc import DEVICE
 
 
@@ -66,18 +64,7 @@ def run_minimization_until_convergence(env, fixed_atoms, M_init=1000):
     return initial_energy, final_energy
 
 def eval_policy(actor, env, max_timestamps, eval_episodes=10, n_explore_runs=5):
-    result = {
-        'eval/delta_energy': 0.,
-        'eval/final_energy': 0.,
-        'eval/final_rl_energy': 0.,
-        'eval/pct_of_minimized_energy': 0,
-        'explore/delta_energy': 0.,
-        'explore/final_energy': 0.,
-        'explore/final_rl_energy': 0.,
-    }
-    # For evaluation at multiple timesteps
-    result.update({f'eval/delta_energy_at_{timelimit}' : 0 for timelimit in TIMELIMITS})
-    result.update({f'eval/pct_of_minimized_energy_at_{timelimit}' : 0 for timelimit in TIMELIMITS})
+    result = defaultdict(lambda: 0.0)
     for _ in range(eval_episodes):
         env.reset()
         fixed_atoms = env.atoms.copy()

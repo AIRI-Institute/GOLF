@@ -24,12 +24,14 @@ class RdkitMinimizationReward(gym.Wrapper):
     def __init__(self,
                  env,
                  minimize_on_every_step=False,
+                 greedy=False,
                  remove_hydrogen=False,
                  molecules_xyz_prefix='',
                  M=10):
         # Initialize molecule's sructure
         self.M = M
         self.minimize_on_every_step = minimize_on_every_step
+        self.greedy = greedy
         self.remove_hydrogen = remove_hydrogen
         self.initial_energy = 0
         # Parse molecules
@@ -74,7 +76,7 @@ class RdkitMinimizationReward(gym.Wrapper):
             self.initial_energy = final_energy
 
         # If TL is reached log final energy
-        if info['env_done']:
+        if info['env_done'] or self.greedy:
             info['final_energy'] = final_energy
             info['not_converged'] = not_converged
             set_coordinates(self.molecule, self.env.atoms.get_positions())
