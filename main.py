@@ -80,9 +80,8 @@ class Logger:
 
 
 def main(args, experiment_folder):
-    # Tmp set env name
+    # Set env name
     args.env = args.db_path.split('/')[-1].split('.')[0]
-    print(args.env)
     # Initialize logger
     logger = Logger(experiment_folder, args)
     
@@ -131,7 +130,6 @@ def main(args, experiment_folder):
         'cutoff': args.cutoff,
         'n_gaussians': args.n_gaussians,
     }
-    # SchNet backbone is shared between actor and all critics
     actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler).to(DEVICE)
     critic = Critic(schnet_args, args.n_nets, args.critic_out_embedding_size, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
