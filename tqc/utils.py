@@ -52,7 +52,7 @@ def run_policy(env, actor, fixed_atoms, max_timestamps):
 
 def run_minimization_until_convergence(env, fixed_atoms, M_init=1000):
     M = M_init
-    env.set_initial_positions(fixed_atoms, M=0)
+    env.set_initial_positions(fixed_atoms)
     initial_energy = env.initial_energy
     not_converged, final_energy = env.minimize(M=M)
     while not_converged:
