@@ -45,7 +45,8 @@ class Actor(nn.Module):
         # Calculate mean and std of shifts relative to other atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
-
+        # Bound relative_shifts with tanh
+        rel_shifts_mean = torch.tanh(rel_shifts_mean)
         # Calculate matrix of 1-vectors to other atoms
         P = state_dict['_positions'][:, :, None, :] - state_dict['_positions'][:, None, :, :]
         norm = torch.norm(P, p=2, dim=-1) + 1e-8
@@ -53,7 +54,7 @@ class Actor(nn.Module):
         # Project actions
         actions_mean = (P * rel_shifts_mean[..., None]).sum(-2)
         # Bound means with tanh
-        actions_mean = torch.tanh(actions_mean)
+        # actions_mean = torch.tanh(actions_mean)
 
         if self.training:
             # Clamp and exp log_std
