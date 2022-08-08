@@ -3,6 +3,7 @@ import datetime
 import json
 import numpy as np
 import os
+import random
 import torch
 
 from collections import defaultdict
@@ -13,9 +14,9 @@ from env.wrappers import rdkit_reward_wrapper
 
 from tqc import DEVICE
 from tqc.actor_critic import Actor
-from tqc.utils import ActionScaleScheduler, run_policy
+from tqc.utils import ActionScaleScheduler, run_policy, rdkit_minimize_until_convergence
 
-def rdkit_minimize_until_convergence(env, fixed_atoms):
+def rdkit_minimize_until_convergence_binary_search(env, fixed_atoms):
     # Binary search :/
     # A more efficient way requires messing with c++ code in rdkit
     left = 0
@@ -40,17 +41,19 @@ def evaluate_final_energy(env, actor, args):
     for _ in range(args.conf_number):
         env.reset()
         fixed_atoms = env.atoms.copy()
+        # Minimize with rdkit until convergence
+        initial_energy, full_rdkit_final_energy = rdkit_minimize_until_convergence(env, fixed_atoms, M=0)
         # Rdkit minimization for L iterations
         env.set_initial_positions(fixed_atoms, M=0)
-        initial_energy = env.initial_energy
         _, rdkit_final_energy = env.minimize(M=args.L)
-        result['rdkit_delta_energy'] += (rdkit_final_energy - initial_energy)
+        result['rdkit_delta_energy'] += (initial_energy - rdkit_final_energy)
         # RL (N its) + rdkit (M its) minization
         if args.N > 0:
             _, final_energy, rl_final_energy = run_policy(env, actor, fixed_atoms, args.N)
-            result['rl_delta_energy'] += (rl_final_energy - initial_energy)
-            result['rdkit_after_tl_delta_energy'] += (final_energy - rl_final_energy)
-            result['rl_rdkit_delta_energy'] += (final_energy - initial_energy)
+            result['rl_delta_energy'] += (initial_energy - rl_final_energy)
+            result['rdkit_after_rl_delta_energy'] += (rl_final_energy - final_energy)
+            result['rl_rdkit_delta_energy'] += (initial_energy - final_energy)
+            result['pct_minimized'] += (initial_energy - final_energy) / (initial_energy - full_rdkit_final_energy)
     result = {k: v / args.conf_number for k, v in result.items()}
 
     if args.verbose:
@@ -58,8 +61,9 @@ def evaluate_final_energy(env, actor, args):
         print("Rdkit ({:d} its) ΔE = {:.3f}".format(args.L, result['rdkit_delta_energy']))   
         print("\nRL + rdkit minimization")
         print("RL ({:d} its) ΔE = {:.3f}".format(args.N, result['rl_delta_energy']))
-        print("Rdkit ({:d} its) ΔE = {:.3f}".format(args.M, result['rdkit_after_tl_delta_energy']))
+        print("Rdkit ({:d} its) ΔE = {:.3f}".format(args.M, result['rdkit_after_rl_delta_energy']))
         print("RL ({:d} its) + rdkit ({:d} its) ΔE = {:.3f}".format(args.N, args.M, result['rl_rdkit_delta_energy']))
+        print("RL ({:d} its) + rdkit ({:d} its) % minimized  = {:.3f}".format(args.N, args.M, result['pct_minimized']))
 
     return result
 
@@ -72,9 +76,9 @@ def evaluate_convergence(env, actor, args):
         run_policy(env, actor, fixed_atoms, args.N)
         after_rl_atoms = env.atoms.copy()        
         # RL + rdkit until convergence
-        result['rl_rdkit_iterations'] += rdkit_minimize_until_convergence(env, after_rl_atoms)
+        result['rl_rdkit_iterations'] += rdkit_minimize_until_convergence_binary_search(env, after_rl_atoms)
         # Rdkit until convergence
-        result['rdkit_iterations'] += rdkit_minimize_until_convergence(env, fixed_atoms)
+        result['rdkit_iterations'] += rdkit_minimize_until_convergence_binary_search(env, fixed_atoms)
     result = {k: v / args.conf_number for k, v in result.items()}
 
     if args.verbose:
@@ -92,6 +96,7 @@ def main(exp_folder, args):
         'timelimit': args.N,
         'done_on_timelimit': False,
         'num_initial_conformations': args.conf_number,
+        'sample_initial_conformations': False,
         'inject_noise': False,
         'remove_hydrogen': args.remove_hydrogen,
     }
@@ -160,7 +165,7 @@ if __name__ == "__main__":
 
     log_dir = Path(args.log_dir)
     start_time = datetime.datetime.strftime(datetime.datetime.now(), '%Y_%m_%d_%H_%M_%S')
-    exp_folder = log_dir / f'{args.exp_name}_{start_time}'
+    exp_folder = log_dir / f'{args.exp_name}_{start_time}_{random.randint(0, 1000000)}'
     if os.path.exists(exp_folder):
             raise Exception('Experiment folder exists, apparent seed conflict!')
     os.makedirs(exp_folder)

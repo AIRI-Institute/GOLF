@@ -50,17 +50,17 @@ def run_policy(env, actor, fixed_atoms, max_timestamps):
     
     return delta_energy, info['final_energy'], info['final_rl_energy']
 
-def run_minimization_until_convergence(env, fixed_atoms, M_init=1000):
-    M = M_init
-    env.set_initial_positions(fixed_atoms)
+def rdkit_minimize_until_convergence(env, fixed_atoms, M=None):
+    M_init = 1000
+    env.set_initial_positions(fixed_atoms, M=M)
     initial_energy = env.initial_energy
-    not_converged, final_energy = env.minimize(M=M)
+    not_converged, final_energy = env.minimize(M=M_init)
     while not_converged:
         M *= 2
-        not_converged, final_energy = env.minimize(M=M)
+        not_converged, final_energy = env.minimize(M=M_init)
         if M > 5000:
             print("Minimization did not converge!")
-            return final_energy
+            return initial_energy, final_energy
     return initial_energy, final_energy
 
 def eval_policy(actor, env, max_timestamps, eval_episodes=10, n_explore_runs=5):
@@ -69,7 +69,7 @@ def eval_policy(actor, env, max_timestamps, eval_episodes=10, n_explore_runs=5):
         env.reset()
         fixed_atoms = env.atoms.copy()
         # Compute minimal energy of the molecule
-        initial_energy, final_energy = run_minimization_until_convergence(env, fixed_atoms)
+        initial_energy, final_energy = rdkit_minimize_until_convergence(env, fixed_atoms)
         # Evaluate policy in eval mode
         actor.eval()
         eval_delta_energy, eval_final_energy, eval_final_rl_energy = run_policy(env, actor, fixed_atoms, max_timestamps=max_timestamps)

@@ -21,6 +21,7 @@ class MolecularDynamics(gym.Env):
                  converter, 
                  timelimit=10,
                  done_on_timelimit=False,
+                 sample_initial_conformations=True,
                  num_initial_conformations=50000,
                  inject_noise=False,
                  noise_std=0.1,
@@ -30,6 +31,7 @@ class MolecularDynamics(gym.Env):
         self.converter = converter
         self.TL = timelimit
         self.done_on_timelimit = done_on_timelimit
+        self.sample_initial_conformations = sample_initial_conformations
         self.inject_noise = inject_noise
         self.noise_std = noise_std
         self.remove_hydrogen = remove_hydrogen
@@ -45,6 +47,7 @@ class MolecularDynamics(gym.Env):
 
         # Store random subset of molecules DB
         self._get_initial_molecule_conformations(num_initial_conformations)
+        self.conformation_idx = 0
 
     def step(self, actions):
         self.atoms.set_positions(self.atoms.get_positions() + actions)
@@ -62,9 +65,13 @@ class MolecularDynamics(gym.Env):
 
         return obs, reward, done, info
 
-    def reset(self, db_idx=None):
-        if db_idx is None:
+    def reset(self):
+        # If sample_initial_conformations iterate over all initial conformations sequentially
+        if self.sample_initial_conformations:
             db_idx = np.random.randint(len(self.initial_molecule_conformations))
+        else:
+            db_idx = self.conformation_idx % len(self.initial_molecule_conformations)
+            self.conformation_idx += 1
         # Copy to avoid changing the atoms object inplace
         self.atoms = self.initial_molecule_conformations[db_idx].copy()
         # Inject noise into the initial state
@@ -86,12 +93,11 @@ class MolecularDynamics(gym.Env):
         return self.env_steps
 
     def _get_initial_molecule_conformations(self, num_initial_conformations):
-        if num_initial_conformations == -1:
-            random_sample_size = self.db_len
+        if num_initial_conformations == -1 or num_initial_conformations == self.db_len:
+            indices = np.arange(1, self.db_len + 1)
         else:
-            random_sample_size = min(self.db_len, num_initial_conformations)
+            indices = np.random.choice(np.arange(1, self.db_len + 1), min(self.db_len, num_initial_conformations), replace=False)
         self.initial_molecule_conformations = []
-        indices = np.random.choice(np.arange(1, self.db_len + 1), random_sample_size, replace=False)
         for idx in indices:
             atoms = self._get_molecule(int(idx)).toatoms()
             if self.remove_hydrogen:
