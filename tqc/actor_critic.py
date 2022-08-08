@@ -52,7 +52,7 @@ class Actor(nn.Module):
         norm = torch.norm(P, p=2, dim=-1) + 1e-8
         P /= norm[..., None]
         # Project actions
-        actions_mean = (P * rel_shifts_mean[..., None]).sum(-2)
+        actions_mean = (P * rel_shifts_mean[..., None]).mean(-2)
         # Bound means with tanh
         # actions_mean = torch.tanh(actions_mean)
 
