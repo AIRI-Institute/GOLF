@@ -191,7 +191,6 @@ def main(args, experiment_folder):
             step_metrics = dict()
         step_metrics['Timestamp'] = str(datetime.datetime.now())
         step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
-        print(np.linalg.norm(action, axis=1).mean().item())
         step_metrics['Action_norm'] = np.linalg.norm(action, axis=1).mean().item()
 
         if done or (not args.greedy and ep_end):
