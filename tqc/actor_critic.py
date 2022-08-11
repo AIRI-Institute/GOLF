@@ -54,7 +54,7 @@ class Actor(nn.Module):
         # Project actions
         actions_mean = (P * rel_shifts_mean[..., None]).sum(-2)
         # Make actions norm independent of the number of atoms
-        actions_mean /= atoms_mask.sum(-1).sqrt()[:, None, None]
+        actions_mean /= atoms_mask.sum(-1)[:, None, None]
         # Bound means with tanh
         # actions_mean = torch.tanh(actions_mean)
 
