@@ -9,9 +9,11 @@
 **/__pycache__
 *.DS_Store
 
-# Ignore logs and env data
+# Ignore logs notebooks and env data
 results
 trajectories
+notebooks
+evaluate_action_norms
 *.json
 env/data
 
