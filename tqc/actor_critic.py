@@ -25,7 +25,7 @@ class Actor(nn.Module):
         output_modules = [ 
                                 spk.atomistic.Atomwise(
                                     n_in=schnet.n_atom_basis,
-                                    n_out=out_embedding_size * 2 + 3,
+                                    n_out=out_embedding_size * 2 + 1,
                                     n_neurons=[out_embedding_size],
                                     contributions='kv'
                                 )
@@ -41,12 +41,12 @@ class Actor(nn.Module):
         kv = self.model(state_dict)['kv']
         # Mask kv
         kv *= atoms_mask[..., None]
-        k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 3], dim=-1)
+        k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 1], dim=-1)
         # Calculate mean and std of shifts relative to other atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
         # Bound relative_shifts with tanh
-        rel_shifts_mean = torch.tanh(rel_shifts_mean)
+        # rel_shifts_mean = torch.tanh(rel_shifts_mean)
         # Calculate matrix of 1-vectors to other atoms
         P = state_dict['_positions'][:, :, None, :] - state_dict['_positions'][:, None, :, :]
         norm = torch.norm(P, p=2, dim=-1) + 1e-8
@@ -56,7 +56,7 @@ class Actor(nn.Module):
         # Make actions norm independent of the number of atoms
         actions_mean /= atoms_mask.sum(-1)[:, None, None]
         # Bound means with tanh
-        # actions_mean = torch.tanh(actions_mean)
+        actions_mean = torch.tanh(actions_mean)
 
         if self.training:
             # Clamp and exp log_std
