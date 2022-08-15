@@ -1,6 +1,5 @@
 import argparse
 import datetime
-import json
 import numpy as np
 import os
 import pickle
@@ -40,26 +39,47 @@ def evaluate_action_norm(env, actor, args):
         env.reset()
         fixed_atoms = env.atoms.copy()
         initial_energy, full_rdkit_final_energy = rdkit_minimize_until_convergence(env, fixed_atoms, M=0)
+
         # RL (N its) + rdkit (M its) minization
-        if args.N > 0:
+        if args.model == "RL" and args.N > 0:
             action_norm, final_energy, rl_final_energy = run_policy(env, actor, fixed_atoms, args.N)
             all_action_norms[str(fixed_atoms.symbols)].append(action_norm)
             result['rl_delta_energy'] += (initial_energy - rl_final_energy)
             result['rdkit_after_rl_delta_energy'] += (rl_final_energy - final_energy)
             result['rl_rdkit_delta_energy'] += (initial_energy - final_energy)
             result['pct_minimized'] += (initial_energy - final_energy) / (initial_energy - full_rdkit_final_energy)
-    result = {k: v / args.conf_number for k, v in result.items()}
+        elif args.model == "rdkit":
+            action_norm, final_energy = evaluate_action_norm_rdkit(env, fixed_atoms, args.N)
+            all_action_norms[str(fixed_atoms.symbols)].append(action_norm)
+            result['rdkit_delta_energy'] += (initial_energy - final_energy)
+            result['pct_minimized'] += (initial_energy - final_energy) / (initial_energy - full_rdkit_final_energy)
 
+    result = {k: v / args.conf_number for k, v in result.items()}
     mean_action_norms = {k: np.array(v).mean(axis=0) for k, v in all_action_norms.items()}
     
-    if args.verbose:
+    if args.model == "RL" and args.verbose:
         print("\nRL + rdkit minimization")
         print("RL ({:d} its) ΔE = {:.3f}".format(args.N, result['rl_delta_energy']))
         print("Rdkit ({:d} its) ΔE = {:.3f}".format(args.M, result['rdkit_after_rl_delta_energy']))
         print("RL ({:d} its) + rdkit ({:d} its) ΔE = {:.3f}".format(args.N, args.M, result['rl_rdkit_delta_energy']))
         print("RL ({:d} its) + rdkit ({:d} its) % minimized  = {:.3f}".format(args.N, args.M, result['pct_minimized']))
-
+    elif args.model == "rdkit" and args.verbose:
+        print("rdkit minimization")
+        print("Rdkit ({:d} its) ΔE = {:.3f}".format(args.N, result['rdkit_delta_energy']))
+        print("Кdkit ({:d} its) % minimized  = {:.3f}".format(args.N, result['pct_minimized']))
     return result, mean_action_norms
+
+def evaluate_action_norm_rdkit(env, fixed_atoms, N):
+    action_norm_list = [] 
+    env.set_initial_positions(fixed_atoms, M=0)
+    initial_positions = env.molecule.GetConformer().GetPositions()
+    for i in range(1, N + 1):
+        env.set_initial_positions(fixed_atoms, M=i)
+        new_positions = env.molecule.GetConformer().GetPositions()
+        action_norm_list.append(np.linalg.norm(new_positions - initial_positions, axis=1).mean().item())
+        initial_positions = new_positions
+    final_energy = env.initial_energy
+    return np.array(action_norm_list), final_energy
 
 def main(exp_folder, args):
     # Initialize env
@@ -97,7 +117,7 @@ def main(exp_folder, args):
     actor.load_state_dict(torch.load(args.load_model, map_location=DEVICE))
     actor.eval()
 
-    result, mean_action_norms = evaluate_action_norm(env, actor, args)
+    _, mean_action_norms = evaluate_action_norm(env, actor, args)
 
     # Save the result
     output_file = exp_folder / "actions_norm.pickle"
@@ -120,6 +140,7 @@ if __name__ == "__main__":
     parser.add_argument("--actor_out_embedding_size", default=128, type=int, help="Output embedding size for actor")
     parser.add_argument("--action_scale", default=0.01, type=float, help="Bounds actions to [-action_scale, action_scale]")
     # Other args
+    parser.add_argument("--model", choices=["RL", "rdkit"], help="Which minimizer to evaluate")
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
     parser.add_argument("--log_dir", default="evaluation_output", type=str, help="Which directory to store outputs to")
     parser.add_argument("--conf_number", default=int(1e5), type=int, help="Number of conformations to evaluate on")
