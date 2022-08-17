@@ -12,10 +12,13 @@ LOG_STD_MIN_MAX = (-20, 2)
 
 
 class Actor(nn.Module):
-    def __init__(self, schnet_args, out_embedding_size, action_scale_scheduler):
+    def __init__(self, schnet_args, out_embedding_size, action_scale_scheduler, tanh="after_projection"):
         super(Actor, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
         self.out_embedding_size = out_embedding_size
+        assert tanh in ["before_projection", "after_projection"],\
+             "Variable tanh must take one of two values: {}, {}".format("before_projection", "after_projection")
+        self.tanh = tanh
         # SchNet backbone is shared between actor and all critics
         schnet = spk.SchNet(
                         n_interactions=schnet_args["n_interactions"], #3
@@ -45,8 +48,9 @@ class Actor(nn.Module):
         # Calculate mean and std of shifts relative to other atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
-        # Bound relative_shifts with tanh
-        # rel_shifts_mean = torch.tanh(rel_shifts_mean)
+        # Bound relative_shifts with tanh if self.tanh == "before_projection"
+        if  self.tanh == "before_projection":
+            rel_shifts_mean = torch.tanh(rel_shifts_mean)
         # Calculate matrix of 1-vectors to other atoms
         P = state_dict['_positions'][:, :, None, :] - state_dict['_positions'][:, None, :, :]
         norm = torch.norm(P, p=2, dim=-1) + 1e-8
@@ -55,8 +59,9 @@ class Actor(nn.Module):
         actions_mean = (P * rel_shifts_mean[..., None]).sum(-2)
         # Make actions norm independent of the number of atoms
         actions_mean /= atoms_mask.sum(-1)[:, None, None]
-        # Bound means with tanh
-        actions_mean = torch.tanh(actions_mean)
+        # Bound means with tanh if self.tanh == "after_projection"
+        if self.tanh == "after_projection":
+            actions_mean = torch.tanh(actions_mean)
 
         if self.training:
             # Clamp and exp log_std

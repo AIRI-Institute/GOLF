@@ -131,7 +131,7 @@ def main(args, experiment_folder):
         'cutoff': args.cutoff,
         'n_gaussians': args.n_gaussians,
     }
-    actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler).to(DEVICE)
+    actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler, args.tanh).to(DEVICE)
     critic = Critic(schnet_args, args.n_nets, args.critic_out_embedding_size, args.n_quantiles).to(DEVICE)
     critic_target = copy.deepcopy(critic)
 
@@ -256,6 +256,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_gaussians", default=50, type=int, help="Number of Gaussians for Schnet in actor/critic")
     # Actor args
     parser.add_argument("--actor_out_embedding_size", default=128, type=int, help="Output embedding size for actor")
+    parser.add_argument("--tanh", choices=["before_projection", "after_projection"], help="Whether to put tanh() before projection operator or after")
     # Critic args
     parser.add_argument("--n_quantiles", default=25, type=int)
     parser.add_argument("--n_nets", default=5, type=int)
