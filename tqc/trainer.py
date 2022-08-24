@@ -86,7 +86,7 @@ class Trainer(object):
 		metrics['actor_entropy'] = - log_pi.mean().item()
 		print("alpha = {}".format(alpha))
 		print("log_pi = {}".format(log_pi.squeeze()))
-		print("alpha * log_pi = {}".format(alpha * log_pi.squeeze())
+		print("alpha * log_pi = {}".format(alpha * log_pi.squeeze()))
 		print("critic(state, new_action) = {}".format(self.critic(state, new_action).mean(dim=(1, 2))))
 		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
 		print("actor_loss = {}".format(actor_loss))
