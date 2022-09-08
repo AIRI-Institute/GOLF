@@ -36,6 +36,24 @@ class ActionScaleScheduler():
     def get_action_scale(self):
         return self.current_action_scale
 
+
+class TimelimitScheduler():
+    def __init__(self,  timelimit_init=1, step=10, interval=100000, constant=True):
+        self.init_tl = timelimit_init
+        self.step = step
+        self.interval = interval
+        self.constant = constant
+
+    def update(self, current_step):
+        if not self.constant:
+            self.tl = self.init_tl + self.step * (current_step // self.interval)
+        else:
+            self.tl = self.init_tl
+
+    def get_timelimit(self):
+        return self.tl
+
+
 def run_policy(env, actor, fixed_atoms, max_timestamps):
     done = False
     delta_energy = 0

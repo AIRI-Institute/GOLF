@@ -19,7 +19,7 @@ from tqc.trainer import Trainer
 from tqc.actor_critic import Actor, Critic
 from tqc.replay_buffer import ReplayBuffer
 from tqc.utils import eval_policy
-from tqc.utils import ActionScaleScheduler, TIMELIMITS
+from tqc.utils import ActionScaleScheduler, TimelimitScheduler, TIMELIMITS
 
 
 class Logger:
@@ -116,11 +116,17 @@ def main(args, experiment_folder):
     reward_wrapper_kwargs['env'] = eval_env
     eval_env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
 
-    # Initialize action_scale scheduler
+    # Initialize action_scale scheduler and timelimit scheduler
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
                                                   action_scale_end=args.action_scale_end,
                                                   n_step_end=args.action_scale_n_step_end,
                                                   mode=args.action_scale_mode)
+    if args.increment_timelimit:
+        assert args.greedy, "Timelimit may be incremented during training only in greedy mode"
+    timelimit_scheduler = TimelimitScheduler(timelimit_init=args.timelimit,
+                                             step=args.timelimit_step,
+                                             interval=args.timelimit_interval,
+                                             constant=not args.increment_timelimit)
 
     # Initialize replay buffer
     replay_buffer = ReplayBuffer(DEVICE, args.replay_buffer_size)
@@ -169,6 +175,13 @@ def main(args, experiment_folder):
         start_iter = 0
     for t in range(start_iter, int(args.max_timesteps)):
         action_scale_scheduler.update(t)
+        # Update timelimit
+        timelimit_scheduler.update(t)
+        current_timelimit = timelimit_scheduler.get_timelimit()
+        # Update timelimit in envs
+        env.update_timelimit(current_timelimit)
+        eval_env.update_timelimit(current_timelimit)
+        # Select next action
         with torch.no_grad():
             action = actor.select_action(state)
             mean_Q = critic_target(state, torch.FloatTensor(action).unsqueeze(0).to(DEVICE)).mean().item()
@@ -177,7 +190,7 @@ def main(args, experiment_folder):
         # Done on every step or at the end of the episode
         done = done or args.greedy
         episode_timesteps += 1
-        ep_end = episode_timesteps >= args.timelimit
+        ep_end = episode_timesteps >= current_timelimit
         replay_buffer.add(state, action, next_state, reward, done)
 
         state = next_state
@@ -191,6 +204,7 @@ def main(args, experiment_folder):
             step_metrics = dict()
         step_metrics['Timestamp'] = str(datetime.datetime.now())
         step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
+        step_metrics['Timelimit'] = current_timelimit
         step_metrics['Action_norm'] = np.linalg.norm(action, axis=1).mean().item()
 
         if done or (not args.greedy and ep_end):
@@ -213,7 +227,7 @@ def main(args, experiment_folder):
         # Evaluate episode
         if (t + 1) % args.eval_freq == 0:
             step_metrics['Total_timesteps'] = t + 1
-            step_metrics.update(eval_policy(actor, eval_env, args.timelimit, args.n_eval_runs))
+            step_metrics.update(eval_policy(actor, eval_env, current_timelimit, args.n_eval_runs))
             logger.log(step_metrics)
 
         if t in full_checkpoints and args.save_checkpoints:
@@ -233,13 +247,17 @@ if __name__ == "__main__":
     parser.add_argument("--db_path", default="env/data/malonaldehyde.db", type=str, help="Path to molecules database")
     parser.add_argument("--num_initial_conformations", default=50000, type=int, help="Number of initial molecule conformations to sample from DB")
     parser.add_argument("--sample_initial_conformation", default=False, type=bool, help="Sample new conformation for every seed")
-    parser.add_argument("--timelimit", default=100, type=int, help="Timelimit for MD env")
-    parser.add_argument("--greedy", default=False, type=bool, help="Returns done on every step independent of the timelimit")
-    parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
     parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")
     parser.add_argument("--noise_std", type=float, default=0.1, help="Std of the injected noise")
     parser.add_argument("--calculate_mean_std_energy", type=bool, default=False, help="Calculate mean, std of energy of database")
     parser.add_argument("--remove_hydrogen", type=bool, default=False, help="Whether to remove hydrogen atoms from the molecule")
+    # Timelimit args
+    parser.add_argument("--timelimit", default=100, type=int, help="Timelimit for MD env")
+    parser.add_argument("--increment_timelimit", default=False, type=bool, help="Whether to increment timelimit during training")
+    parser.add_argument("--timelimit_step", default=10, type=int, help="By which number to increment timelimit")
+    parser.add_argument("--timelimit_interval", default=150000, type=int, help="How often to increment timelimit")
+    parser.add_argument("--greedy", default=False, type=bool, help="Returns done on every step independent of the timelimit")
+    parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
     # Reward args
     parser.add_argument("--minimize_on_every_step", type=bool, default=False, help="Whether to minimize conformation with rdkit on every step")
     parser.add_argument("--M", type=int, default=10, help="Number of steps to run rdkit minimization for")

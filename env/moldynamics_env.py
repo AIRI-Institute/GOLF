@@ -3,7 +3,6 @@ import gym
 import numpy as np
 
 from ase.db import connect
-
 from sqlite3 import DatabaseError
 from schnetpack.data.atoms import AtomsConverter
 
@@ -83,6 +82,9 @@ class MolecularDynamics(gym.Env):
         self.env_done = False
         obs = self.converter(self.atoms)
         return obs
+
+    def update_timelimit(self, new_timelimit):
+        self.TL = new_timelimit
 
     def _get_db_length(self):
         with connect(self.db_path) as conn:

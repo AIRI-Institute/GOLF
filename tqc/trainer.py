@@ -80,23 +80,14 @@ class Trainer(object):
 
 		# --- Policy loss ---
 		new_action, log_pi = self.actor(state)
-		print("======== new_action ========")
-		print(new_action)
-		print("============================")
 		metrics['actor_entropy'] = - log_pi.mean().item()
-		print("alpha = {}".format(alpha))
-		print("log_pi = {}".format(log_pi.squeeze()))
-		print("alpha * log_pi = {}".format(alpha * log_pi.squeeze()))
-		print("critic(state, new_action) = {}".format(self.critic(state, new_action).mean(dim=(1, 2))))
 		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
-		print("actor_loss = {}".format(actor_loss))
 		metrics['actor_loss'] = actor_loss.item()
 
 		# --- Update actor ---
 		self.actor_optimizer.zero_grad()
 		actor_loss.backward()
 		metrics['actor_grad_norm'] = calculate_gradient_norm(self.actor).item()
-		print("actor_grad_norm = {}".format(metrics['actor_grad_norm']))
 		if self.actor_clip_value is not None:
 			torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_clip_value)
 		self.actor_optimizer.step()
