@@ -133,6 +133,42 @@ class Critic(nn.Module):
         return quantiles
 
 
+class CriticPPO(nn.Module):
+    def __init__(self, schnet_args, schnet_out_embedding_size, mean=None, stddev=None):
+        super(CriticPPO, self).__init__()
+        self.nets = []
+        self.mlps = []
+        self.schnet_out_embedding_size = schnet_out_embedding_size
+        schnet = spk.SchNet(
+                        n_interactions=schnet_args["n_interactions"], #3
+                        cutoff=schnet_args["cutoff"], #20.0
+                        n_gaussians=schnet_args["n_gaussians"] #50
+                    )
+        output_modules = [
+            spk.atomistic.Atomwise(
+                n_in=schnet.n_atom_basis,
+                n_out=self.schnet_out_embedding_size,
+                property='embedding',
+                mean=mean,
+                stddev=stddev
+            )
+        ]
+        self.net = spk.atomistic.model.AtomisticModel(schnet, output_modules)
+        self.mlp = MLP(2 * self.schnet_out_embedding_size, 1)
+
+    def forward(self, state_dict, actions):
+        # Schnet changes the state_dict so a deepcopy
+        # has to be passed to each net in order to do .backwards()
+        state = {k: v.detach().clone() for k, v in state_dict.items()}
+        next_state = {k: v.detach().clone() for k, v in state_dict.items()}
+        # Change state here to keep the gradients flowing
+        next_state["_positions"] += actions
+        state_emb = self.net(state)['embedding']
+        next_state_emb = self.net(next_state)['embedding']
+        V = self.mlp(torch.cat((state_emb, next_state_emb), dim=-1))
+        return V
+
+        
 class NormalWithSave(Normal):
     arg_constraints = {}
 

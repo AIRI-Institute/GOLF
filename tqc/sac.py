@@ -4,7 +4,7 @@ from tqc.utils import quantile_huber_loss_f, calculate_gradient_norm
 from tqc import DEVICE
 
 
-class Trainer(object):
+class SAC(object):
 	def __init__(
 		self,
 		*,
@@ -20,7 +20,8 @@ class Trainer(object):
 		top_quantiles_to_drop,
 		per_atom_target_entropy,
 		actor_clip_value=None,
-		critic_clip_value=None
+		critic_clip_value=None,
+		**kwargs
 	):
 		self.actor = actor
 		self.critic = critic
@@ -48,7 +49,7 @@ class Trainer(object):
 			total_quantiles_to_keep = t * self.critic.n_nets
 			metrics[f'Target_Q/Q_value_t={t}'] = next_z[:, :total_quantiles_to_keep].mean().__float__()
 
-	def train(self, replay_buffer, batch_size=256):
+	def update(self, replay_buffer, batch_size=256):
 		metrics = dict()
 		state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
 		alpha = torch.exp(self.log_alpha)
