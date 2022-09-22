@@ -47,10 +47,11 @@ class GenerateActionsBlock(nn.Module):
         if self.tanh == "after_projection":
             actions_mean = torch.tanh(actions_mean)
 
-        print("Action means shape = ", actions_mean.shape)
-        norm_reshape = torch.norm(actions_mean * action_scale, p=2, dim=-1).reshape(1, -1).squeeze()
-        mask_reshape = atoms_mask.reshape(1, -1).squeeze().long()
-        print("training = ", self.training, " norm = ", norm_reshape[mask_reshape].mean())
+        # if not self.training:
+        #     print("Action means shape = ", actions_mean.shape)
+        #     norm_reshape = torch.norm(actions_mean * action_scale, p=2, dim=-1).reshape(1, -1).squeeze()
+        #     mask_reshape = atoms_mask.reshape(1, -1).squeeze().long()
+        #     print("training = ", self.training, " norm = ", norm_reshape[mask_reshape].mean())
 
         if self.training:
             # Clamp and exp log_std
@@ -117,8 +118,8 @@ class PPOBase(nn.Module):
         return value, actions, log_prob
 
     def select_action(self, state_dict):
-        action, _, _ = self.forward(state_dict)
-        return action[0].cpu().detach().numpy()
+        _, actions, _ = self.forward(state_dict)
+        return actions[0].cpu().detach().numpy()
 
 
 class PPOPolicy(nn.Module):

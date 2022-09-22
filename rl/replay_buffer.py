@@ -77,7 +77,7 @@ class ReplayBufferPPO(object):
             if advantages is None:
                 adv_targ = None
             else:
-                adv_targ = advantages[indices]
+                adv_targ = advantages[indices].to(self.device)
 
             yield state_batch, action_batch, value_preds_batch,\
                   return_batch, old_action_log_probs_batch, adv_targ
@@ -85,23 +85,31 @@ class ReplayBufferPPO(object):
     def compute_returns(self, next_value, gamma, done_on_timelimit):
         self.returns[-1] = next_value
         if done_on_timelimit:
+            print("NOT DONE")
+            print(self.not_done[:20])
+            print("NOT EP END")
+            print(self.not_ep_end[:20])
+            print("REWARDS")
+            print(self.reward[:20])
             # Timeout is considered a done
             for step in reversed(range(self.reward.size(0))):
                 self.returns[step] = self.returns[step + 1] * \
                     gamma * self.not_done[step] + self.reward[step]
+            print("RETURNS")
+            print(self.returns[:20])
         else:
             # If episode ends with a timeout bootstrap value target
             print("NOT DONE")
-            print(self.not_done)
+            print(self.not_done[:20])
             print("NOT EP END")
-            print(self.not_ep_end)
+            print(self.not_ep_end[:20])
             print("REWARDS")
-            print(self.reward)
+            print(self.reward[:20])
             for step in reversed(range(self.reward.size(0))):
                 self.returns[step] = (self.returns[step + 1] * gamma * self.not_done[step] + self.reward[step]) * self.not_ep_end[step] \
                     + (1 - self.not_ep_end[step]) * self.values[step]
             print("RETURNS")
-            print(self.returns[:-1])
+            print(self.returns[:20])
 
 
 class ReplayBufferTQC(object):

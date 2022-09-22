@@ -37,8 +37,8 @@ class PPO():
         advantages = rollouts.returns[:-1] - rollouts.values
         advantages = (advantages - advantages.mean()) / (
            advantages.std() + 1e-5)
-        print("ADVANTAGES")
-        print(advantages)
+        # print("ADVANTAGES")
+        # print(advantages)
 
         value_loss_epoch = 0
         action_loss_epoch = 0
