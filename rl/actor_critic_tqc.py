@@ -1,67 +1,59 @@
+import copy
 import torch
 import torch.nn as nn
 import schnetpack as spk
 
+
+from numpy.linalg import norm
 from torch.distributions import Normal
 from schnetpack.nn.blocks import MLP
 
-from tqc import DEVICE
+from rl import DEVICE
 
 
 LOG_STD_MIN_MAX = (-20, 2)
 
 
-class Actor(nn.Module):
-    def __init__(self, schnet_args, out_embedding_size, action_scale_scheduler, tanh="after_projection"):
-        super(Actor, self).__init__()
-        self.action_scale_scheduler = action_scale_scheduler
+class GenerateActionsBlock(nn.Module):
+    def __init__(self, out_embedding_size, tanh):
+        super().__init__()
         self.out_embedding_size = out_embedding_size
         assert tanh in ["before_projection", "after_projection"],\
-             "Variable tanh must take one of two values: {}, {}".format("before_projection", "after_projection")
+            "Variable tanh must take one of two values: {}, {}".format("before_projection", "after_projection")
         self.tanh = tanh
-        # SchNet backbone is shared between actor and all critics
-        schnet = spk.SchNet(
-                        n_interactions=schnet_args["n_interactions"], #3
-                        cutoff=schnet_args["cutoff"], #20.0
-                        n_gaussians=schnet_args["n_gaussians"] #50
-                    )
-        output_modules = [ 
-                                spk.atomistic.Atomwise(
-                                    n_in=schnet.n_atom_basis,
-                                    n_out=out_embedding_size * 2 + 1,
-                                    n_neurons=[out_embedding_size],
-                                    contributions='kv'
-                                )
-                            ]
-        self.model = spk.atomistic.model.AtomisticModel(schnet, output_modules)
-    
-    def forward(self, state_dict, return_relative_shifts=False):
-        action_scale = self.action_scale_scheduler.get_action_scale()
-        if '_atoms_mask' not in state_dict:
-            atoms_mask = torch.ones(state_dict['_positions'].shape[:2]).to(DEVICE)
-        else:
-            atoms_mask = state_dict['_atoms_mask']
-        kv = self.model(state_dict)['kv']
+
+    def forward(self, kv, positions, atoms_mask, action_scale):
         # Mask kv
         kv *= atoms_mask[..., None]
         k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 1], dim=-1)
+        
         # Calculate mean and std of shifts relative to other atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
+        
         # Bound relative_shifts with tanh if self.tanh == "before_projection"
         if  self.tanh == "before_projection":
             rel_shifts_mean = torch.tanh(rel_shifts_mean)
+        
         # Calculate matrix of 1-vectors to other atoms
-        P = state_dict['_positions'][:, :, None, :] - state_dict['_positions'][:, None, :, :]
+        P = positions[:, :, None, :] - positions[:, None, :, :]
         norm = torch.norm(P, p=2, dim=-1) + 1e-8
         P /= norm[..., None]
+        
         # Project actions
         actions_mean = (P * rel_shifts_mean[..., None]).sum(-2)
+        
         # Make actions norm independent of the number of atoms
         actions_mean /= atoms_mask.sum(-1)[:, None, None]
+        
         # Bound means with tanh if self.tanh == "after_projection"
         if self.tanh == "after_projection":
             actions_mean = torch.tanh(actions_mean)
+
+        print("Action means shape = ", actions_mean.shape)
+        norm_reshape = torch.norm(actions_mean * action_scale, p=2, dim=-1).reshape(1, -1).squeeze()
+        mask_reshape = atoms_mask.reshape(1, -1).squeeze().long()
+        print("training = ", self.training, " norm = ", norm_reshape[mask_reshape].mean())
 
         if self.training:
             # Clamp and exp log_std
@@ -78,8 +70,39 @@ class Actor(nn.Module):
             log_prob = None
         actions *= atoms_mask[..., None]
 
-        if return_relative_shifts:
-            return actions, log_prob, rel_shifts_mean, P
+        return actions, log_prob
+
+class Actor(nn.Module):
+    def __init__(self, schnet_args, out_embedding_size, action_scale_scheduler, tanh="after_projection"):
+        super(Actor, self).__init__()
+        self.action_scale_scheduler = action_scale_scheduler
+        self.out_embedding_size = out_embedding_size
+        # SchNet backbone is shared between actor and all critics
+        schnet = spk.SchNet(
+                        n_interactions=schnet_args["n_interactions"], #3
+                        cutoff=schnet_args["cutoff"], #20.0
+                        n_gaussians=schnet_args["n_gaussians"] #50
+                    )
+        output_modules = [ 
+                                spk.atomistic.Atomwise(
+                                    n_in=schnet.n_atom_basis,
+                                    n_out=out_embedding_size * 2 + 1,
+                                    n_neurons=[out_embedding_size],
+                                    contributions='kv'
+                                )
+                            ]
+        self.model = spk.atomistic.model.AtomisticModel(schnet, output_modules)
+        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, tanh)
+    
+    def forward(self, state_dict, return_relative_shifts=False):
+        action_scale = self.action_scale_scheduler.get_action_scale()
+        if '_atoms_mask' not in state_dict:
+            atoms_mask = torch.ones(state_dict['_positions'].shape[:2]).to(DEVICE)
+        else:
+            atoms_mask = state_dict['_atoms_mask']
+        kv = self.model(state_dict)['kv']
+        
+        actions, log_prob = self.generate_actions_block(kv, state_dict['_positions'], atoms_mask, action_scale)
         return actions, log_prob
 
     def select_action(self, state_dict):
@@ -88,7 +111,7 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, schnet_args, n_nets, schnet_out_embedding_size, n_quantiles, mean=None, stddev=None):
+    def __init__(self, schnet_args, n_nets, schnet_out_embedding_size, n_quantiles):
         super(Critic, self).__init__()
         self.nets = []
         self.mlps = []
@@ -105,9 +128,7 @@ class Critic(nn.Module):
                                     spk.atomistic.Atomwise(
                                         n_in=schnet.n_atom_basis,
                                         n_out=self.schnet_out_embedding_size,
-                                        property='embedding',
-                                        mean=mean,
-                                        stddev=stddev
+                                        property='embedding'
                                     )
                                 ]
             net = spk.atomistic.model.AtomisticModel(schnet, output_modules)
@@ -132,13 +153,27 @@ class Critic(nn.Module):
         quantiles = torch.stack(quantiles_list, dim=1)
         return quantiles
 
+class TQCPolicy(nn.Module):
+    def __init__(self, schnet_args, out_embedding_size, action_scale_scheduler, n_nets, n_quantiles, tanh="after_projection"):
+        super().__init__()
+        self.actor = Actor(schnet_args, out_embedding_size, action_scale_scheduler, tanh)
+        self.critic = Critic(schnet_args, n_nets, out_embedding_size, n_quantiles)
+        self.critic_target = copy.deepcopy(self.critic)
+
+    def act(self, state_dict):
+        action, log_prob = self.actor(state_dict)
+        Q = self.critic(state_dict, action)
+        return Q, action, log_prob
+        
+    def select_action(self, state_dict):
+        return self.actor.select_action(state_dict)
 
 class CriticPPO(nn.Module):
-    def __init__(self, schnet_args, schnet_out_embedding_size, mean=None, stddev=None):
+    def __init__(self, schnet_args, out_embedding_size, mean=None, stddev=None):
         super(CriticPPO, self).__init__()
         self.nets = []
         self.mlps = []
-        self.schnet_out_embedding_size = schnet_out_embedding_size
+        self.out_embedding_size = out_embedding_size
         schnet = spk.SchNet(
                         n_interactions=schnet_args["n_interactions"], #3
                         cutoff=schnet_args["cutoff"], #20.0
@@ -147,44 +182,20 @@ class CriticPPO(nn.Module):
         output_modules = [
             spk.atomistic.Atomwise(
                 n_in=schnet.n_atom_basis,
-                n_out=self.schnet_out_embedding_size,
+                n_out=self.out_embedding_size,
                 property='embedding',
                 mean=mean,
                 stddev=stddev
             )
         ]
         self.net = spk.atomistic.model.AtomisticModel(schnet, output_modules)
-        self.mlp = MLP(2 * self.schnet_out_embedding_size, 1)
+        self.mlp = MLP(self.out_embedding_size, 1)
 
-    def forward(self, state_dict, actions):
+    def forward(self, state_dict):
         # Schnet changes the state_dict so a deepcopy
         # has to be passed to each net in order to do .backwards()
         state = {k: v.detach().clone() for k, v in state_dict.items()}
-        next_state = {k: v.detach().clone() for k, v in state_dict.items()}
         # Change state here to keep the gradients flowing
-        next_state["_positions"] += actions
         state_emb = self.net(state)['embedding']
-        next_state_emb = self.net(next_state)['embedding']
-        V = self.mlp(torch.cat((state_emb, next_state_emb), dim=-1))
+        V = self.mlp(state_emb)
         return V
-
-        
-class NormalWithSave(Normal):
-    arg_constraints = {}
-
-    def __init__(self, normal_mean, normal_std):
-        super().__init__(normal_mean, normal_std)
-        self.normal_mean = normal_mean
-        self.normal_std = normal_std
-        self.standard_normal = Normal(torch.zeros_like(self.normal_mean, device=DEVICE),
-                                      torch.ones_like(self.normal_std, device=DEVICE))
-        self.normal = Normal(normal_mean, normal_std)
-
-    def rsample(self, file):
-        sn_noise = torch.load(file)
-        padding = torch.ones(sn_noise.shape[0], self.normal_mean.shape[1] - sn_noise.shape[1], sn_noise.shape[2]).to(DEVICE)
-        sn_noise = torch.cat((sn_noise, padding), dim=1)
-        #sn_noise = self.standard_normal.sample()
-        #torch.save(sn_noise, '/Users/artem/Desktop/work/MARL/MolDynamics/sn_noise.pt')
-        value = self.normal_mean + self.normal_std * sn_noise
-        return value

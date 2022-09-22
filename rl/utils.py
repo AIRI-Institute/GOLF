@@ -1,10 +1,11 @@
+import inspect
 import torch
 import numpy as np
 
 from collections import defaultdict
 from math import floor
 
-from tqc import DEVICE
+from rl import DEVICE
 
 
 TIMELIMITS = [1, 5, 10, 50, 100]
@@ -135,3 +136,12 @@ def calculate_gradient_norm(model):
         total_norm += param_norm ** 2
     total_norm = total_norm ** (0.5)
     return total_norm
+
+def ignore_extra_args(foo):
+    def indifferent_foo(**kwargs):
+        signature = inspect.signature(foo)
+        expected_keys = [p.name for p in signature.parameters.values()
+                         if p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
+        filtered_kwargs = {k: kwargs[k] for k in kwargs if k in expected_keys}
+        return foo(**filtered_kwargs)
+    return indifferent_foo

@@ -1,5 +1,4 @@
 import argparse
-import copy
 import datetime
 import json
 import numpy as np
@@ -9,19 +8,34 @@ import random
 import torch
 
 from pathlib import Path
-from collections import deque, defaultdict
+from collections import deque
 
 from env.moldynamics_env import env_fn
 from env.wrappers import rdkit_reward_wrapper
 
-from tqc import DEVICE
-from tqc.sac import SAC
-from tqc.ppo import PPO
-from tqc.actor_critic import Actor, Critic, CriticPPO
-from tqc.replay_buffer import ReplayBuffer
-from tqc.utils import eval_policy
-from tqc.utils import ActionScaleScheduler, TimelimitScheduler, TIMELIMITS
+from rl import DEVICE
+from rl.tqc import TQC
+from rl.ppo import PPO
+from rl.actor_critic_tqc import TQCPolicy
+from rl.actor_critic_ppo import PPOPolicy
+from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
+from rl.utils import eval_policy, ignore_extra_args
+from rl.utils import ActionScaleScheduler, TimelimitScheduler
 
+policies = {
+    "PPO": ignore_extra_args(PPOPolicy),
+    "TQC": ignore_extra_args(TQCPolicy),
+}
+
+trainers = {
+    "PPO": ignore_extra_args(PPO),
+    "TQC": ignore_extra_args(TQC)
+}
+
+replay_buffers = {
+    "PPO": ReplayBufferPPO,
+    "TQC": ReplayBufferTQC
+}
 
 class Logger:
     def __init__(self, experiment_folder, config):
@@ -78,22 +92,11 @@ class Logger:
         self.exploration_episode_final_energy.append(episode_final_energy)
         self.exploration_episode_final_rl_energy.append(episode_final_rl_energy)
         self.exploration_not_converged.append(not_converged)
-    
-    def init_step_metrics(self):
-        self.step_metrics = defaultdict(list)
-    
-    def update_step_metrics(self, metrics):
-        for name, value in metrics.items():
-            self.step_metrics[name].append(value)
-    
-    def aggregate_step_metrics(self):
-        for name, value in self.step_metrics.items():
-            self.step_metrics[name] = np.mean(value)
-
 
 def main(args, experiment_folder):
     # Set env name
     args.env = args.db_path.split('/')[-1].split('.')[0]
+    
     # Initialize logger
     logger = Logger(experiment_folder, args)
     
@@ -110,6 +113,7 @@ def main(args, experiment_folder):
         'remove_hydrogen': args.remove_hydrogen,
     }
     env = env_fn(DEVICE, **env_kwargs)
+    
     # Initialize eval env
     env_kwargs['inject_noise'] = False
     eval_env = env_fn(DEVICE, **env_kwargs)
@@ -124,6 +128,7 @@ def main(args, experiment_folder):
         'M': args.M
     }
     env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
+    
     # Initialize reward wrappers for evaluation
     reward_wrapper_kwargs['env'] = eval_env
     eval_env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
@@ -139,13 +144,14 @@ def main(args, experiment_folder):
                                              step=args.timelimit_step,
                                              interval=args.timelimit_interval,
                                              constant=not args.increment_timelimit)
-
-    use_ppo = args.algorithm == 'ppo'
-    if use_ppo:
-        assert args.replay_buffer_size == args.update_frequency, \
-            f"PPO algorithm requires replay_buffer_size == update_frequency, got {replay_buffer_size} and {update_frequency}"
+    
+    use_ppo = args.algorithm == 'PPO'
+    
     # Initialize replay buffer
-    replay_buffer = ReplayBuffer(DEVICE, args.replay_buffer_size, use_ppo)
+    if  use_ppo:
+        assert args.replay_buffer_size == args.update_frequency, \
+            f"PPO algorithm requires replay_buffer_size == update_frequency, got {args.replay_buffer_size} and {args.update_frequency}"
+    replay_buffer = replay_buffers[args.algorithm](DEVICE, args.replay_buffer_size)
 
     # Inititalize actor and critic
     schnet_args = {
@@ -153,44 +159,44 @@ def main(args, experiment_folder):
         'cutoff': args.cutoff,
         'n_gaussians': args.n_gaussians,
     }
-    actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler, args.tanh).to(DEVICE)
-    if use_ppo:
-        critic = CriticPPO(schnet_args, args.critic_out_embedding_size).to(DEVICE)
-        critic_target = critic
-    else:
-        critic = Critic(schnet_args, args.n_nets, args.critic_out_embedding_size, args.n_quantiles).to(DEVICE)
-        critic_target = copy.deepcopy(critic)
+    policy = policies[args.algorithm](
+        schnet_args=schnet_args,
+        out_embedding_size=args.out_embedding_size,
+        action_scale_scheduler=action_scale_scheduler,
+        n_nets=args.n_nets,
+        n_quantiles=args.n_quantiles,
+        tanh=args.tanh
+    )
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
+    
     # Target entropy must differ for molecules of different sizes.
     # To achieve this we fix per-atom entropy instead of the entropy of the molecule.
     per_atom_target_entropy = 3 * (-1 + np.log([args.target_entropy_action_scale])).item()
-    
-    if args.algorithm == 'sac':
-        algorithm = SAC
-    elif args.algorithm =='ppo':
-        algorithm = PPO
-    else:
-        raise ValueError(f'Unsupported algorithm {args.algorithm}.')
-    
-    trainer = algorithm(actor=actor,
-                      critic=critic,
-                      critic_target=critic_target,
-                      top_quantiles_to_drop=top_quantiles_to_drop,
-                      discount=args.discount,
-                      tau=args.tau,
-                      log_alpha=np.log([args.initial_alpha]).item(),
-                      actor_lr=args.actor_lr,
-                      critic_lr= args.critic_lr,
-                      alpha_lr=args.alpha_lr,
-                      per_atom_target_entropy=per_atom_target_entropy,
-                      actor_clip_value=args.actor_clip_value,
-                      critic_clip_value=args.critic_clip_value,
-                      clip_param=args.clip_param,
-                      value_loss_coef=args.value_loss_coef,
-                      entropy_coef=args.entropy_coef,
-                      max_grad_norm=args.max_grad_norm,
-                      use_clipped_value_loss=args.use_clipped_value_loss)
+    trainer = trainers[args.algorithm](
+        policy=policy,
+        # TQC arguments
+        discount=args.discount,
+        tau=args.tau,
+        log_alpha=np.log([args.initial_alpha]).item(),
+        actor_lr=args.actor_lr,
+        critic_lr= args.critic_lr,
+        alpha_lr=args.alpha_lr,
+        top_quantiles_to_drop=top_quantiles_to_drop,
+        per_atom_target_entropy=per_atom_target_entropy,
+        batch_size=args.batch_size,
+        actor_clip_value=args.actor_clip_value,
+        critic_clip_value=args.critic_clip_value,
+        # PPO arguments
+        clip_param=args.clip_param,
+        ppo_epoch=args.ppo_epoch,
+        num_mini_batch=args.num_mini_batch,
+        value_loss_coef=args.value_loss_coef,
+        entropy_coef=args.entropy_coef,
+        lr=args.actor_lr,
+        max_grad_norm=args.actor_clip_value,
+        use_clipped_value_loss=args.use_clipped_value_loss
+    )
 
     state, done = env.reset(), False
     episode_return = 0
@@ -198,7 +204,7 @@ def main(args, experiment_folder):
     episode_timesteps = 0
     episode_num = 0
 
-    actor.train()    
+    policy.train()    
     full_checkpoints = [int(args.max_timesteps / 3), int(args.max_timesteps * 2 / 3), int(args.max_timesteps) - 1]
     if args.load_model is not None:
         start_iter = int(args.load_model.split('/')[-1].split('_')[1]) + 1
@@ -206,59 +212,61 @@ def main(args, experiment_folder):
         replay_buffer = pickle.load(open(f'{args.load_model}_replay', 'rb'))
     else:
         start_iter = 0
+
     for t in range(start_iter, int(args.max_timesteps)):
         if use_ppo:
-            update_condition = (t + 1) % args.update_frequency == 0
+            update_condition = ((t + 1) % args.update_frequency) == 0
         else:
-            update_condition = t >= args.batch_size and (t - args.batch_size) % args.update_frequency == 0
+            update_condition = t >= args.batch_size and t % args.update_frequency == 0
         action_scale_scheduler.update(t)
+        
         # Update timelimit
         timelimit_scheduler.update(t)
         current_timelimit = timelimit_scheduler.get_timelimit()
+        
         # Update timelimit in envs
         env.update_timelimit(current_timelimit)
         eval_env.update_timelimit(current_timelimit)
+        
         # Select next action
         with torch.no_grad():
-            action_th, action_log_prob = actor(state)
-            Q = critic_target(state, action_th)[0].cpu()
-            mean_Q = Q.mean().item()
-            action_np = action_th[0].cpu().numpy()
-            action_log_prob = action_log_prob[0].cpu()
+            policy_out = policy.act(state)
+            value, action, log_prob = [x[0].cpu().numpy() for x in policy_out]
+            if not use_ppo:
+                value = value.mean()
+            
 
-        next_state, reward, done, info = env.step(action_np)
+        next_state, reward, done, info = env.step(action)
         # Done on every step or at the end of the episode
         done = done or args.greedy
         episode_timesteps += 1
         ep_end = episode_timesteps >= current_timelimit
-        tuple_ = [state, action_np, next_state, reward, done]
+        
+        transition = [state, action, next_state, reward, done]
+        # if PPO then add log_prob, value and next value to RB
         if use_ppo:
-            tuple_.extend([ep_end, action_log_prob, Q])
-            if args.done_on_timelimit and ep_end or update_condition:
-                with torch.no_grad():
-                    Q_next = critic_target(next_state, action_th)[0].cpu()
-                tuple_.append(Q_next)
-        replay_buffer.add(*tuple_)
+            transition.extend([ep_end, log_prob, value])
+        replay_buffer.add(*transition)
 
         state = next_state
         episode_return += reward
-        episode_mean_Q += mean_Q
+        episode_mean_Q += value.item()
 
         # Train agent after collecting sufficient data
         if update_condition:
             if use_ppo:
-                replay_buffer.compute_returns(args.discount)
-            logger.init_step_metrics()
-            for _ in range(args.num_updates):
-                step_metrics = trainer.update(replay_buffer, args.batch_size)
-                logger.update_step_metrics(step_metrics)
-            logger.aggregate_step_metrics()
+                with torch.no_grad():
+                    next_value = policy.get_value(state)[0].cpu()
+                replay_buffer.compute_returns(next_value, args.discount, args.done_on_timelimit or args.greedy)
+            step_metrics = trainer.update(replay_buffer)
         else:
             step_metrics = dict()
+
         step_metrics['Timestamp'] = str(datetime.datetime.now())
         step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
         step_metrics['Timelimit'] = current_timelimit
-        step_metrics['Action_norm'] = np.linalg.norm(action_np, axis=1).mean().item()
+        step_metrics['Action_norm'] = np.linalg.norm(action, axis=1).mean().item()
+        print(step_metrics['Action_norm'])
 
         if done or (not args.greedy and ep_end):
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
@@ -272,7 +280,8 @@ def main(args, experiment_folder):
             episode_mean_Q = 0
             episode_num += 1
 
-        if ep_end:
+        # If timelimit is reached or a real done comes from the environement
+        if ep_end or (done and not args.greedy):
             episode_timesteps = 0
             # Reset environment
             state, done = env.reset(), False
@@ -280,7 +289,7 @@ def main(args, experiment_folder):
         # Evaluate episode
         if (t + 1) % args.eval_freq == 0:
             step_metrics['Total_timesteps'] = t + 1
-            step_metrics.update(eval_policy(actor, eval_env, current_timelimit, args.n_eval_runs))
+            step_metrics.update(eval_policy(policy, eval_env, current_timelimit, args.n_eval_runs))
             logger.log(step_metrics)
 
         if t in full_checkpoints and args.save_checkpoints:
@@ -296,6 +305,8 @@ def main(args, experiment_folder):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    # Algoruthm
+    parser.add_argument("--algorithm", default='TQC', choices=['TQC', 'PPO'])
     # Env args
     parser.add_argument("--db_path", default="env/data/malonaldehyde.db", type=str, help="Path to molecules database")
     parser.add_argument("--num_initial_conformations", default=50000, type=int, help="Number of initial molecule conformations to sample from DB")
@@ -325,21 +336,17 @@ if __name__ == "__main__":
     parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")
     parser.add_argument("--cutoff", default=20.0, type=float, help="Cutoff for Schnet in actor/critic")
     parser.add_argument("--n_gaussians", default=50, type=int, help="Number of Gaussians for Schnet in actor/critic")
-    # Actor args
-    parser.add_argument("--actor_out_embedding_size", default=128, type=int, help="Output embedding size for actor")
+    # Policy args
+    parser.add_argument("--out_embedding_size", default=128, type=int, help="Output embedding size for policy")
     parser.add_argument("--tanh", choices=["before_projection", "after_projection"], help="Whether to put tanh() before projection operator or after")
-    # Critic args
     parser.add_argument("--n_quantiles", default=25, type=int)
     parser.add_argument("--n_nets", default=5, type=int)
-    parser.add_argument("--critic_out_embedding_size", default=128, type=int, help="Critic out embedding size")
     # Eval args
     parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate
     parser.add_argument("--n_eval_runs", default=10, type=int, help="Number of evaluation episodes")
-    # Trainer args
-    parser.add_argument("--algorithm", default='sac', choices=['sac', 'ppo'])
+    # TQC args
     parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
-    parser.add_argument("--replay_buffer_size", default=int(2e5), type=int, help="Size of replay buffer")
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--actor_lr", default=3e-4, type=float, help="Actor learning rate")
@@ -348,10 +355,18 @@ if __name__ == "__main__":
     parser.add_argument("--critic_clip_value", default=None, help="Clipping value for critic gradients")
     parser.add_argument("--alpha_lr", default=3e-4, type=float, help="Alpha learning rate")
     parser.add_argument("--initial_alpha", default=1.0, type=float, help="Initial value for alpha")
-    parser.add_argument("--update_frequency", default=1, type=int)
     parser.add_argument("--num_updates", default=1, type=int)
+    # PPO args
+    parser.add_argument("--clip_param", default=0.2, type=float)
+    parser.add_argument("--ppo_epoch", default=4, type=int)
+    parser.add_argument("--num_mini_batch", default=16, type=int)
+    parser.add_argument("--value_loss_coef", default=0.5, type=float)
+    parser.add_argument("--entropy_coef", default=0.01, type=float)
+    parser.add_argument("--use_clipped_value_loss", default=True, type=bool)
     # Other args
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
+    parser.add_argument("--replay_buffer_size", default=int(2e5), type=int, help="Size of replay buffer")
+    parser.add_argument("--update_frequency", default=1, type=int)
     parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
     parser.add_argument("--seed", default=None, type=int)
     parser.add_argument("--light_checkpoint_freq", type=int, default=200000)
@@ -359,12 +374,6 @@ if __name__ == "__main__":
     parser.add_argument("--load_model", type=str, default=None)
     parser.add_argument("--log_dir", default='.')
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
-    # PPO args
-    parser.add_argument("--clip_param", default=0.2, type=float)
-    parser.add_argument("--value_loss_coef", default=0.5, type=float)
-    parser.add_argument("--entropy_coef", default=0.01, type=float)
-    parser.add_argument("--max_grad_norm", default=0.5, type=float)
-    parser.add_argument("--use_clipped_value_loss", default=True, type=bool)
     args = parser.parse_args()
 
     log_dir = Path(args.log_dir)

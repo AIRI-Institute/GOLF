@@ -1,16 +1,13 @@
 import torch
 
-from tqc.utils import quantile_huber_loss_f, calculate_gradient_norm
-from tqc import DEVICE
+from rl.utils import quantile_huber_loss_f, calculate_gradient_norm
+from rl import DEVICE
 
 
-class SAC(object):
+class TQC(object):
 	def __init__(
 		self,
-		*,
-		actor,
-		critic,
-		critic_target,
+		policy,
 		discount,
 		tau,
 		log_alpha,
@@ -19,13 +16,13 @@ class SAC(object):
 		alpha_lr,
 		top_quantiles_to_drop,
 		per_atom_target_entropy,
+		batch_size=256,
 		actor_clip_value=None,
 		critic_clip_value=None,
-		**kwargs
 	):
-		self.actor = actor
-		self.critic = critic
-		self.critic_target = critic_target
+		self.actor = policy.actor
+		self.critic = policy.critic
+		self.critic_target = policy.critic_target
 		self.log_alpha = torch.tensor([log_alpha], requires_grad=True, device=DEVICE)
 
 		# TODO: check hyperparams
@@ -37,10 +34,11 @@ class SAC(object):
 		self.tau = tau
 		self.top_quantiles_to_drop = top_quantiles_to_drop
 		self.per_atom_target_entropy = per_atom_target_entropy
+		self.batch_size = batch_size
 		self.actor_clip_value = actor_clip_value
 		self.critic_clip_value = critic_clip_value
 
-		self.quantiles_total = critic.n_quantiles * critic.n_nets
+		self.quantiles_total = self.critic.n_quantiles * self.critic.n_nets
 
 		self.total_it = 0
 
@@ -49,9 +47,9 @@ class SAC(object):
 			total_quantiles_to_keep = t * self.critic.n_nets
 			metrics[f'Target_Q/Q_value_t={t}'] = next_z[:, :total_quantiles_to_keep].mean().__float__()
 
-	def update(self, replay_buffer, batch_size=256):
+	def update(self, replay_buffer):
 		metrics = dict()
-		state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
+		state, action, next_state, reward, not_done = replay_buffer.sample(self.batch_size)
 		alpha = torch.exp(self.log_alpha)
 		metrics['alpha'] = alpha.item()
 
@@ -61,7 +59,7 @@ class SAC(object):
 			new_next_action, next_log_pi = self.actor(next_state)
 			# compute and cut quantiles at the next state
 			next_z = self.critic_target(next_state, new_next_action)
-			sorted_z, _ = torch.sort(next_z.reshape(batch_size, -1))
+			sorted_z, _ = torch.sort(next_z.reshape(self.batch_size, -1))
 			self.add_next_z_metrics(metrics, sorted_z)
 			sorted_z_part = sorted_z[:, :self.quantiles_total-self.top_quantiles_to_drop]
 			target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)

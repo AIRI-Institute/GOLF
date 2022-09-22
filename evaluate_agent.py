@@ -12,9 +12,9 @@ from pathlib import Path
 from env.moldynamics_env import env_fn
 from env.wrappers import rdkit_reward_wrapper
 
-from tqc import DEVICE
-from tqc.actor_critic import Actor
-from tqc.utils import ActionScaleScheduler, run_policy, rdkit_minimize_until_convergence
+from rl import DEVICE
+from rl.actor_critic_tqc import Actor
+from rl.utils import ActionScaleScheduler, run_policy, rdkit_minimize_until_convergence
 
 def rdkit_minimize_until_convergence_binary_search(env, fixed_atoms):
     # Binary search :/
