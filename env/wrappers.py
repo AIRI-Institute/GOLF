@@ -27,13 +27,15 @@ class RdkitMinimizationReward(gym.Wrapper):
                  greedy=False,
                  remove_hydrogen=False,
                  molecules_xyz_prefix='',
-                 M=10):
+                 M=10,
+                 done_when_not_improved=False):
         # Initialize molecule's sructure
         self.M = M
         self.minimize_on_every_step = minimize_on_every_step
         self.greedy = greedy
         self.remove_hydrogen = remove_hydrogen
         self.initial_energy = 0
+        self.done_when_not_improved=done_when_not_improved
         # Parse molecules
         self.molecules = {}
         for formula, path in RdkitMinimizationReward.molecules_xyz.items():
@@ -75,8 +77,12 @@ class RdkitMinimizationReward(gym.Wrapper):
         if self.minimize_on_every_step:
             self.initial_energy = final_energy
 
-        # If TL is reached log final energy
-        if info['env_done'] or self.greedy:
+        # If energy has not improved and done_when_not_improved=True set done to True 
+        if self.done_when_not_improved and reward < 0:
+            done = True
+
+        # If TL is reached or done=True log final energy
+        if done or info['env_done'] or self.greedy:
             info['final_energy'] = final_energy
             info['not_converged'] = not_converged
             set_coordinates(self.molecule, self.env.atoms.get_positions())
@@ -96,6 +102,7 @@ class RdkitMinimizationReward(gym.Wrapper):
         set_coordinates(self.molecule, self.env.atoms.get_positions())
         # Minimize the initial state of the molecule
         _, self.initial_energy = self.minimize()
+
         return obs
 
     def set_initial_positions(self, atoms, M=None):

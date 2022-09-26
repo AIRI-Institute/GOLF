@@ -125,12 +125,16 @@ def main(args, experiment_folder):
         'greedy': args.greedy,
         'remove_hydrogen': args.remove_hydrogen,
         'molecules_xyz_prefix': args.molecules_xyz_prefix,
-        'M': args.M
+        'M': args.M,
+        'done_when_not_improved': args.done_when_not_improved
     }
     env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
     
     # Initialize reward wrappers for evaluation
-    reward_wrapper_kwargs['env'] = eval_env
+    reward_wrapper_kwargs.update({
+        'env': eval_env,
+        'done_when_not_improved': False
+    })
     eval_env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
 
     # Initialize action_scale scheduler and timelimit scheduler
@@ -166,7 +170,7 @@ def main(args, experiment_folder):
         n_nets=args.n_nets,
         n_quantiles=args.n_quantiles,
         tanh=args.tanh
-    )
+    ).to(DEVICE)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
     
@@ -266,7 +270,6 @@ def main(args, experiment_folder):
         step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
         step_metrics['Timelimit'] = current_timelimit
         step_metrics['Action_norm'] = np.linalg.norm(action, axis=1).mean().item()
-        # print(step_metrics['Action_norm'])
 
         if done or (not args.greedy and ep_end):
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
@@ -322,6 +325,7 @@ if __name__ == "__main__":
     parser.add_argument("--timelimit_interval", default=150000, type=int, help="How often to increment timelimit")
     parser.add_argument("--greedy", default=False, type=bool, help="Returns done on every step independent of the timelimit")
     parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
+    parser.add_argument("--done_when_not_improved", type=bool, default=False, help="Return done if energy has not improved")
     # Reward args
     parser.add_argument("--minimize_on_every_step", type=bool, default=False, help="Whether to minimize conformation with rdkit on every step")
     parser.add_argument("--M", type=int, default=10, help="Number of steps to run rdkit minimization for")

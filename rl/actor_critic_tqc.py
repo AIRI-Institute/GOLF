@@ -50,10 +50,10 @@ class GenerateActionsBlock(nn.Module):
         if self.tanh == "after_projection":
             actions_mean = torch.tanh(actions_mean)
 
-        print("Action means shape = ", actions_mean.shape)
-        norm_reshape = torch.norm(actions_mean * action_scale, p=2, dim=-1).reshape(1, -1).squeeze()
-        mask_reshape = atoms_mask.reshape(1, -1).squeeze().long()
-        print("training = ", self.training, " norm = ", norm_reshape[mask_reshape].mean())
+        # print("Action means shape = ", actions_mean.shape)
+        # norm_reshape = torch.norm(actions_mean * action_scale, p=2, dim=-1).reshape(1, -1).squeeze()
+        # mask_reshape = atoms_mask.reshape(1, -1).squeeze().long()
+        # print("training = ", self.training, " norm = ", norm_reshape[mask_reshape].mean())
 
         if self.training:
             # Clamp and exp log_std
