@@ -148,7 +148,8 @@ def recollate_batch(state_batch, indices, new_states):
     # Unpads states in batch.
     # Replaces some states with new ones and collates them into batch.
     num_atoms = state_batch['_atom_mask'].sum(-1).long()
-    states = [{k:v[i, :num_atoms[i]] for k, v in state_batch.items()} for i in range(len(num_atoms))]
+    states = [{k:v[i, :num_atoms[i]] for k, v in state_batch.items()  if k != "representation"}\
+              for i in range(len(num_atoms))]
     for i, ind in enumerate(indices):
         states[ind] = new_states[i]
     return {k:v.to(DEVICE) for k, v in _collate_aseatoms(states).items()}

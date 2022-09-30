@@ -6,46 +6,59 @@ from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from schnetpack.data.loader import _collate_aseatoms
 
 class ReplayBufferPPO(object):
-    def __init__(self, device, max_size=int(1e6)):
+    def __init__(self, device, n_processes, max_size):
         self.device = device
         self.max_size = max_size
+        self.n_processes = n_processes
         self.ptr = 0
         self.size = 0
 
-        self.states = [None] * self.max_size
-        self.next_states = [None] * self.max_size
-        self.actions = [None] * self.max_size
-        self.reward = torch.empty((max_size, 1), dtype=torch.float32)
-        self.actions_log_probs = torch.empty((max_size, 1), dtype=torch.float32)
-        self.not_done = torch.empty((max_size, 1), dtype=torch.float32)
-        self.not_ep_end = torch.empty((max_size, 1), dtype=torch.float32)
-        self.values = torch.empty((max_size, 1), dtype=torch.float32)
-        self.returns = torch.zeros((max_size + 1, 1), dtype=torch.float32)
+        self.states = [[None for _ in range(self.n_processes)] for _ in range(self.max_size)]
+        self.next_states = [[None for _ in range(self.n_processes)] for _ in range(self.max_size)]
+        self.actions = [[None for _ in range(self.n_processes)] for _ in range(self.max_size)]
+        self.reward = torch.empty((max_size, n_processes), dtype=torch.float32)
+        self.actions_log_probs = torch.empty((max_size, n_processes), dtype=torch.float32)
+        self.not_done = torch.empty((max_size, n_processes), dtype=torch.float32)
+        self.not_ep_end = torch.empty((max_size, n_processes), dtype=torch.float32)
+        self.values = torch.empty((max_size, n_processes), dtype=torch.float32)
+        self.returns = torch.zeros((max_size + 1, n_processes), dtype=torch.float32)
 
-    def add(self, state, action, next_state, reward, done, ep_end, action_log_prob, value):
-        action, reward, done, ep_end, action_log_prob, value = torch.FloatTensor(action),\
-                                                               torch.FloatTensor([reward]), \
-                                                               torch.FloatTensor([done]), \
-                                                               torch.FloatTensor([ep_end]), \
-                                                               torch.FloatTensor(action_log_prob), \
-                                                               torch.FloatTensor(value)
+    def add(self, states, actions, next_states, rewards, dones, ep_ends, action_log_probs, values):
+        actions, rewards, dones, ep_ends, action_log_probs, values = torch.FloatTensor(actions),\
+                                                                     torch.FloatTensor(rewards), \
+                                                                     torch.FloatTensor(dones), \
+                                                                     torch.FloatTensor(ep_ends), \
+                                                                     torch.FloatTensor(action_log_probs), \
+                                                                     torch.FloatTensor(values)
+        #print(rewards.shape, dones.shape, ep_ends.shape, action_log_probs.shape, values.shape)
                                
+        num_atoms = states['_atom_mask'].sum(-1).long()
+        # Unpad states, next_states and actions
+        actions_list = [action[:num_atoms[i]].cpu() for i, action in enumerate(actions)]
+        states_list = [{k:v[i, :num_atoms[i]].cpu() for k, v in states.items() if k != "representation"}\
+                       for i in range(len(num_atoms))]
+        next_states_list = [{k:v[i, :num_atoms[i]].cpu() for k, v in next_states.items() if k != "representation"}\
+                            for i in range(len(num_atoms))]
 
-        self.states[self.ptr] = {k:v.squeeze(0).detach().cpu() for k, v in state.items() if k != "representation"}
-        self.next_states[self.ptr] = {k:v.squeeze(0).detach().cpu() for k, v in next_state.items() if k != "representation"}
-        self.actions[self.ptr] = action
-        self.reward[self.ptr] = reward
-        self.not_done[self.ptr] = 1. - done
-        self.not_ep_end[self.ptr] = 1. - ep_end
-        self.actions_log_probs[self.ptr] = action_log_prob
-        self.values[self.ptr] = value
+        for proc_num in range(len(num_atoms)):
+            self.states[self.ptr][proc_num] = states_list[proc_num]
+            self.next_states[self.ptr][proc_num] = next_states_list[proc_num]
+            self.actions[self.ptr][proc_num] = actions_list[proc_num]
+        
+        self.reward[self.ptr].copy_(rewards)
+        self.not_done[self.ptr].copy_(1. - dones)
+        self.not_ep_end[self.ptr].copy_(1. - ep_ends)
+        self.actions_log_probs[self.ptr].copy_(action_log_probs)
+        self.values[self.ptr].copy_(values)
         
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
 
     def feed_forward_generator(self, advantages, num_mini_batch=None, mini_batch_size=None):
-        batch_size = self.max_size
+        batch_size = self.max_size * self.n_processes
 
+        states_flat = [state for n_proc_state in self.states for state in n_proc_state]
+        actions_flat = [action for n_proc_actions in self.actions for action in n_proc_actions]
         if mini_batch_size is None:
             assert batch_size >= num_mini_batch, (
                 "PPO requires the number of processes size of RB {}"
@@ -59,24 +72,24 @@ class ReplayBufferPPO(object):
         )
         
         for indices in sampler:
-            states = [self.states[i] for i in indices]
+            states = [states_flat[i] for i in indices]
             state_batch = {k:v.to(self.device) for k, v in _collate_aseatoms(states).items()}
-            actions = [self.actions[i] for i in indices]
+            actions = [actions_flat[i] for i in indices]
             action_batch = _collate_actions(actions).to(self.device)
-            value_preds_batch = self.values[indices].to(self.device)
-            return_batch = self.returns[indices].to(self.device)
-            old_action_log_probs_batch = self.actions_log_probs[indices].to(self.device)
+            value_preds_batch = self.values.view(-1, 1)[indices].to(self.device)
+            return_batch = self.returns[:-1].view(-1, 1)[indices].to(self.device)
+            old_action_log_probs_batch = self.actions_log_probs.view(-1, 1)[indices].to(self.device)
             
             if advantages is None:
                 adv_targ = None
             else:
-                adv_targ = advantages[indices].to(self.device)
+                adv_targ = advantages.view(-1, 1)[indices].to(self.device)
 
             yield state_batch, action_batch, value_preds_batch,\
                   return_batch, old_action_log_probs_batch, adv_targ
 
     def compute_returns(self, next_value, gamma, done_on_timelimit):
-        self.returns[-1] = next_value
+        self.returns[-1] = next_value.squeeze(-1)
         if done_on_timelimit:
             # Timeout is considered a done
             for step in reversed(range(self.reward.size(0))):
@@ -85,8 +98,8 @@ class ReplayBufferPPO(object):
         else:
             # If episode ends with a timeout bootstrap value target
             for step in reversed(range(self.reward.size(0))):
-                self.returns[step] = (self.returns[step + 1] * gamma * self.not_done[step] + self.reward[step]) * self.not_ep_end[step] \
-                    + (1 - self.not_ep_end[step]) * self.values[step]
+                self.returns[step] = (self.returns[step + 1] * gamma * self.not_done[step] + self.reward[step]) \
+                                     * self.not_ep_end[step] + (1 - self.not_ep_end[step]) * self.values[step]
 
 
 class ReplayBufferTQC(object):
@@ -110,9 +123,11 @@ class ReplayBufferTQC(object):
 
         num_atoms = states['_atom_mask'].sum(-1).long()
         # Unpad states, next_states and actions
-        actions_list = [action[:num_atoms[i]] for i, action in enumerate(actions)]
-        states_list = [{k:v[i, :num_atoms[i]] for k, v in states.items()} for i in range(len(num_atoms))]
-        next_states_list = [{k:v[i, :num_atoms[i]] for k, v in next_states.items()} for i in range(len(num_atoms))]
+        actions_list = [action[:num_atoms[i]].cpu() for i, action in enumerate(actions)]
+        states_list = [{k:v[i, :num_atoms[i]].cpu() for k, v in states.items() if k != "representation"}\
+                       for i in range(len(num_atoms))]
+        next_states_list = [{k:v[i, :num_atoms[i]].cpu() for k, v in next_states.items() if k != "representation"}\
+                            for i in range(len(num_atoms))]
 
         # Update replay buffer
         for i in range(len(num_atoms)):

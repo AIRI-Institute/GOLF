@@ -35,8 +35,8 @@ trainers = {
 }
 
 replay_buffers = {
-    "PPO": ReplayBufferPPO,
-    "TQC": ReplayBufferTQC
+    "PPO": ignore_extra_args(ReplayBufferPPO),
+    "TQC": ignore_extra_args(ReplayBufferTQC)
 }
 
 class Logger:
@@ -132,7 +132,7 @@ def main(args, experiment_folder):
     eval_env = env_fn(DEVICE, **env_kwargs)
     reward_wrapper_kwargs.update({
         'env': eval_env,
-        'done_when_not_improved': False
+        # 'done_when_not_improved': False
     })
     eval_env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
 
@@ -154,7 +154,11 @@ def main(args, experiment_folder):
     if  use_ppo:
         assert args.replay_buffer_size == args.update_frequency, \
             f"PPO algorithm requires replay_buffer_size == update_frequency, got {args.replay_buffer_size} and {args.update_frequency}"
-    replay_buffer = replay_buffers[args.algorithm](DEVICE, args.replay_buffer_size)
+    replay_buffer = replay_buffers[args.algorithm](
+        device=DEVICE,
+        n_processes=args.num_processes,
+        max_size=args.replay_buffer_size
+    )
 
     # Inititalize actor and critic
     schnet_args = {
@@ -205,8 +209,10 @@ def main(args, experiment_folder):
     episode_returns = np.zeros(args.num_processes)
     episode_mean_Q = np.zeros(args.num_processes)
 
+    max_timesteps = int(args.max_timesteps) // args.num_processes
+
     policy.train()    
-    full_checkpoints = [int(args.max_timesteps / 3), int(args.max_timesteps * 2 / 3), int(args.max_timesteps) - 1]
+    full_checkpoints = [max_timesteps // 3, max_timesteps * 2 // 3, args.max_timesteps - 1]
     if args.load_model is not None:
         start_iter = int(args.load_model.split('/')[-1].split('_')[1]) + 1
         trainer.load(args.load_model)
@@ -214,7 +220,7 @@ def main(args, experiment_folder):
     else:
         start_iter = 0
 
-    for t in range(start_iter, int(args.max_timesteps)):
+    for t in range(start_iter, max_timesteps):
         if use_ppo:
             update_condition = ((t + 1) % args.update_frequency) == 0
         else:
@@ -233,7 +239,13 @@ def main(args, experiment_folder):
             policy_out = policy.act(state)
             values, actions, log_probs = [x.cpu().numpy() for x in policy_out]
             if not use_ppo:
+                # Mean over nets and quantiles to log
                 values = values.mean(axis=(1, 2))
+            else:
+                # Remove extra dimension to store correctly
+                values = values.squeeze(-1)
+                log_probs = log_probs.squeeze(-1)
+
             
 
         next_state, rewards, dones, infos = env.step(actions)
@@ -256,7 +268,7 @@ def main(args, experiment_folder):
         if update_condition:
             if use_ppo:
                 with torch.no_grad():
-                    next_value = policy.get_value(state)[0].cpu()
+                    next_value = policy.get_value(state).cpu()
                 replay_buffer.compute_returns(next_value, args.discount, args.done_on_timelimit or args.greedy)
                 step_metrics = trainer.update(replay_buffer)
             else:
