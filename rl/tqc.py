@@ -92,7 +92,7 @@ class TQC(object):
 		self.actor_optimizer.step()
 
 		# --- Alpha loss ---
-		target_entropy = self.per_atom_target_entropy * state['_atoms_count']
+		target_entropy = self.per_atom_target_entropy * state['_atom_mask'].sum(-1)
 		alpha_loss = -self.log_alpha * (log_pi + target_entropy).detach().mean()
 
 		# --- Update alpha ---

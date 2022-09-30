@@ -94,12 +94,9 @@ class Actor(nn.Module):
         self.model = spk.atomistic.model.AtomisticModel(schnet, output_modules)
         self.generate_actions_block = GenerateActionsBlock(out_embedding_size, tanh)
     
-    def forward(self, state_dict, return_relative_shifts=False):
+    def forward(self, state_dict):
         action_scale = self.action_scale_scheduler.get_action_scale()
-        if '_atoms_mask' not in state_dict:
-            atoms_mask = torch.ones(state_dict['_positions'].shape[:2]).to(DEVICE)
-        else:
-            atoms_mask = state_dict['_atoms_mask']
+        atoms_mask = state_dict['_atom_mask']
         kv = self.model(state_dict)['kv']
         
         actions, log_prob = self.generate_actions_block(kv, state_dict['_positions'], atoms_mask, action_scale)
@@ -167,35 +164,3 @@ class TQCPolicy(nn.Module):
         
     def select_action(self, state_dict):
         return self.actor.select_action(state_dict)
-
-class CriticPPO(nn.Module):
-    def __init__(self, schnet_args, out_embedding_size, mean=None, stddev=None):
-        super(CriticPPO, self).__init__()
-        self.nets = []
-        self.mlps = []
-        self.out_embedding_size = out_embedding_size
-        schnet = spk.SchNet(
-                        n_interactions=schnet_args["n_interactions"], #3
-                        cutoff=schnet_args["cutoff"], #20.0
-                        n_gaussians=schnet_args["n_gaussians"] #50
-                    )
-        output_modules = [
-            spk.atomistic.Atomwise(
-                n_in=schnet.n_atom_basis,
-                n_out=self.out_embedding_size,
-                property='embedding',
-                mean=mean,
-                stddev=stddev
-            )
-        ]
-        self.net = spk.atomistic.model.AtomisticModel(schnet, output_modules)
-        self.mlp = MLP(self.out_embedding_size, 1)
-
-    def forward(self, state_dict):
-        # Schnet changes the state_dict so a deepcopy
-        # has to be passed to each net in order to do .backwards()
-        state = {k: v.detach().clone() for k, v in state_dict.items()}
-        # Change state here to keep the gradients flowing
-        state_emb = self.net(state)['embedding']
-        V = self.mlp(state_emb)
-        return V

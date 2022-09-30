@@ -62,14 +62,7 @@ class ReplayBufferPPO(object):
             states = [self.states[i] for i in indices]
             state_batch = {k:v.to(self.device) for k, v in _collate_aseatoms(states).items()}
             actions = [self.actions[i] for i in indices]
-            
-            # State batch must include atomic counts to calculate target entropy
-            action_batch, atoms_count, mask = [tensor.to(self.device) for tensor in _collate_actions(actions)]
-            state_batch.update({
-                '_atoms_count': atoms_count,
-                '_atoms_mask': mask
-            })
-            
+            action_batch = _collate_actions(actions).to(self.device)
             value_preds_batch = self.values[indices].to(self.device)
             return_batch = self.returns[indices].to(self.device)
             old_action_log_probs_batch = self.actions_log_probs[indices].to(self.device)
@@ -109,20 +102,28 @@ class ReplayBufferTQC(object):
         self.reward = torch.empty((max_size, 1), dtype=torch.float32)
         self.not_done = torch.empty((max_size, 1), dtype=torch.float32)
 
-    def add(self, state, action, next_state, reward, done):
+    def add(self, states, actions, next_states, rewards, dones):
         # Convert action to torch tensor for Critic
-        action, reward, done = torch.FloatTensor(action),\
-                               torch.FloatTensor([reward]), \
-                               torch.FloatTensor([done])
+        actions, rewards, dones = torch.FloatTensor(actions),\
+                                  torch.FloatTensor(rewards),\
+                                  torch.FloatTensor(dones)
 
-        self.states[self.ptr] = {k:v.squeeze(0).detach().cpu() for k, v in state.items() if k != "representation"}
-        self.next_states[self.ptr] = {k:v.squeeze(0).detach().cpu() for k, v in next_state.items() if k != "representation"}
-        self.actions[self.ptr] = action
-        self.reward[self.ptr] = reward
-        self.not_done[self.ptr] = 1. - done
+        num_atoms = states['_atom_mask'].sum(-1).long()
+        # Unpad states, next_states and actions
+        actions_list = [action[:num_atoms[i]] for i, action in enumerate(actions)]
+        states_list = [{k:v[i, :num_atoms[i]] for k, v in states.items()} for i in range(len(num_atoms))]
+        next_states_list = [{k:v[i, :num_atoms[i]] for k, v in next_states.items()} for i in range(len(num_atoms))]
 
-        self.ptr = (self.ptr + 1) % self.max_size
-        self.size = min(self.size + 1, self.max_size)
+        # Update replay buffer
+        for i in range(len(num_atoms)):
+            self.states[self.ptr] = states_list[i]
+            self.next_states[self.ptr] = next_states_list[i]
+            self.actions[self.ptr] = actions_list[i]
+            self.reward[self.ptr] = rewards[i]
+            self.not_done[self.ptr] = 1. - dones[i]
+            
+            self.ptr = (self.ptr + 1) % self.max_size
+            self.size = min(self.size + 1, self.max_size)
 
     def sample(self, batch_size):
         ind = np.random.choice(self.size, batch_size, replace=False)
@@ -131,28 +132,14 @@ class ReplayBufferTQC(object):
         next_states = [self.next_states[i] for i in ind]
         next_state_batch = {k:v.to(self.device) for k, v in _collate_aseatoms(next_states).items()}
         actions = [self.actions[i] for i in ind]
-        # State batch must include atomic counts to calculate target entropy
-        action_batch, atoms_count, mask = [tensor.to(self.device) for tensor in _collate_actions(actions)]
-        state_batch.update({
-            '_atoms_count': atoms_count,
-            '_atoms_mask': mask
-        })
-        next_state_batch.update({
-            '_atoms_count': atoms_count,
-            '_atoms_mask': mask
-        })
+        action_batch = _collate_actions(actions).to(self.device)
         reward, not_done = [getattr(self, name)[ind].to(self.device) for name in ('reward', 'not_done')]
         return (state_batch, action_batch, next_state_batch, reward, not_done)
 
 
 def _collate_actions(actions):
-    atoms_count = []
     max_size = max([action.shape[0] for action in actions])
     actions_batch = torch.zeros(len(actions), max_size, actions[0].shape[1])
     for i, action in enumerate(actions):
-        atoms_count.append(action.shape[0])
         actions_batch[i, slice(0, action.shape[0])] = action
-    atoms_count = torch.LongTensor(atoms_count)
-    # Create action mask for critic
-    mask = torch.arange(max_size).expand(len(atoms_count), max_size) < atoms_count.unsqueeze(1)
-    return actions_batch, atoms_count, mask
+    return actions_batch

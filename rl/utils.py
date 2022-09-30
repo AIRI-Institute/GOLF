@@ -5,6 +5,8 @@ import numpy as np
 from collections import defaultdict
 from math import floor
 
+from schnetpack.data.loader import _collate_aseatoms
+
 from rl import DEVICE
 
 
@@ -82,36 +84,50 @@ def rdkit_minimize_until_convergence(env, fixed_atoms, M=None):
             return initial_energy, final_energy
     return initial_energy, final_energy
 
-def eval_policy(actor, env, max_timestamps, eval_episodes=10, n_explore_runs=5):
+def eval_policy(actor, env, max_timestamps, eval_episodes=10,
+                n_explore_runs=5, rdkit=True, evaluate_multiple_timesteps=True):
+
     result = defaultdict(lambda: 0.0)
     for _ in range(eval_episodes):
         env.reset()
-        fixed_atoms = env.atoms.copy()
-        # Compute minimal energy of the molecule
-        initial_energy, final_energy = rdkit_minimize_until_convergence(env, fixed_atoms)
+        fixed_atoms = env.unwrapped.atoms.copy()
+
         # Evaluate policy in eval mode
         actor.eval()
         eval_delta_energy, eval_final_energy, eval_final_rl_energy = run_policy(env, actor, fixed_atoms, max_timestamps=max_timestamps)
         result['eval/delta_energy'] += eval_delta_energy
         result['eval/final_energy'] += eval_final_energy
         result['eval/final_rl_energy'] += eval_final_rl_energy
-        result['eval/pct_of_minimized_energy'] += (initial_energy - eval_final_energy) / (initial_energy - final_energy)
+
+        # Compute minimal energy of the molecule
+        if rdkit:
+            initial_energy, final_energy = rdkit_minimize_until_convergence(env, fixed_atoms)
+            result['eval/pct_of_minimized_energy'] += (initial_energy - eval_final_energy) / (initial_energy - final_energy)
+
         # Evaluate policy at multiple timelimits
-        for timelimit in TIMELIMITS:
-            # Set env's TL to current timelimit
-            env.env.TL = timelimit
-            delta_energy_at, final_energy_at, _ = run_policy(env, actor, fixed_atoms, max_timestamps=timelimit)
-            result[f'eval/delta_energy_at_{timelimit}'] += delta_energy_at
-            result[f'eval/pct_of_minimized_energy_at_{timelimit}'] += (initial_energy - final_energy_at)  / (initial_energy - final_energy)
-        # Set env's TL to original value
-        env.env.TL = max_timestamps
+        if evaluate_multiple_timesteps:
+            for timelimit in TIMELIMITS:
+
+                # Set env's TL to current timelimit
+                env.update_timelimit(timelimit)
+                delta_energy_at, final_energy_at, _ = run_policy(env, actor, fixed_atoms, max_timestamps=timelimit)
+                result[f'eval/delta_energy_at_{timelimit}'] += delta_energy_at
+
+                # If reward is given by rdkit we know the optimal energy for the conformation.
+                if rdkit:
+                    result[f'eval/pct_of_minimized_energy_at_{timelimit}'] += (initial_energy - final_energy_at)  / (initial_energy - final_energy)
+
+            # Set env's TL to original value
+            env.update_timelimit(max_timestamps)
+
         # Evaluate policy in explore mode
         actor.train()
-        explore_results = np.array([run_policy(env, actor, fixed_atoms, max_timestamps=max_timestamps) for _ in range(n_explore_runs)])
-        explore_delta_energy, explore_final_energy, explore_final_rl_energy = explore_results.mean(axis=0)
-        result['explore/delta_energy'] += explore_delta_energy
-        result['explore/final_energy'] += explore_final_energy
-        result['explore/final_rl_energy'] += explore_final_rl_energy
+        if n_explore_runs > 0:
+            explore_results = np.array([run_policy(env, actor, fixed_atoms, max_timestamps=max_timestamps) for _ in range(n_explore_runs)])
+            explore_delta_energy, explore_final_energy, explore_final_rl_energy = explore_results.mean(axis=0)
+            result['explore/delta_energy'] += explore_delta_energy
+            result['explore/final_energy'] += explore_final_energy
+            result['explore/final_rl_energy'] += explore_final_rl_energy
         
     result = {k: v / eval_episodes for k, v in result.items()}
     return result
@@ -128,6 +144,15 @@ def quantile_huber_loss_f(quantiles, samples):
     loss = (torch.abs(tau[None, None, :, None] - (pairwise_delta < 0).float()) * huber_loss).mean()
     return loss
 
+def recollate_batch(state_batch, indices, new_states):
+    # Unpads states in batch.
+    # Replaces some states with new ones and collates them into batch.
+    num_atoms = state_batch['_atom_mask'].sum(-1).long()
+    states = [{k:v[i, :num_atoms[i]] for k, v in state_batch.items()} for i in range(len(num_atoms))]
+    for i, ind in enumerate(indices):
+        states[ind] = new_states[i]
+    return {k:v.to(DEVICE) for k, v in _collate_aseatoms(states).items()}
+
 def calculate_gradient_norm(model):
     total_norm = 0.0
     params = [p for p in model.parameters() if p.grad is not None and p.requires_grad]
@@ -136,6 +161,12 @@ def calculate_gradient_norm(model):
         total_norm += param_norm ** 2
     total_norm = total_norm ** (0.5)
     return total_norm
+
+def calculate_action_norm(actions, atom_mask):
+    num_atoms = atom_mask.sum(-1).long()
+    actions_list = [action[:num_atoms[i]] for i, action in enumerate(actions)]
+    mean_norm = np.array([np.linalg.norm(action, axis=1).mean() for action in actions_list]).mean()
+    return mean_norm
 
 def ignore_extra_args(foo):
     def indifferent_foo(**kwargs):

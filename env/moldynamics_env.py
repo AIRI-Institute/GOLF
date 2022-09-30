@@ -24,7 +24,6 @@ class MolecularDynamics(gym.Env):
                  num_initial_conformations=50000,
                  inject_noise=False,
                  noise_std=0.1,
-                 calculate_mean_std=False,
                  remove_hydrogen=False):
         self.db_path = db_path
         self.converter = converter
@@ -35,17 +34,15 @@ class MolecularDynamics(gym.Env):
         self.noise_std = noise_std
         self.remove_hydrogen = remove_hydrogen
         
-        self.db_len = self._get_db_length()
+        self.db_len = self.get_db_length()
         self.env_done = True
         self.atoms = None
         self.mean_energy = 0.
         self.std_energy = 1.
-        if calculate_mean_std:
-            self.mean_energy, self.std_energy = self._get_mean_std_energy()
         self.initial_molecule_conformations = []
 
         # Store random subset of molecules DB
-        self._get_initial_molecule_conformations(num_initial_conformations)
+        self.get_initial_molecule_conformations(num_initial_conformations)
         self.conformation_idx = 0
 
     def step(self, actions):
@@ -86,35 +83,25 @@ class MolecularDynamics(gym.Env):
     def update_timelimit(self, new_timelimit):
         self.TL = new_timelimit
 
-    def _get_db_length(self):
+    def get_db_length(self):
         with connect(self.db_path) as conn:
             db_len = len(conn)
         return db_len
 
-    def _get_env_step(self):
+    def get_env_step(self):
         return self.env_steps
 
-    def _get_initial_molecule_conformations(self, num_initial_conformations):
+    def get_initial_molecule_conformations(self, num_initial_conformations):
         if num_initial_conformations == -1 or num_initial_conformations == self.db_len:
             indices = np.arange(1, self.db_len + 1)
         else:
             indices = np.random.choice(np.arange(1, self.db_len + 1), min(self.db_len, num_initial_conformations), replace=False)
         self.initial_molecule_conformations = []
         for idx in indices:
-            atoms = self._get_molecule(int(idx)).toatoms()
+            atoms = self.get_molecule(int(idx)).toatoms()
             if self.remove_hydrogen:
                 del atoms[[atom.index for atom in atoms if atom.symbol=='H']]
             self.initial_molecule_conformations.append(atoms)
-    
-    def _get_mean_std_energy(self):
-        energy = []
-        # Speed up the computation
-        indices = np.random.choice(np.arange(1, self.db_len + 1), self.db_len // 10, replace=False)
-        for idx in indices:
-            row = self._get_molecule(int(idx))
-            energy.append(row.data['energy'])
-        energy = np.array(energy)
-        return energy.mean(), energy.std()
     
     # Makes sqllite3 database compatible with NFS storages
     @backoff.on_exception(
@@ -124,9 +111,12 @@ class MolecularDynamics(gym.Env):
         max_tries=10,
         on_giveup=on_giveup
     )
-    def _get_molecule(self, idx):
+    def get_molecule(self, idx):
         with connect(self.db_path) as conn:
             return conn.get(idx)
+
+    def get_atoms_num(self):
+        return len(self.atoms.get_atomic_numbers())
 
     def seed(self, seed=None):
         if seed is None:

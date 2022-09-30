@@ -136,6 +136,15 @@ class RdkitMinimizationReward(gym.Wrapper):
             self.molecule = rdmolops.RemoveHs(self.molecule)
         return not_converged, energy
 
+    def get_atoms_num(self):
+        return self.env.get_atoms_num()
+
+    def get_env_step(self):
+        return self.env.get_env_step()
+
+    def update_timelimit(self, tl):
+        return self.env.update_timelimit(tl)
+
 
 def rdkit_reward_wrapper(**kwargs):
     env = RdkitMinimizationReward(**kwargs)

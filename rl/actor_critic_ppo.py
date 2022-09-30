@@ -99,10 +99,7 @@ class PPOBase(nn.Module):
     
     def forward(self, state_dict, eval_actions=None):
         action_scale = self.action_scale_scheduler.get_action_scale()
-        if '_atoms_mask' not in state_dict:
-            atoms_mask = torch.ones(state_dict['_positions'].shape[:2]).to(DEVICE)
-        else:
-            atoms_mask = state_dict['_atoms_mask']
+        atoms_mask = state_dict['_atom_mask']
         
         # Get embedding
         schnet_out = self.model(state_dict)

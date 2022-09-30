@@ -12,6 +12,7 @@ from collections import deque
 
 from env.moldynamics_env import env_fn
 from env.wrappers import rdkit_reward_wrapper
+from env.make_envs import make_envs
 
 from rl import DEVICE
 from rl.tqc import TQC
@@ -19,7 +20,8 @@ from rl.ppo import PPO
 from rl.actor_critic_tqc import TQCPolicy
 from rl.actor_critic_ppo import PPOPolicy
 from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
-from rl.utils import eval_policy, ignore_extra_args
+from rl.utils import eval_policy, ignore_extra_args,\
+                     recollate_batch, calculate_action_norm
 from rl.utils import ActionScaleScheduler, TimelimitScheduler
 
 policies = {
@@ -109,18 +111,11 @@ def main(args, experiment_folder):
         'num_initial_conformations': args.num_initial_conformations,
         'inject_noise': args.inject_noise,
         'noise_std': args.noise_std,
-        'calculate_mean_std': args.calculate_mean_std_energy,
         'remove_hydrogen': args.remove_hydrogen,
     }
-    env = env_fn(DEVICE, **env_kwargs)
     
-    # Initialize eval env
-    env_kwargs['inject_noise'] = False
-    eval_env = env_fn(DEVICE, **env_kwargs)
-
-    # Initialize reward wrapper for training
+    # Reward wrapper kwargs
     reward_wrapper_kwargs = {
-        'env': env,
         'minimize_on_every_step': args.minimize_on_every_step,
         'greedy': args.greedy,
         'remove_hydrogen': args.remove_hydrogen,
@@ -128,9 +123,13 @@ def main(args, experiment_folder):
         'M': args.M,
         'done_when_not_improved': args.done_when_not_improved
     }
-    env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
+
+    # Make parallel environments
+    env = make_envs(env_kwargs, reward_wrapper_kwargs, args.seed, args.num_processes)
     
-    # Initialize reward wrappers for evaluation
+    # Update kwargs and make an environment for evaluation
+    env_kwargs['inject_noise'] = False
+    eval_env = env_fn(DEVICE, **env_kwargs)
     reward_wrapper_kwargs.update({
         'env': eval_env,
         'done_when_not_improved': False
@@ -202,11 +201,9 @@ def main(args, experiment_folder):
         use_clipped_value_loss=args.use_clipped_value_loss
     )
 
-    state, done = env.reset(), False
-    episode_return = 0
-    episode_mean_Q = 0
-    episode_timesteps = 0
-    episode_num = 0
+    state = env.reset()
+    episode_returns = np.zeros(args.num_processes)
+    episode_mean_Q = np.zeros(args.num_processes)
 
     policy.train()    
     full_checkpoints = [int(args.max_timesteps / 3), int(args.max_timesteps * 2 / 3), int(args.max_timesteps) - 1]
@@ -221,7 +218,7 @@ def main(args, experiment_folder):
         if use_ppo:
             update_condition = ((t + 1) % args.update_frequency) == 0
         else:
-            update_condition = t >= args.batch_size and t % args.update_frequency == 0
+            update_condition = t >= args.batch_size // args.num_processes and t % args.update_frequency == 0
         action_scale_scheduler.update(t)
         
         # Update timelimit
@@ -229,32 +226,31 @@ def main(args, experiment_folder):
         current_timelimit = timelimit_scheduler.get_timelimit()
         
         # Update timelimit in envs
-        env.update_timelimit(current_timelimit)
-        eval_env.update_timelimit(current_timelimit)
+        env.env_method("update_timelimit", current_timelimit)
         
         # Select next action
         with torch.no_grad():
             policy_out = policy.act(state)
-            value, action, log_prob = [x[0].cpu().numpy() for x in policy_out]
+            values, actions, log_probs = [x.cpu().numpy() for x in policy_out]
             if not use_ppo:
-                value = value.mean()
+                values = values.mean(axis=(1, 2))
             
 
-        next_state, reward, done, info = env.step(action)
+        next_state, rewards, dones, infos = env.step(actions)
         # Done on every step or at the end of the episode
-        done = done or args.greedy
-        episode_timesteps += 1
-        ep_end = episode_timesteps >= current_timelimit
+        dones = [done or args.greedy for done in dones]
+        episode_timesteps = env.env_method("get_env_step")
+        ep_ends = [ep_t >= current_timelimit for ep_t in episode_timesteps]
         
-        transition = [state, action, next_state, reward, done]
+        transition = [state, actions, next_state, rewards, dones]
         # if PPO then add log_prob, value and next value to RB
         if use_ppo:
-            transition.extend([ep_end, log_prob, value])
+            transition.extend([ep_ends, log_probs, values])
         replay_buffer.add(*transition)
 
         state = next_state
-        episode_return += reward
-        episode_mean_Q += value.item()
+        episode_returns += rewards
+        episode_mean_Q += values
 
         # Train agent after collecting sufficient data
         if update_condition:
@@ -262,37 +258,49 @@ def main(args, experiment_folder):
                 with torch.no_grad():
                     next_value = policy.get_value(state)[0].cpu()
                 replay_buffer.compute_returns(next_value, args.discount, args.done_on_timelimit or args.greedy)
-            step_metrics = trainer.update(replay_buffer)
+                step_metrics = trainer.update(replay_buffer)
+            else:
+                # Update TQC several times
+                for _ in range(args.num_processes):
+                    step_metrics = trainer.update(replay_buffer)
         else:
             step_metrics = dict()
 
         step_metrics['Timestamp'] = str(datetime.datetime.now())
         step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
         step_metrics['Timelimit'] = current_timelimit
-        step_metrics['Action_norm'] = np.linalg.norm(action, axis=1).mean().item()
+        step_metrics['Action_norm'] = calculate_action_norm(actions, state['_atom_mask']).item()
+        
+        # Update training statistics
+        for i, (done, ep_end, info) in enumerate(zip(dones, ep_ends, infos)):
+            if done or (not args.greedy and ep_end):
+                logger.update_evaluation_statistics(episode_timesteps[i],
+                                                    episode_returns[i].item(),
+                                                    episode_mean_Q[i].item(),
+                                                    info['final_energy'],
+                                                    info['final_rl_energy'],
+                                                    info['not_converged'])
+                episode_returns[i] = 0
+                episode_mean_Q[i] = 0
 
-        if done or (not args.greedy and ep_end):
-            # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
-            logger.update_evaluation_statistics(episode_timesteps,
-                                                episode_return,
-                                                episode_mean_Q,
-                                                info['final_energy'],
-                                                info['final_rl_energy'],
-                                                info['not_converged'])
-            episode_return = 0
-            episode_mean_Q = 0
-            episode_num += 1
-
-        # If timelimit is reached or a real done comes from the environement
-        if ep_end or (done and not args.greedy):
-            episode_timesteps = 0
-            # Reset environment
-            state, done = env.reset(), False
+        # If timelimit is reached or a real done comes from the environement reset the environment 
+        envs_to_reset = [i for i, (done, ep_end) in enumerate(zip(dones, ep_ends)) if ep_end or (done and not args.greedy)]
+        # Get new states and remove extra dimension
+        reset_states = [{k:v.squeeze() for k, v in s.items()} for s in env.env_method("reset", indices=envs_to_reset)]
+        
+        # Recollate state_batch after resets as atomic numbers might have changed.
+        # Execute only if at least one env has reset.
+        if len(envs_to_reset) > 0:
+            state = recollate_batch(state, envs_to_reset, reset_states)
 
         # Evaluate episode
-        if (t + 1) % args.eval_freq == 0:
-            step_metrics['Total_timesteps'] = t + 1
-            step_metrics.update(eval_policy(policy, eval_env, current_timelimit, args.n_eval_runs))
+        if (t + 1) % (args.eval_freq // args.num_processes) == 0:
+            step_metrics['Total_timesteps'] = (t + 1) * args.num_processes
+            step_metrics.update(
+                eval_policy(policy, eval_env, current_timelimit, args.n_eval_runs,
+                            args.n_explore_runs, args.reward == "rdkit",
+                            args.evaluate_multiple_timesteps)
+            )
             logger.log(step_metrics)
 
         if t in full_checkpoints and args.save_checkpoints:
@@ -311,12 +319,12 @@ if __name__ == "__main__":
     # Algoruthm
     parser.add_argument("--algorithm", default='TQC', choices=['TQC', 'PPO'])
     # Env args
+    parser.add_argument("--num_processes", default=1, type=int, help="Number of copies of env to run in parallel")
     parser.add_argument("--db_path", default="env/data/malonaldehyde.db", type=str, help="Path to molecules database")
     parser.add_argument("--num_initial_conformations", default=50000, type=int, help="Number of initial molecule conformations to sample from DB")
     parser.add_argument("--sample_initial_conformation", default=False, type=bool, help="Sample new conformation for every seed")
     parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")
     parser.add_argument("--noise_std", type=float, default=0.1, help="Std of the injected noise")
-    parser.add_argument("--calculate_mean_std_energy", type=bool, default=False, help="Calculate mean, std of energy of database")
     parser.add_argument("--remove_hydrogen", type=bool, default=False, help="Whether to remove hydrogen atoms from the molecule")
     # Timelimit args
     parser.add_argument("--timelimit", default=100, type=int, help="Timelimit for MD env")
@@ -327,6 +335,7 @@ if __name__ == "__main__":
     parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
     parser.add_argument("--done_when_not_improved", type=bool, default=False, help="Return done if energy has not improved")
     # Reward args
+    parser.add_argument("--reward", choices=["rdkit", "dft"], default="rdkit", help="How the energy is calculated")
     parser.add_argument("--minimize_on_every_step", type=bool, default=False, help="Whether to minimize conformation with rdkit on every step")
     parser.add_argument("--M", type=int, default=10, help="Number of steps to run rdkit minimization for")
     parser.add_argument("--molecules_xyz_prefix", type=str, default="", help="Path to env/ folder. For cluster compatability")
@@ -348,6 +357,8 @@ if __name__ == "__main__":
     # Eval args
     parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate
     parser.add_argument("--n_eval_runs", default=10, type=int, help="Number of evaluation episodes")
+    parser.add_argument("--n_explore_runs", default=5, type=int, help="Number of exploration episodes during evaluation")
+    parser.add_argument("--evaluate_multiple_timesteps", default=False, type=bool, help="Evaluate at multiple timesteps")
     # TQC args
     parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
@@ -359,7 +370,6 @@ if __name__ == "__main__":
     parser.add_argument("--critic_clip_value", default=None, help="Clipping value for critic gradients")
     parser.add_argument("--alpha_lr", default=3e-4, type=float, help="Alpha learning rate")
     parser.add_argument("--initial_alpha", default=1.0, type=float, help="Initial value for alpha")
-    parser.add_argument("--num_updates", default=1, type=int)
     # PPO args
     parser.add_argument("--clip_param", default=0.2, type=float)
     parser.add_argument("--ppo_epoch", default=4, type=int)
@@ -369,15 +379,14 @@ if __name__ == "__main__":
     parser.add_argument("--use_clipped_value_loss", default=True, type=bool)
     # Other args
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
-    parser.add_argument("--replay_buffer_size", default=int(2e5), type=int, help="Size of replay buffer")
-    parser.add_argument("--update_frequency", default=1, type=int)
-    parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
-    parser.add_argument("--seed", default=None, type=int)
-    parser.add_argument("--light_checkpoint_freq", type=int, default=200000)
+    parser.add_argument("--replay_buffer_size", default=int(1e5), type=int, help="Size of replay buffer")
+    parser.add_argument("--update_frequency", default=1, type=int, help="How often agent is updated")
+    parser.add_argument("--max_timesteps", default=1e6, type=int, help="Max time steps to run environment")
+    parser.add_argument("--seed", default=None, type=int, help="Random seed")
+    parser.add_argument("--light_checkpoint_freq", type=int, default=200000, help="How often light checkpoint is saved")
     parser.add_argument("--save_checkpoints", type=bool, default=False, help="Save light and full checkpoints")
-    parser.add_argument("--load_model", type=str, default=None)
-    parser.add_argument("--log_dir", default='.')
-    parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
+    parser.add_argument("--load_model", type=str, default=None, help="Path to load the model from")
+    parser.add_argument("--log_dir", default='.', help="Directory where runs are saved")
     args = parser.parse_args()
 
     log_dir = Path(args.log_dir)
