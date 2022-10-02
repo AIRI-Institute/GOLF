@@ -11,7 +11,7 @@ from pathlib import Path
 from collections import deque
 
 from env.moldynamics_env import env_fn
-from env.wrappers import rdkit_reward_wrapper
+from env.wrappers import reward_wrapper
 from env.make_envs import make_envs
 
 from rl import DEVICE
@@ -125,7 +125,7 @@ def main(args, experiment_folder):
     }
 
     # Make parallel environments
-    env = make_envs(env_kwargs, reward_wrapper_kwargs, args.seed, args.num_processes)
+    env = make_envs(env_kwargs, args.reward, reward_wrapper_kwargs, args.seed, args.num_processes)
     
     # Update kwargs and make an environment for evaluation
     env_kwargs['inject_noise'] = False
@@ -134,7 +134,7 @@ def main(args, experiment_folder):
         'env': eval_env,
         # 'done_when_not_improved': False
     })
-    eval_env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
+    eval_env = reward_wrapper(args.reward, **reward_wrapper_kwargs)
 
     # Initialize action_scale scheduler and timelimit scheduler
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 

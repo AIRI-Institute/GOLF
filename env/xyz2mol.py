@@ -715,26 +715,3 @@ def parse_molecule(xyz_file):
     atoms, xyz_coordinates, charge = mol_data[0]
     mol_initial = xyz2mol(atoms, xyz_coordinates)[0]
     return mol_initial
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Calc mmff energy with rdkit')
-    parser.add_argument('--xyz_file',  type=str,
-                                help='xyz file name')
-    # huckel uses extended Huckel bond orders to locate bonds (requires RDKit 2019.9.1 or later)
-    # otherwise van der Waals radii are used
-    parser.add_argument('--use-huckel',
-        action="store_true",
-        help="Use Huckel method for atom connectivity")
-
-    args = parser.parse_args()
-    mol_initial = parse_molecule(args.xyx_file)
-
-    # Calculate energy of the first mol obj
-    energy = get_rdkit_energy(mol_initial[0])
-    print (energy)
-
-    mol_id = 1
-
-    # Change coordinates of mol from the 
-    set_coordinates(mol_initial, mol_data[mol_id][1])
