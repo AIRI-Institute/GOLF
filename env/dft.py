@@ -2,6 +2,7 @@ import psi4
 
 psi4.set_options({"CACHELEVEL": 0})
 psi4.set_memory("8 GB")
+psi4.core.set_output_file("/dev/null")
 
 HEADER = "units ang \n nocom \n noreorient \n"
 FUNCTIONAL_STRING = "wb97x-d/def2-svp"
