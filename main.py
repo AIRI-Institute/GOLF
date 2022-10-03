@@ -132,7 +132,7 @@ def main(args, experiment_folder):
     
     # Update kwargs and make an environment for evaluation
     env_kwargs['inject_noise'] = False
-    eval_env = env_fn(DEVICE, **env_kwargs)
+    eval_env = env_fn(**env_kwargs)
     reward_wrapper_kwargs.update({
         'env': eval_env,
         # 'done_when_not_improved': False
