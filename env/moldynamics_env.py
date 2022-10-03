@@ -26,9 +26,6 @@ class MolecularDynamics(gym.Env):
                  inject_noise=False,
                  noise_std=0.1,
                  remove_hydrogen=False):
-        # Ignore numpy warnings
-        np.seterr(all="ignore")
-        
         self.db_path = db_path
         self.converter = converter
         self.TL = timelimit

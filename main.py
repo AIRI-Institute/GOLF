@@ -6,6 +6,7 @@ import os
 import pickle
 import random
 import torch
+import warnings
 
 from pathlib import Path
 from collections import deque
@@ -98,7 +99,8 @@ class Logger:
 def main(args, experiment_folder):
     # Ignore numpy warnings
     np.seterr(all="ignore")
-    
+    warnings.filterwarnings("ignore", category=DeprecationWarning) 
+
     # Set env name
     args.env = args.db_path.split('/')[-1].split('.')[0]
     
