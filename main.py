@@ -1,10 +1,12 @@
 import argparse
 import datetime
 import json
+from tracemalloc import start
 import numpy as np
 import os
 import pickle
 import random
+import time
 import torch
 
 from pathlib import Path
@@ -227,7 +229,7 @@ def main(args, experiment_folder):
         start_iter = 0
 
     for t in range(start_iter, max_timesteps):
-        print(t)
+        start_iter = time.time()
         if use_ppo:
             update_condition = ((t + 1) % args.update_frequency) == 0
         else:
@@ -309,11 +311,14 @@ def main(args, experiment_folder):
         envs_to_reset = [i for i, (done, ep_end) in enumerate(zip(dones, ep_ends)) if ep_end or (done and not args.greedy)]
         # Get new states and remove extra dimension
         reset_states = [{k:v.squeeze() for k, v in s.items()} for s in env.env_method("reset", indices=envs_to_reset)]
-        
+
         # Recollate state_batch after resets as atomic numbers might have changed.
         # Execute only if at least one env has reset.
         if len(envs_to_reset) > 0:
             state = recollate_batch(state, envs_to_reset, reset_states)
+
+        # Print update time
+        print(time.time() - start)
 
         # Evaluate episode
         if (t + 1) % (args.eval_freq // args.num_processes) == 0:
