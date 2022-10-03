@@ -6,6 +6,7 @@ from typing import Any, Callable, List, Optional, Union, Iterable
 
 import gym
 import numpy as np
+import torch
 
 from schnetpack.data.loader import _collate_aseatoms
 
@@ -88,7 +89,8 @@ class SubprocVecEnv():
            Defaults to 'forkserver' on available platforms, and 'spawn' otherwise.
     """
 
-    def __init__(self, env_fns: List[Callable[[], gym.Env]], start_method: Optional[str] = None):
+    def __init__(self, device: torch.device, env_fns: List[Callable[[], gym.Env]], start_method: Optional[str] = None):
+        self.device = device
         self.waiting = False
         self.closed = False
         self.n_envs = len(env_fns)
@@ -121,6 +123,7 @@ class SubprocVecEnv():
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
         obs, rews, dones, infos = zip(*results)
+        obs = {k:v.to(self.device) for k, v in obs.items()}
         return _collate_aseatoms(obs), np.stack(rews), np.stack(dones), infos
 
     def step(self, actions: np.ndarray):
@@ -143,7 +146,7 @@ class SubprocVecEnv():
         for remote in self.remotes:
             remote.send(("reset", None))
         obs = [remote.recv() for remote in self.remotes]
-        # Remove extra dimension
+        obs = {k:v.to(self.device) for k, v in obs.items()}
         return _collate_aseatoms(obs)
 
     def close(self) -> None:

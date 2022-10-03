@@ -96,6 +96,9 @@ class Logger:
         self.exploration_not_converged.append(not_converged)
 
 def main(args, experiment_folder):
+    # Ignore numpy warnings
+    np.seterr(all="ignore")
+    
     # Set env name
     args.env = args.db_path.split('/')[-1].split('.')[0]
     
@@ -221,6 +224,7 @@ def main(args, experiment_folder):
         start_iter = 0
 
     for t in range(start_iter, max_timesteps):
+        print(t)
         if use_ppo:
             update_condition = ((t + 1) % args.update_frequency) == 0
         else:
@@ -245,8 +249,6 @@ def main(args, experiment_folder):
                 # Remove extra dimension to store correctly
                 values = values.squeeze(-1)
                 log_probs = log_probs.squeeze(-1)
-
-            
 
         next_state, rewards, dones, infos = env.step(actions)
         # Done on every step or at the end of the episode
