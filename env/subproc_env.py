@@ -123,8 +123,9 @@ class SubprocVecEnv():
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
         obs, rews, dones, infos = zip(*results)
+        obs = _collate_aseatoms(obs)
         obs = {k:v.to(self.device) for k, v in obs.items()}
-        return _collate_aseatoms(obs), np.stack(rews), np.stack(dones), infos
+        return obs, np.stack(rews), np.stack(dones), infos
 
     def step(self, actions: np.ndarray):
         """
