@@ -7,6 +7,10 @@ from ase.db import connect
 from sqlite3 import DatabaseError
 from schnetpack.data.atoms import AtomsConverter
 
+import warnings
+np.seterr(all="ignore")
+warnings.filterwarnings("ignore", category=DeprecationWarning) 
+
 
 # For backoff exceptions
 def on_giveup(details):
