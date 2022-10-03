@@ -1,7 +1,6 @@
 import argparse
 import datetime
 import json
-from tracemalloc import start
 import numpy as np
 import os
 import pickle
@@ -229,7 +228,7 @@ def main(args, experiment_folder):
         start_iter = 0
 
     for t in range(start_iter, max_timesteps):
-        start_iter = time.time()
+        start = time.time()
         if use_ppo:
             update_condition = ((t + 1) % args.update_frequency) == 0
         else:
