@@ -331,7 +331,7 @@ def main(args, experiment_folder):
             #with open(f'{experiment_folder}/iter_{t}_replay', 'wb') as outF:
             #    pickle.dump(replay_buffer, outF)
             # Remove previous checkpoint?
-        elif (t + 1) % args.light_checkpoint_freq == 0 and args.save_checkpoints:
+        elif (t + 1) % (args.light_checkpoint_freq // args.num_processes) == 0 and args.save_checkpoints:
             trainer_save_name = f'{experiment_folder}/iter_{t}'
             trainer.light_save(trainer_save_name)
 
@@ -405,7 +405,7 @@ if __name__ == "__main__":
     parser.add_argument("--update_frequency", default=1, type=int, help="How often agent is updated")
     parser.add_argument("--max_timesteps", default=1e6, type=int, help="Max time steps to run environment")
     parser.add_argument("--seed", default=None, type=int, help="Random seed")
-    parser.add_argument("--light_checkpoint_freq", type=int, default=200000, help="How often light checkpoint is saved")
+    parser.add_argument("--light_checkpoint_freq", type=int, default=100000, help="How often light checkpoint is saved")
     parser.add_argument("--save_checkpoints", type=bool, default=False, help="Save light and full checkpoints")
     parser.add_argument("--load_model", type=str, default=None, help="Path to load the model from")
     parser.add_argument("--log_dir", default='.', help="Directory where runs are saved")
