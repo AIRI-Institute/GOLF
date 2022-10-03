@@ -13,16 +13,16 @@ from .dft import parse_psi4_molecule, get_dft_energy, update_psi4_geometry
 
 class BaseRewardWrapper(gym.Wrapper):
     molecules_xyz = {
-        'C7O3C2OH8': 'env/molecules_xyz/aspirin.xyz',
-        'N2C12H10': 'env/molecules_xyz/azobenzene.xyz',
-        'C6H6': 'env/molecules_xyz/benzene.xyz',
-        'C2OH6': 'env/molecules_xyz/ethanol.xyz',
+        #'C7O3C2OH8': 'env/molecules_xyz/aspirin.xyz',
+        #'N2C12H10': 'env/molecules_xyz/azobenzene.xyz',
+        #'C6H6': 'env/molecules_xyz/benzene.xyz',
+        #'C2OH6': 'env/molecules_xyz/ethanol.xyz',
         'C3O2H4': 'env/molecules_xyz/malonaldehyde.xyz',
-        'C10H8': 'env/molecules_xyz/naphthalene.xyz',
-        'C2ONC4OC2H9': 'env/molecules_xyz/paracetamol.xyz',
-        'C3OC4O2H6': 'env/molecules_xyz/salicylic_acid.xyz',
-        'C7H8': 'env/molecules_xyz/toluene.xyz',
-        'C2NCNCO2H4': 'env/molecules_xyz/uracil.xyz'
+        #'C10H8': 'env/molecules_xyz/naphthalene.xyz',
+        #'C2ONC4OC2H9': 'env/molecules_xyz/paracetamol.xyz',
+        #'C3OC4O2H6': 'env/molecules_xyz/salicylic_acid.xyz',
+        #'C7H8': 'env/molecules_xyz/toluene.xyz',
+        #'C2NCNCO2H4': 'env/molecules_xyz/uracil.xyz'
     }
 
     def __init__(self,
@@ -102,7 +102,7 @@ class BaseRewardWrapper(gym.Wrapper):
                     self.molecule = rdmolops.AddHs(self.molecule, addCoords=True)
                 info['final_rl_energy'] = self.get_energy(self.molecule)
             else:
-                info['rinal_rl_energy'] = final_energy
+                info['final_rl_energy'] = final_energy
             if self.remove_hydrogen:
                 # Remove hydrogens after energy calculation
                 self.molecule = rdmolops.RemoveHs(self.molecule)
