@@ -1,6 +1,12 @@
 import psi4
 
-psi4.set_options({"CACHELEVEL": 0})
+from psi4 import SCFConvergenceError
+
+psi4.set_options({
+    "CACHELEVEL": 0,
+    "soscf_max_iter": 25,
+    "damping_percentage": 20
+})
 psi4.set_memory("8 GB")
 psi4.core.set_output_file("/dev/null")
 
@@ -64,7 +70,11 @@ def parse_psi4_molecule(xyz_file):
 
 
 def get_dft_energy(mol):
-    energy = psi4.driver.energy("wb97x-d/def2-svp", **{"molecule": mol, "return_wfn": False})
+    try:
+        energy = psi4.driver.energy("wb97x-d/def2-svp", **{"molecule": mol, "return_wfn": False})
+    except SCFConvergenceError as e:
+        # dirty hack
+        return -200.0
     psi4.core.clean()
     return energy
 

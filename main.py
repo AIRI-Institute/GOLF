@@ -45,6 +45,7 @@ class Logger:
             raise Exception('Experiment folder exists, apparent seed conflict!')
         os.makedirs(experiment_folder)
         self.metrics_file = experiment_folder / "metrics.json"
+        self.energies_file = experiment_folder / "energies.json"
         self.metrics_file.touch()
         with open(experiment_folder / 'config.json', 'w') as config_file:
             json.dump(config.__dict__, config_file)
@@ -79,6 +80,11 @@ class Logger:
         with open(self.metrics_file, 'a') as out_metrics:
             json.dump(metrics, out_metrics)
             out_metrics.write('\n')
+
+    def log_energies(self, metrics):
+        with open(self.energies_file, 'a') as f:
+            json.dump(metrics, f)
+            f.write('\n')
 
     def update_evaluation_statistics(self,
                                      episode_length,
@@ -284,6 +290,11 @@ def main(args, experiment_folder):
         
         # Update training statistics
         for i, (done, ep_end, info) in enumerate(zip(dones, ep_ends, infos)):
+            logger.log_energies({
+                'rdfkit_energy': info['rdkit_final_energy'],
+                'dft_energy': info['dft_final_energy'],
+                'dft_exception': info['dft_exception']
+            })
             if done or (not args.greedy and ep_end):
                 logger.update_evaluation_statistics(episode_timesteps[i],
                                                     episode_returns[i].item(),

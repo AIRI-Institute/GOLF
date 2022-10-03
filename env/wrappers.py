@@ -78,7 +78,10 @@ class BaseRewardWrapper(gym.Wrapper):
         
         # Minimize with rdkit and calculate reward
         if self.minimize_on_every_step or info['env_done']:
-            not_converged, final_energy = self.minimize()
+            not_converged, final_energy, rdkit_final_energy = self.minimize()
+            info['rdkit_final_energy'] = rdkit_final_energy
+            info['dft_final_energy'] = final_energy
+            info['dft_exception'] = int(not not_converged)
             reward = self.initial_energy - final_energy
         else:
             reward = 0.
@@ -114,7 +117,7 @@ class BaseRewardWrapper(gym.Wrapper):
         self.molecule = self.molecules[str(self.env.atoms.symbols)]
         self.update_coordinates(self.molecule, self.env.atoms.get_positions())
         # Minimize the initial state of the molecule
-        _, self.initial_energy = self.minimize()
+        _, self.initial_energy, _ = self.minimize()
 
         return obs
 
@@ -126,7 +129,7 @@ class BaseRewardWrapper(gym.Wrapper):
         self.molecule = self.molecules[str(self.env.atoms.symbols)]
         self.update_coordinates(self.molecule, self.env.atoms.get_positions())
         # Minimize the initial state of the molecule
-        _, self.initial_energy = self.minimize(M)
+        _, self.initial_energy, self.rdkit_energy = self.minimize(M)
 
         return obs
 
@@ -210,20 +213,32 @@ class DFTMinimizationReward(BaseRewardWrapper):
             n_its = self.M
         else:
             n_its = M
-        not_converged = False
+        not_converged = True
+        rdkit_energy = 0.0
         if n_its > 0:
             psi4.set_options({'geom_maxiter': n_its})
             try:
                 energy = psi4.optimize("wb97x-d/def2-svp", **{"molecule": self.molecule, "return_wfn": False})
+                not_converged = False
             except OptimizationConvergenceError as e:
-                not_converged = True
                 self.molecule.set_geometry(e.wfn.molecule().geometry())
                 energy = e.wfn.energy()
             psi4.core.clean()
         else:
+            # Calculate rdkit energy
+            rdkit_molecules = {}
+            for formula, path in BaseRewardWrapper.molecules_xyz.items():
+                rdkit_molecule = parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
+                rdkit_molecules[formula] = rdkit_molecule
+            rdkit_molecule = rdkit_molecules[str(self.env.atoms.symbols)]
+            set_coordinates(rdkit_molecule,  self.env.atoms.get_positions())
+            rdkit_energy = get_rdkit_energy(rdkit_molecule)
             energy = self.get_energy(self.molecule)
+            # Dirty hack to detect SCFConvergenceError will be removed
+            if energy == -200.0:
+                not_converged = False
 
-        return not_converged, energy
+        return not_converged, energy, rdkit_energy
 
 
 def reward_wrapper(reward, **kwargs):
