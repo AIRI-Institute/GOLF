@@ -146,8 +146,9 @@ class SubprocVecEnv():
         for remote in self.remotes:
             remote.send(("reset", None))
         obs = [remote.recv() for remote in self.remotes]
+        obs = _collate_aseatoms(obs)
         obs = {k:v.to(self.device) for k, v in obs.items()}
-        return _collate_aseatoms(obs)
+        return obs
 
     def close(self) -> None:
         if self.closed:
