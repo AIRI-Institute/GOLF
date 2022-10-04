@@ -13,16 +13,16 @@ from .dft import parse_psi4_molecule, get_dft_energy, update_psi4_geometry
 
 class BaseRewardWrapper(gym.Wrapper):
     molecules_xyz = {
-        'C7O3C2OH8': 'env/molecules_xyz/aspirin.xyz',
-        'N2C12H10': 'env/molecules_xyz/azobenzene.xyz',
-        'C6H6': 'env/molecules_xyz/benzene.xyz',
-        'C2OH6': 'env/molecules_xyz/ethanol.xyz',
+        #'C7O3C2OH8': 'env/molecules_xyz/aspirin.xyz',
+        #'N2C12H10': 'env/molecules_xyz/azobenzene.xyz',
+        #'C6H6': 'env/molecules_xyz/benzene.xyz',
+        #'C2OH6': 'env/molecules_xyz/ethanol.xyz',
         'C3O2H4': 'env/molecules_xyz/malonaldehyde.xyz',
-        'C10H8': 'env/molecules_xyz/naphthalene.xyz',
-        'C2ONC4OC2H9': 'env/molecules_xyz/paracetamol.xyz',
-        'C3OC4O2H6': 'env/molecules_xyz/salicylic_acid.xyz',
-        'C7H8': 'env/molecules_xyz/toluene.xyz',
-        'C2NCNCO2H4': 'env/molecules_xyz/uracil.xyz'
+        #'C10H8': 'env/molecules_xyz/naphthalene.xyz',
+        #'C2ONC4OC2H9': 'env/molecules_xyz/paracetamol.xyz',
+        #'C3OC4O2H6': 'env/molecules_xyz/salicylic_acid.xyz',
+        #'C7H8': 'env/molecules_xyz/toluene.xyz',
+        #'C2NCNCO2H4': 'env/molecules_xyz/uracil.xyz'
     }
 
     def __init__(self,
@@ -54,6 +54,12 @@ class BaseRewardWrapper(gym.Wrapper):
         super().__init__(env)
 
     def parse_molecules(self):
+        # TMP parse rdkit molecules 
+        self.rdkit_molecules = {}
+        for formula, path in BaseRewardWrapper.molecules_xyz.items():
+            rdkit_molecule = parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
+            self.rdkit_molecules[formula] = rdkit_molecule
+
         self.molecules = {}
         for formula, path in BaseRewardWrapper.molecules_xyz.items():
             molecule = self.parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
@@ -78,7 +84,13 @@ class BaseRewardWrapper(gym.Wrapper):
         
         # Minimize with rdkit and calculate reward
         if self.minimize_on_every_step or info['env_done']:
-            not_converged, final_energy = self.minimize()
+            not_converged, final_energy, rdkit_final_energy = self.minimize()
+            info['rdkit_initial_enrgy'] = self.rdkit_initial_energy
+            info['rdkit_final_energy'] = rdkit_final_energy
+            info['dft_initial_energy'] = self.dft_initial_energy
+            info['dft_final_energy'] = final_energy
+            info['dft_initial_exception'] = int(not self.initial_not_converged)
+            info['dft_exception'] = int(not not_converged)
             reward = self.initial_energy - final_energy
         else:
             reward = 0.
@@ -114,8 +126,10 @@ class BaseRewardWrapper(gym.Wrapper):
         self.molecule = self.molecules[str(self.env.atoms.symbols)]
         self.update_coordinates(self.molecule, self.env.atoms.get_positions())
         # Minimize the initial state of the molecule
-        _, self.initial_energy = self.minimize()
-
+        initial_not_converged, self.initial_energy, initial_rdkit_energy = self.minimize()
+        self.dft_initial_energy = self.initial_energy
+        self.rdkit_initial_energy = initial_rdkit_energy
+        self.initial_not_converged = initial_not_converged
         return obs
 
     def set_initial_positions(self, atoms, M=None):
@@ -126,7 +140,7 @@ class BaseRewardWrapper(gym.Wrapper):
         self.molecule = self.molecules[str(self.env.atoms.symbols)]
         self.update_coordinates(self.molecule, self.env.atoms.get_positions())
         # Minimize the initial state of the molecule
-        _, self.initial_energy = self.minimize(M)
+        _, self.initial_energy, self.rdkit_energy = self.minimize(M)
 
         return obs
 
@@ -210,20 +224,34 @@ class DFTMinimizationReward(BaseRewardWrapper):
             n_its = self.M
         else:
             n_its = M
-        not_converged = False
+        not_converged = True
+        rdkit_energy = 0.0
         if n_its > 0:
             psi4.set_options({'geom_maxiter': n_its})
             try:
                 energy = psi4.optimize("wb97x-d/def2-svp", **{"molecule": self.molecule, "return_wfn": False})
+                not_converged = False
             except OptimizationConvergenceError as e:
-                not_converged = True
                 self.molecule.set_geometry(e.wfn.molecule().geometry())
                 energy = e.wfn.energy()
+            
+            # Hartree to kcal/mol
+            energy *= 627.5
             psi4.core.clean()
         else:
-            energy = self.get_energy(self.molecule)
+            # Calculate rdkit energy
+            rdkit_molecule = self.rdkit_molecules[str(self.env.atoms.symbols)]
+            set_coordinates(rdkit_molecule,  self.env.atoms.get_positions())
+            rdkit_energy = get_rdkit_energy(rdkit_molecule)
+            
+            # Calculate DFT energy
+            energy = self.get_energy(self.molecule) 
+            
+            # FIXME Dirty hack to detect SCFConvergenceError.
+            if energy == -260.0 * 627.5:
+                not_converged = False
 
-        return not_converged, energy
+        return not_converged, energy, rdkit_energy
 
 
 def reward_wrapper(reward, **kwargs):

@@ -62,10 +62,12 @@ def run_policy(env, actor, fixed_atoms, max_timestamps):
     delta_energy = 0
     t = 0
     state = env.set_initial_positions(fixed_atoms)
+    state = {k:v.to(DEVICE) for k, v in state.items()}
     while not done and t < max_timestamps:
         with torch.no_grad():
             action = actor.select_action(state)
         state, reward, done, info = env.step(action)
+        state = {k:v.to(DEVICE) for k, v in state.items()}
         delta_energy += reward
         t += 1
     
@@ -148,7 +150,7 @@ def recollate_batch(state_batch, indices, new_states):
     # Unpads states in batch.
     # Replaces some states with new ones and collates them into batch.
     num_atoms = state_batch['_atom_mask'].sum(-1).long()
-    states = [{k:v[i, :num_atoms[i]] for k, v in state_batch.items()  if k != "representation"}\
+    states = [{k:v[i, :num_atoms[i]].cpu() for k, v in state_batch.items()  if k != "representation"}\
               for i in range(len(num_atoms))]
     for i, ind in enumerate(indices):
         states[ind] = new_states[i]

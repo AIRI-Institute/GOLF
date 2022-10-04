@@ -1,10 +1,15 @@
 import backoff
 import gym
 import numpy as np
+import torch
 
 from ase.db import connect
 from sqlite3 import DatabaseError
 from schnetpack.data.atoms import AtomsConverter
+
+import warnings
+np.seterr(all="ignore")
+warnings.filterwarnings("ignore", category=DeprecationWarning) 
 
 
 # For backoff exceptions
@@ -124,11 +129,11 @@ class MolecularDynamics(gym.Env):
         np.random.seed(seed)
         return seed
 
-def env_fn(device, **kwargs):
+def env_fn(**kwargs):
     '''
     To support the AEC API, the raw_env() function just uses the from_parallel
     function to convert from a ParallelEnv to an AEC env
     '''
-    converter = AtomsConverter(device=device)
+    converter = AtomsConverter(device=torch.device('cpu'))
     env = MolecularDynamics(converter=converter, **kwargs)
     return env

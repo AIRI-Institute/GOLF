@@ -5,6 +5,7 @@ import numpy as np
 import os
 import pickle
 import random
+import time
 import torch
 
 from pathlib import Path
@@ -45,6 +46,7 @@ class Logger:
             raise Exception('Experiment folder exists, apparent seed conflict!')
         os.makedirs(experiment_folder)
         self.metrics_file = experiment_folder / "metrics.json"
+        self.energies_file = experiment_folder / "energies.json"
         self.metrics_file.touch()
         with open(experiment_folder / 'config.json', 'w') as config_file:
             json.dump(config.__dict__, config_file)
@@ -79,6 +81,11 @@ class Logger:
         with open(self.metrics_file, 'a') as out_metrics:
             json.dump(metrics, out_metrics)
             out_metrics.write('\n')
+
+    def log_energies(self, metrics):
+        with open(self.energies_file, 'a') as f:
+            json.dump(metrics, f)
+            f.write('\n')
 
     def update_evaluation_statistics(self,
                                      episode_length,
@@ -129,7 +136,7 @@ def main(args, experiment_folder):
     
     # Update kwargs and make an environment for evaluation
     env_kwargs['inject_noise'] = False
-    eval_env = env_fn(DEVICE, **env_kwargs)
+    eval_env = env_fn(**env_kwargs)
     reward_wrapper_kwargs.update({
         'env': eval_env,
         # 'done_when_not_improved': False
@@ -221,6 +228,7 @@ def main(args, experiment_folder):
         start_iter = 0
 
     for t in range(start_iter, max_timesteps):
+        start = time.time()
         if use_ppo:
             update_condition = ((t + 1) % args.update_frequency) == 0
         else:
@@ -245,8 +253,6 @@ def main(args, experiment_folder):
                 # Remove extra dimension to store correctly
                 values = values.squeeze(-1)
                 log_probs = log_probs.squeeze(-1)
-
-            
 
         next_state, rewards, dones, infos = env.step(actions)
         # Done on every step or at the end of the episode
@@ -285,6 +291,14 @@ def main(args, experiment_folder):
         
         # Update training statistics
         for i, (done, ep_end, info) in enumerate(zip(dones, ep_ends, infos)):
+            logger.log_energies({
+                'rdkit_initial_energy': info['rdkit_initial_enrgy'],
+                'rdfkit_energy': info['rdkit_final_energy'],
+                'dft_initial_energy': info['dft_initial_energy'],
+                'dft_energy': info['dft_final_energy'],
+                'dft_initial_exception': info['dft_initial_exception'],
+                'dft_exception': info['dft_exception'],
+            })
             if done or (not args.greedy and ep_end):
                 logger.update_evaluation_statistics(episode_timesteps[i],
                                                     episode_returns[i].item(),
@@ -299,11 +313,14 @@ def main(args, experiment_folder):
         envs_to_reset = [i for i, (done, ep_end) in enumerate(zip(dones, ep_ends)) if ep_end or (done and not args.greedy)]
         # Get new states and remove extra dimension
         reset_states = [{k:v.squeeze() for k, v in s.items()} for s in env.env_method("reset", indices=envs_to_reset)]
-        
+
         # Recollate state_batch after resets as atomic numbers might have changed.
         # Execute only if at least one env has reset.
         if len(envs_to_reset) > 0:
             state = recollate_batch(state, envs_to_reset, reset_states)
+
+        # Print update time
+        print(time.time() - start)
 
         # Evaluate episode
         if (t + 1) % (args.eval_freq // args.num_processes) == 0:
@@ -321,7 +338,7 @@ def main(args, experiment_folder):
             #with open(f'{experiment_folder}/iter_{t}_replay', 'wb') as outF:
             #    pickle.dump(replay_buffer, outF)
             # Remove previous checkpoint?
-        elif (t + 1) % args.light_checkpoint_freq == 0 and args.save_checkpoints:
+        elif (t + 1) % (args.light_checkpoint_freq // args.num_processes) == 0 and args.save_checkpoints:
             trainer_save_name = f'{experiment_folder}/iter_{t}'
             trainer.light_save(trainer_save_name)
 
@@ -395,7 +412,7 @@ if __name__ == "__main__":
     parser.add_argument("--update_frequency", default=1, type=int, help="How often agent is updated")
     parser.add_argument("--max_timesteps", default=1e6, type=int, help="Max time steps to run environment")
     parser.add_argument("--seed", default=None, type=int, help="Random seed")
-    parser.add_argument("--light_checkpoint_freq", type=int, default=200000, help="How often light checkpoint is saved")
+    parser.add_argument("--light_checkpoint_freq", type=int, default=100000, help="How often light checkpoint is saved")
     parser.add_argument("--save_checkpoints", type=bool, default=False, help="Save light and full checkpoints")
     parser.add_argument("--load_model", type=str, default=None, help="Path to load the model from")
     parser.add_argument("--log_dir", default='.', help="Directory where runs are saved")
