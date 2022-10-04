@@ -6,6 +6,7 @@ psi4.core.set_output_file("/dev/null")
 
 HEADER = "units ang \n nocom \n noreorient \n"
 FUNCTIONAL_STRING = "wb97x-d/def2-svp"
+psi_bohr2angstroms = 0.52917720859
 
 
 def read_xyz_file_block(file, look_for_charge=True):
@@ -70,6 +71,6 @@ def get_dft_energy(mol):
 
 
 def update_psi4_geometry(molecule, positions):
-    psi4matrix = psi4.core.Matrix.from_array(positions)
+    psi4matrix = psi4.core.Matrix.from_array(positions / psi_bohr2angstroms)
     molecule.set_geometry(psi4matrix)
     molecule.update_geometry()

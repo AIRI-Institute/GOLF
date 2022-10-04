@@ -102,7 +102,7 @@ class BaseRewardWrapper(gym.Wrapper):
                     self.molecule = rdmolops.AddHs(self.molecule, addCoords=True)
                 info['final_rl_energy'] = self.get_energy(self.molecule)
             else:
-                info['rinal_rl_energy'] = final_energy
+                info['final_rl_energy'] = final_energy
             if self.remove_hydrogen:
                 # Remove hydrogens after energy calculation
                 self.molecule = rdmolops.RemoveHs(self.molecule)
