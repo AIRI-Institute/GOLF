@@ -54,6 +54,12 @@ class BaseRewardWrapper(gym.Wrapper):
         super().__init__(env)
 
     def parse_molecules(self):
+        # TMP parse rdkit molecules 
+        self.rdkit_molecules = {}
+        for formula, path in BaseRewardWrapper.molecules_xyz.items():
+            rdkit_molecule = parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
+            self.rdkit_molecules[formula] = rdkit_molecule
+
         self.molecules = {}
         for formula, path in BaseRewardWrapper.molecules_xyz.items():
             molecule = self.parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
@@ -234,14 +240,12 @@ class DFTMinimizationReward(BaseRewardWrapper):
             psi4.core.clean()
         else:
             # Calculate rdkit energy
-            rdkit_molecules = {}
-            for formula, path in BaseRewardWrapper.molecules_xyz.items():
-                rdkit_molecule = parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
-                rdkit_molecules[formula] = rdkit_molecule
-            rdkit_molecule = rdkit_molecules[str(self.env.atoms.symbols)]
+            rdkit_molecule = self.rdkit_molecules[str(self.env.atoms.symbols)]
             set_coordinates(rdkit_molecule,  self.env.atoms.get_positions())
             rdkit_energy = get_rdkit_energy(rdkit_molecule)
-            energy = self.get_energy(self.molecule)
+            
+            # Calculate DFT energy
+            energy = self.get_energy(self.molecule) 
             
             # FIXME Dirty hack to detect SCFConvergenceError.
             if energy == -260.0 * 627.5:
