@@ -4,8 +4,7 @@ from psi4 import SCFConvergenceError
 
 psi4.set_options({
     "CACHELEVEL": 0,
-    "soscf_max_iter": 25,
-    "damping_percentage": 20
+    "SOSCF_MAX_ITER": 30,
 })
 psi4.set_memory("8 GB")
 psi4.core.set_output_file("/dev/null")
@@ -71,12 +70,13 @@ def parse_psi4_molecule(xyz_file):
 
 def get_dft_energy(mol):
     try:
-        energy = psi4.driver.energy("wb97x-d/def2-svp", **{"molecule": mol, "return_wfn": False})
+        energy = psi4.driver.energy(FUNCTIONAL_STRING, **{"molecule": mol, "return_wfn": False})
     except SCFConvergenceError as e:
-        # dirty hack
-        return -200.0
+        # Set energy to some threshold if SOSCF does not converge 
+        # Multiply by 627.5 to go from Hartree to kcal/mol
+        return -260.0 * 627.5
     psi4.core.clean()
-    return energy
+    return energy * 627.5
 
 
 def update_psi4_geometry(molecule, positions):

@@ -79,8 +79,11 @@ class BaseRewardWrapper(gym.Wrapper):
         # Minimize with rdkit and calculate reward
         if self.minimize_on_every_step or info['env_done']:
             not_converged, final_energy, rdkit_final_energy = self.minimize()
+            info['rdkit_initial_enrgy'] = self.rdkit_initial_energy
             info['rdkit_final_energy'] = rdkit_final_energy
+            info['dft_initial_energy'] = self.dft_initial_energy
             info['dft_final_energy'] = final_energy
+            info['dft_initial_exception'] = int(not self.initial_not_converged)
             info['dft_exception'] = int(not not_converged)
             reward = self.initial_energy - final_energy
         else:
@@ -117,8 +120,10 @@ class BaseRewardWrapper(gym.Wrapper):
         self.molecule = self.molecules[str(self.env.atoms.symbols)]
         self.update_coordinates(self.molecule, self.env.atoms.get_positions())
         # Minimize the initial state of the molecule
-        _, self.initial_energy, _ = self.minimize()
-
+        initial_not_converged, self.initial_energy, initial_rdkit_energy = self.minimize()
+        self.dft_initial_energy = self.initial_energy
+        self.rdkit_initial_energy = initial_rdkit_energy
+        self.initial_not_converged = initial_not_converged
         return obs
 
     def set_initial_positions(self, atoms, M=None):
@@ -223,6 +228,9 @@ class DFTMinimizationReward(BaseRewardWrapper):
             except OptimizationConvergenceError as e:
                 self.molecule.set_geometry(e.wfn.molecule().geometry())
                 energy = e.wfn.energy()
+            
+            # Hartree to kcal/mol
+            energy *= 627.5
             psi4.core.clean()
         else:
             # Calculate rdkit energy
@@ -234,8 +242,9 @@ class DFTMinimizationReward(BaseRewardWrapper):
             set_coordinates(rdkit_molecule,  self.env.atoms.get_positions())
             rdkit_energy = get_rdkit_energy(rdkit_molecule)
             energy = self.get_energy(self.molecule)
-            # Dirty hack to detect SCFConvergenceError will be removed
-            if energy == -200.0:
+            
+            # FIXME Dirty hack to detect SCFConvergenceError.
+            if energy == -260.0 * 627.5:
                 not_converged = False
 
         return not_converged, energy, rdkit_energy

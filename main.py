@@ -292,9 +292,12 @@ def main(args, experiment_folder):
         # Update training statistics
         for i, (done, ep_end, info) in enumerate(zip(dones, ep_ends, infos)):
             logger.log_energies({
+                'rdkit_initial_energy': info['rdkit_initial_enrgy'],
                 'rdfkit_energy': info['rdkit_final_energy'],
+                'dft_initial_energy': info['dft_initial_energy'],
                 'dft_energy': info['dft_final_energy'],
-                'dft_exception': info['dft_exception']
+                'dft_initial_exception': info['dft_initial_exception'],
+                'dft_exception': info['dft_exception'],
             })
             if done or (not args.greedy and ep_end):
                 logger.update_evaluation_statistics(episode_timesteps[i],
