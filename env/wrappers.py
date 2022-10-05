@@ -2,31 +2,32 @@ import gym
 import os
 import psi4
 
-from abc import abstractmethod
-
 from rdkit.Chem import AllChem, rdmolops
 from psi4.driver.p4util.exceptions import OptimizationConvergenceError
 
 from .moldynamics_env import MolecularDynamics
 from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates
-from .dft import parse_psi4_molecule, get_dft_energy, update_psi4_geometry
+from .dft import parse_psi4_molecule, get_dft_energy, update_psi4_geometry, FUNCTIONAL_STRING
 
-class BaseRewardWrapper(gym.Wrapper):
+RDKIT_ENERGY_THRESH = 200
+
+class RewardWrapper(gym.Wrapper):
     molecules_xyz = {
-        #'C7O3C2OH8': 'env/molecules_xyz/aspirin.xyz',
-        #'N2C12H10': 'env/molecules_xyz/azobenzene.xyz',
-        #'C6H6': 'env/molecules_xyz/benzene.xyz',
-        #'C2OH6': 'env/molecules_xyz/ethanol.xyz',
+        # 'C7O3C2OH8': 'env/molecules_xyz/aspirin.xyz',
+        # 'N2C12H10': 'env/molecules_xyz/azobenzene.xyz',
+        # 'C6H6': 'env/molecules_xyz/benzene.xyz',
+        # 'C2OH6': 'env/molecules_xyz/ethanol.xyz',
         'C3O2H4': 'env/molecules_xyz/malonaldehyde.xyz',
-        #'C10H8': 'env/molecules_xyz/naphthalene.xyz',
-        #'C2ONC4OC2H9': 'env/molecules_xyz/paracetamol.xyz',
-        #'C3OC4O2H6': 'env/molecules_xyz/salicylic_acid.xyz',
-        #'C7H8': 'env/molecules_xyz/toluene.xyz',
-        #'C2NCNCO2H4': 'env/molecules_xyz/uracil.xyz'
+        # 'C10H8': 'env/molecules_xyz/naphthalene.xyz',
+        # 'C2ONC4OC2H9': 'env/molecules_xyz/paracetamol.xyz',
+        # 'C3OC4O2H6': 'env/molecules_xyz/salicylic_acid.xyz',
+        # 'C7H8': 'env/molecules_xyz/toluene.xyz',
+        # 'C2NCNCO2H4': 'env/molecules_xyz/uracil.xyz'
     }
 
     def __init__(self,
                  env,
+                 dft=False,
                  minimize_on_every_step=False,
                  greedy=False,
                  remove_hydrogen=False,
@@ -34,6 +35,7 @@ class BaseRewardWrapper(gym.Wrapper):
                  M=10,
                  done_when_not_improved=False):
         # Set arguments
+        self.dft = dft
         self.M = M
         self.minimize_on_every_step = minimize_on_every_step
         self.greedy = greedy
@@ -41,10 +43,23 @@ class BaseRewardWrapper(gym.Wrapper):
         self.molecules_xyz_prefix = molecules_xyz_prefix
         self.done_when_not_improved=done_when_not_improved
 
-        self.initial_energy = 0
-        self.parse_molecule = None
-        self.update_coordinates = None
-        self.get_energy = None
+        self.initial_energy = {}
+        self.parse_molecule = {
+            'rdkit': parse_molecule,
+            'dft': parse_psi4_molecule
+        }
+        self.update_coordinates = {
+            'rdkit': set_coordinates,
+            'dft': update_psi4_geometry
+        }
+        self.get_energy = {
+            'rdkit': get_rdkit_energy,
+            'dft': get_dft_energy
+        }
+
+        self.molecules = {}
+        self.molecule = {}
+        self.parse_molecules()
         
         # Check parent class to name the reward correctly
         if isinstance(env, MolecularDynamics):
@@ -54,25 +69,33 @@ class BaseRewardWrapper(gym.Wrapper):
         super().__init__(env)
 
     def parse_molecules(self):
-        # TMP parse rdkit molecules 
-        self.rdkit_molecules = {}
-        for formula, path in BaseRewardWrapper.molecules_xyz.items():
-            rdkit_molecule = parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
-            self.rdkit_molecules[formula] = rdkit_molecule
-
-        self.molecules = {}
-        for formula, path in BaseRewardWrapper.molecules_xyz.items():
-            molecule = self.parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
+        # Parse rdkit molecules 
+        self.molecules['rdkit'] = {}
+        for formula, path in RewardWrapper.molecules_xyz.items():
+            molecule = self.parse_molecule['rdkit'](os.path.join(self.molecules_xyz_prefix, path))
             # Check if the provided molecule is valid
             try:
-                self.get_energy(molecule)
+                self.get_energy['rdkit'](molecule)
             except AttributeError:
                 raise ValueError("Provided molucule was not parsed correctly")
             if self.remove_hydrogen:
                 # Remove hydrogen atoms from the molecule
-                self.molecule = rdmolops.RemoveHs(molecule)
-            self.molecules[formula] = molecule
-        self.molecule = None
+                molecule = rdmolops.RemoveHs(molecule)
+            self.molecules['rdkit'][formula] = molecule
+        self.molecule['rdkit'] = None
+
+        # Parse DFT molecules if needed
+        if self.dft:
+            self.molecules['dft'] = {}
+            for formula, path in RewardWrapper.molecules_xyz.items():
+                molecule = self.parse_molecule['dft'](os.path.join(self.molecules_xyz_prefix, path))
+                # Check if the provided molecule is valid
+                try:
+                    self.get_energy['dft'](molecule)
+                except AttributeError:
+                    raise ValueError("Provided molucule was not parsed correctly")
+                self.molecules['dft'][formula] = molecule
+            self.molecule['dft'] = None
 
     
     def step(self, action):
@@ -80,24 +103,43 @@ class BaseRewardWrapper(gym.Wrapper):
         info = dict(info, **{self.reward_name: reward})
         
         # Update current coordinates
-        self.update_coordinates(self.molecule, self.env.atoms.get_positions())
+        self.update_coordinates['rdkit'](self.molecule['rdkit'], self.env.atoms.get_positions())
+        if self.dft:
+            self.update_coordinates['dft'](self.molecule['dft'], self.env.atoms.get_positions())
         
-        # Minimize with rdkit and calculate reward
+        # Calculate reward
         if self.minimize_on_every_step or info['env_done']:
-            not_converged, final_energy, rdkit_final_energy = self.minimize()
-            info['rdkit_initial_enrgy'] = self.rdkit_initial_energy
-            info['rdkit_final_energy'] = rdkit_final_energy
-            info['dft_initial_energy'] = self.dft_initial_energy
-            info['dft_final_energy'] = final_energy
-            info['dft_initial_exception'] = int(not self.initial_not_converged)
-            info['dft_exception'] = int(not not_converged)
-            reward = self.initial_energy - final_energy
+            not_converged, final_energy = self.minimize_rdkit()
+            rdkit_reward = self.initial_energy['rdkit'] - final_energy
+            # Rdkit reward lower than RDKIT_DELTA_THRESH indicates highly improbable 
+            # conformations which are likely to cause an error in DFT calculation and/or
+            # significantly slow them down. To mitigate this we propose to replace DFT reward 
+            # in such states with rdkit reward. Note that rdkit reward is strongly 
+            # correlated with DFT reward and should not intefere with the training.
+            if not self.dft or (self.dft and final_energy > RDKIT_ENERGY_THRESH):
+                self.threshold_exceeded += 1
+                reward = rdkit_reward
+
+            else:
+                not_converged, final_energy = self.minimize_dft()
+                reward = self.initial_energy['dft'] - final_energy
         else:
             reward = 0.
 
         # If minimize_on_every step update initial energy
         if self.minimize_on_every_step:
-            self.initial_energy = final_energy
+            # initial_energy = final_energy
+            self.initial_energy['rdkit'] -= rdkit_reward
+            # FIXME ?
+            # At the moment the wrapper is guaranteed to work correctly
+            # only with done_when_not_improved=True. In case of greedy=True
+            # we might get final_energy > RDKIT_ENERGY_THRESH on steps
+            # [t, ..., t + T - 1] and then get final_energy > RDKIT_ENERGY_THRESH on
+            # step t + T (although this is highly unlikely, it is possible).
+            # Then the initial DFT energy would be calculated from the
+            # rdkit reward but the final energy would come from DFT.
+            if self.dft:
+                self.initial_energy['rdkit'] -= reward
 
         # If energy has not improved and done_when_not_improved=True set done to True 
         if self.done_when_not_improved and reward < 0:
@@ -105,31 +147,50 @@ class BaseRewardWrapper(gym.Wrapper):
 
         # If TL is reached or done=True log final energy
         if done or info['env_done'] or self.greedy:
+            # Log final energy of the molecule
             info['final_energy'] = final_energy
             info['not_converged'] = not_converged
+            
+            # Log percentage of times in which treshold was  exceeded
+            if self.dft:
+                threshold_exceeded_pct = self.threshold_exceeded / self.get_env_step()
+            else:
+                threshold_exceeded_pct = 0
+            info['threshold_exceeded_pct'] = threshold_exceeded_pct
+
+            # Log final RL energy of the molecule
             if self.M > 0:
-                self.update_coordinates(self.molecule, self.env.atoms.get_positions())
-                if self.remove_hydrogen:
-                    # Add hydrogens back to the molecule to evaluate final rl energy
-                    self.molecule = rdmolops.AddHs(self.molecule, addCoords=True)
-                info['final_rl_energy'] = self.get_energy(self.molecule)
+                if self.dft:
+                    self.update_coordinates['dft'](self.molecule['dft'], self.env.atoms.get_positions())
+                    info['final_rl_energy'] = self.get_energy['dft'](self.molecule['dft'])
+                else:
+                    self.update_coordinates['rdkit'](self.molecule['rdkit'], self.env.atoms.get_positions())
+                    if self.remove_hydrogen:
+                        # Add hydrogens back to the molecule to evaluate final rl energy
+                        self.molecule['rdkit'] = rdmolops.AddHs(self.molecule['rdkit'], addCoords=True)
+                    info['final_rl_energy'] = self.get_energy(self.molecule['rdkit'])
+                    if self.remove_hydrogen:
+                        # Remove hydrogens after energy calculation
+                        self.molecule['rdkit'] = rdmolops.RemoveHs(self.molecule['rdkit'])
             else:
                 info['final_rl_energy'] = final_energy
-            if self.remove_hydrogen:
-                # Remove hydrogens after energy calculation
-                self.molecule = rdmolops.RemoveHs(self.molecule)
         
         return obs, reward, done, info
     
     def reset(self):
         obs = super().reset()
-        self.molecule = self.molecules[str(self.env.atoms.symbols)]
-        self.update_coordinates(self.molecule, self.env.atoms.get_positions())
-        # Minimize the initial state of the molecule
-        initial_not_converged, self.initial_energy, initial_rdkit_energy = self.minimize()
-        self.dft_initial_energy = self.initial_energy
-        self.rdkit_initial_energy = initial_rdkit_energy
-        self.initial_not_converged = initial_not_converged
+        
+        # Calculate initial rdkit energy
+        self.molecule['rdkit'] = self.molecules['rdkit'][str(self.env.atoms.symbols)]
+        self.update_coordinates['rdkit'](self.molecule['rdkit'], self.env.atoms.get_positions())
+        _, self.initial_energy['rdkit'] = self.minimize_rdkit()
+
+        # Calculate initial dft energy
+        if self.dft:
+            self.threshold_exceeded = 0
+            self.molecule['dft'] = self.molecules['dft'][str(self.env.atoms.symbols)]
+            self.update_coordinates['dft'](self.molecule['dft'], self.env.atoms.get_positions())
+            _,  self.initial_energy['dft'] = self.minimize_dft()
         return obs
 
     def set_initial_positions(self, atoms, M=None):
@@ -137,16 +198,66 @@ class BaseRewardWrapper(gym.Wrapper):
         self.env.atoms = atoms.copy()
         obs = self.env.converter(self.env.atoms)
 
-        self.molecule = self.molecules[str(self.env.atoms.symbols)]
-        self.update_coordinates(self.molecule, self.env.atoms.get_positions())
-        # Minimize the initial state of the molecule
-        _, self.initial_energy, self.rdkit_energy = self.minimize(M)
+        # Calculate initial rdkit energy
+        self.molecule['rdkit'] = self.molecules['rdkit'][str(self.env.atoms.symbols)]
+        self.update_coordinates['rdkit'](self.molecule['rdkit'], self.env.atoms.get_positions())
+        _, self.initial_energy['rdkit'] = self.minimize_rdkit()
 
+        # Calculate initial dft energy
+        if self.dft:
+            self.threshold_exceeded = 0
+            self.molecule['dft'] = self.molecules['dft'][str(self.env.atoms.symbols)]
+            self.update_coordinates['dft'](self.molecule['dft'], self.env.atoms.get_positions())
+            _,  self.initial_energy['dft'] = self.minimize_dft()
         return obs
 
-    @abstractmethod
-    def minimize(self, M=None, confId=0):
-        raise NotImplementedError()
+    def minimize_rdkit(self, M=None, confId=0):
+        # Set number of minization iterations
+        if M is None:
+            n_its = self.M
+        else:
+            n_its = M
+
+        # Perform rdkit minimization
+        if self.remove_hydrogen:
+            # Add hydrogens back to the molecule
+            self.molecule['rdkit'] = rdmolops.AddHs(self.molecule['rdkit'], addCoords=True)
+        ff = AllChem.MMFFGetMoleculeForceField(self.molecule['rdkit'],
+                AllChem.MMFFGetMoleculeProperties(self.molecule['rdkit']), confId=0)
+        ff.Initialize()
+        not_converged = ff.Minimize(maxIts=n_its)
+        energy = self.get_energy['rdkit'](self.molecule['rdkit'])
+        if self.remove_hydrogen:
+            # Remove hydrogens after minimization
+            self.molecule['rdkit'] = rdmolops.RemoveHs(self.molecule['rdkit'])
+        
+        return not_converged, energy
+
+    def minimize_dft(self, M=None):
+        # Set number of minization iterations
+        if M is None:
+            n_its = self.M
+        else:
+            n_its = M
+        
+        # Perform DFT minimization
+        not_converged = True
+        if n_its > 0:
+            psi4.set_options({'geom_maxiter': n_its})
+            try:
+                energy = psi4.optimize(FUNCTIONAL_STRING, **{"molecule": self.molecule['dft'], "return_wfn": False})
+                not_converged = False
+            except OptimizationConvergenceError as e:
+                self.molecule['dft'].set_geometry(e.wfn.molecule().geometry())
+                energy = e.wfn.energy()
+            # Hartree to kcal/mol
+            energy *= 627.5
+            psi4.core.clean()
+        else:
+            # Calculate DFT energy
+            energy = self.get_energy['dft'](self.molecule['dft'])
+        
+        return not_converged, energy
 
     def get_atoms_num(self):
         return self.env.get_atoms_num()
@@ -156,109 +267,3 @@ class BaseRewardWrapper(gym.Wrapper):
 
     def update_timelimit(self, tl):
         return self.env.update_timelimit(tl)
-
-
-class RdkitMinimizationReward(BaseRewardWrapper):
-    def __init__(self,
-                 env,
-                 minimize_on_every_step=False,
-                 greedy=False,
-                 remove_hydrogen=False,
-                 molecules_xyz_prefix='',
-                 M=10,
-                 done_when_not_improved=False):
-        super().__init__(env, minimize_on_every_step, greedy, remove_hydrogen,
-                         molecules_xyz_prefix, M, done_when_not_improved)
-
-        # Rdkit-specific functions
-        self.parse_molecule = parse_molecule
-        self.get_energy = get_rdkit_energy
-        self.update_coordinates = set_coordinates
-        # Parse molecules
-        self.parse_molecules()
-    
-    def minimize(self, M=None):
-        # Set number of minization iterations
-        if M is None:
-            n_its = self.M
-        else:
-            n_its = M    
-        if self.remove_hydrogen:
-            # Add hydrogens back to the molecule
-            self.molecule = rdmolops.AddHs(self.molecule, addCoords=True)
-        ff = AllChem.MMFFGetMoleculeForceField(self.molecule,
-                AllChem.MMFFGetMoleculeProperties(self.molecule), confId=0)
-        ff.Initialize()
-        not_converged = ff.Minimize(maxIts=n_its)
-        energy = get_rdkit_energy(self.molecule)
-        if self.remove_hydrogen:
-            # Remove hydrogens after minimization
-            self.molecule = rdmolops.RemoveHs(self.molecule)
-        return not_converged, energy
-
-
-class DFTMinimizationReward(BaseRewardWrapper):
-    def __init__(self,
-                 env,
-                 minimize_on_every_step=False,
-                 greedy=False,
-                 remove_hydrogen=False,
-                 molecules_xyz_prefix='',
-                 M=10,
-                 done_when_not_improved=False):
-        super().__init__(env, minimize_on_every_step, greedy, remove_hydrogen,
-                         molecules_xyz_prefix, M, done_when_not_improved)
-
-        assert not remove_hydrogen, "'remove_hydrogen = True' is not supported for DFT!"
-
-        # DFT-specific functions
-        self.parse_molecule = parse_psi4_molecule
-        self.get_energy = get_dft_energy
-        self.update_coordinates = update_psi4_geometry
-        # Parse molecules
-        self.parse_molecules()
-    
-    def minimize(self, M=None):
-        # Set number of minization iterations
-        if M is None:
-            n_its = self.M
-        else:
-            n_its = M
-        not_converged = True
-        rdkit_energy = 0.0
-        if n_its > 0:
-            psi4.set_options({'geom_maxiter': n_its})
-            try:
-                energy = psi4.optimize("wb97x-d/def2-svp", **{"molecule": self.molecule, "return_wfn": False})
-                not_converged = False
-            except OptimizationConvergenceError as e:
-                self.molecule.set_geometry(e.wfn.molecule().geometry())
-                energy = e.wfn.energy()
-            
-            # Hartree to kcal/mol
-            energy *= 627.5
-            psi4.core.clean()
-        else:
-            # Calculate rdkit energy
-            rdkit_molecule = self.rdkit_molecules[str(self.env.atoms.symbols)]
-            set_coordinates(rdkit_molecule,  self.env.atoms.get_positions())
-            rdkit_energy = get_rdkit_energy(rdkit_molecule)
-            
-            # Calculate DFT energy
-            energy = self.get_energy(self.molecule) 
-            
-            # FIXME Dirty hack to detect SCFConvergenceError.
-            if energy == -260.0 * 627.5:
-                not_converged = False
-
-        return not_converged, energy, rdkit_energy
-
-
-def reward_wrapper(reward, **kwargs):
-    if reward == "rdkit":
-        env = RdkitMinimizationReward(**kwargs)
-    elif reward == "dft":
-        env = DFTMinimizationReward(**kwargs)
-    else:
-        raise NotImplementedError()
-    return env

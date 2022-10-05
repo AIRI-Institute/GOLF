@@ -4,7 +4,6 @@ from psi4 import SCFConvergenceError
 
 psi4.set_options({
     "CACHELEVEL": 0,
-    "SOSCF_MAX_ITER": 30,
 })
 psi4.set_memory("8 GB")
 psi4.core.set_output_file("/dev/null")
@@ -75,6 +74,7 @@ def get_dft_energy(mol):
     except SCFConvergenceError as e:
         # Set energy to some threshold if SOSCF does not converge 
         # Multiply by 627.5 to go from Hartree to kcal/mol
+        print("DFT optimization did not converge!")
         return -260.0 * 627.5
     psi4.core.clean()
     return energy * 627.5

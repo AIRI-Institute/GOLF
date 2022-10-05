@@ -76,11 +76,11 @@ def run_policy(env, actor, fixed_atoms, max_timestamps):
 def rdkit_minimize_until_convergence(env, fixed_atoms, M=None):
     M_init = 1000
     env.set_initial_positions(fixed_atoms, M=M)
-    initial_energy = env.initial_energy
-    not_converged, final_energy = env.minimize(M=M_init)
+    initial_energy = env.initial_energy['rdkit']
+    not_converged, final_energy = env.minimize_rdkit(M=M_init)
     while not_converged:
         M *= 2
-        not_converged, final_energy = env.minimize(M=M_init)
+        not_converged, final_energy = env.minimize_rdkit(M=M_init)
         if M > 5000:
             print("Minimization did not converge!")
             return initial_energy, final_energy

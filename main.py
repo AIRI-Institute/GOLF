@@ -12,7 +12,7 @@ from pathlib import Path
 from collections import deque
 
 from env.moldynamics_env import env_fn
-from env.wrappers import reward_wrapper
+from env.wrappers import RewardWrapper
 from env.make_envs import make_envs
 
 from rl import DEVICE
@@ -58,6 +58,7 @@ class Logger:
         self.exploration_episode_final_energy = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_final_rl_energy = deque(maxlen=self._keep_n_episodes)
         self.exploration_not_converged = deque(maxlen=self._keep_n_episodes)
+        self.exploration_threshold_exceeded_pct = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_number = 0
 
     def log(self, metrics):
@@ -68,13 +69,15 @@ class Logger:
                  'episode mean Q',
                  'episode final energy',
                  'episode final rl energy',
-                 'episode not converged'],
+                 'episode not converged',
+                 'episode threshold exceeded pct'],
                 [self.exploration_episode_lengths,
                  self.exploration_episode_returns,
                  self.exploration_episode_mean_Q,
                  self.exploration_episode_final_energy,
                  self.exploration_episode_final_rl_energy,
-                 self.exploration_not_converged]
+                 self.exploration_not_converged,
+                 self.exploration_threshold_exceeded_pct]
             ):
             metrics[f'Exploration {name}, mean'] = np.mean(d)
             metrics[f'Exploration {name}, std'] = np.std(d)
@@ -82,17 +85,13 @@ class Logger:
             json.dump(metrics, out_metrics)
             out_metrics.write('\n')
 
-    def log_energies(self, metrics):
-        with open(self.energies_file, 'a') as f:
-            json.dump(metrics, f)
-            f.write('\n')
-
     def update_evaluation_statistics(self,
                                      episode_length,
                                      episode_return,
                                      episode_mean_Q,
                                      episode_final_energy,
                                      episode_final_rl_energy,
+                                     threshold_exceeded_pct,
                                      not_converged):
         self.exploration_episode_number += 1
         self.exploration_episode_lengths.append(episode_length)
@@ -100,6 +99,7 @@ class Logger:
         self.exploration_episode_mean_Q.append(episode_mean_Q)
         self.exploration_episode_final_energy.append(episode_final_energy)
         self.exploration_episode_final_rl_energy.append(episode_final_rl_energy)
+        self.exploration_threshold_exceeded_pct.append(threshold_exceeded_pct)
         self.exploration_not_converged.append(not_converged)
 
 def main(args, experiment_folder):
@@ -123,6 +123,7 @@ def main(args, experiment_folder):
     
     # Reward wrapper kwargs
     reward_wrapper_kwargs = {
+        'dft': args.reward == "dft",
         'minimize_on_every_step': args.minimize_on_every_step,
         'greedy': args.greedy,
         'remove_hydrogen': args.remove_hydrogen,
@@ -132,16 +133,15 @@ def main(args, experiment_folder):
     }
 
     # Make parallel environments
-    env = make_envs(env_kwargs, args.reward, reward_wrapper_kwargs, args.seed, args.num_processes)
+    env = make_envs(env_kwargs, reward_wrapper_kwargs, args.seed, args.num_processes)
     
     # Update kwargs and make an environment for evaluation
     env_kwargs['inject_noise'] = False
     eval_env = env_fn(**env_kwargs)
     reward_wrapper_kwargs.update({
         'env': eval_env,
-        # 'done_when_not_improved': False
     })
-    eval_env = reward_wrapper(args.reward, **reward_wrapper_kwargs)
+    eval_env = RewardWrapper(**reward_wrapper_kwargs)
 
     # Initialize action_scale scheduler and timelimit scheduler
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
@@ -291,20 +291,13 @@ def main(args, experiment_folder):
         
         # Update training statistics
         for i, (done, ep_end, info) in enumerate(zip(dones, ep_ends, infos)):
-            logger.log_energies({
-                'rdkit_initial_energy': info['rdkit_initial_enrgy'],
-                'rdfkit_energy': info['rdkit_final_energy'],
-                'dft_initial_energy': info['dft_initial_energy'],
-                'dft_energy': info['dft_final_energy'],
-                'dft_initial_exception': info['dft_initial_exception'],
-                'dft_exception': info['dft_exception'],
-            })
             if done or (not args.greedy and ep_end):
                 logger.update_evaluation_statistics(episode_timesteps[i],
                                                     episode_returns[i].item(),
                                                     episode_mean_Q[i].item(),
                                                     info['final_energy'],
                                                     info['final_rl_energy'],
+                                                    info['threshold_exceeded_pct'],
                                                     info['not_converged'])
                 episode_returns[i] = 0
                 episode_mean_Q[i] = 0
