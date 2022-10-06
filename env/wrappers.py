@@ -117,7 +117,8 @@ class RewardWrapper(gym.Wrapper):
             # in such states with rdkit reward. Note that rdkit reward is strongly 
             # correlated with DFT reward and should not intefere with the training.
             if not self.dft or (self.dft and final_energy > RDKIT_ENERGY_THRESH):
-                self.threshold_exceeded += 1
+                if self.dft:
+                    self.threshold_exceeded += 1
                 reward = rdkit_reward
             else:
                 not_converged, final_energy = self.minimize_dft()

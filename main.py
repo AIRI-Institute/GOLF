@@ -1,15 +1,12 @@
 import argparse
 import datetime
-import json
 import numpy as np
-import os
 import pickle
 import random
 import time
 import torch
 
 from pathlib import Path
-from collections import deque
 
 from env.moldynamics_env import env_fn
 from env.wrappers import RewardWrapper
@@ -21,9 +18,13 @@ from rl.ppo import PPO
 from rl.actor_critic_tqc import TQCPolicy
 from rl.actor_critic_ppo import PPOPolicy
 from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
-from rl.utils import eval_policy, ignore_extra_args,\
-                     recollate_batch, calculate_action_norm
+from rl.utils import recollate_batch, calculate_action_norm
 from rl.utils import ActionScaleScheduler, TimelimitScheduler
+from rl.eval import eval_policy
+
+from utils.logging import Logger
+from utils.arguments import get_args
+from utils.utils import ignore_extra_args
 
 policies = {
     "PPO": ignore_extra_args(PPOPolicy),
@@ -39,68 +40,6 @@ replay_buffers = {
     "PPO": ignore_extra_args(ReplayBufferPPO),
     "TQC": ignore_extra_args(ReplayBufferTQC)
 }
-
-class Logger:
-    def __init__(self, experiment_folder, config):
-        if os.path.exists(experiment_folder):
-            raise Exception('Experiment folder exists, apparent seed conflict!')
-        os.makedirs(experiment_folder)
-        self.metrics_file = experiment_folder / "metrics.json"
-        self.energies_file = experiment_folder / "energies.json"
-        self.metrics_file.touch()
-        with open(experiment_folder / 'config.json', 'w') as config_file:
-            json.dump(config.__dict__, config_file)
-
-        self._keep_n_episodes = 10
-        self.exploration_episode_lengths = deque(maxlen=self._keep_n_episodes)
-        self.exploration_episode_returns = deque(maxlen=self._keep_n_episodes)
-        self.exploration_episode_mean_Q = deque(maxlen=self._keep_n_episodes)
-        self.exploration_episode_final_energy = deque(maxlen=self._keep_n_episodes)
-        self.exploration_episode_final_rl_energy = deque(maxlen=self._keep_n_episodes)
-        self.exploration_not_converged = deque(maxlen=self._keep_n_episodes)
-        self.exploration_threshold_exceeded_pct = deque(maxlen=self._keep_n_episodes)
-        self.exploration_episode_number = 0
-
-    def log(self, metrics):
-        metrics['Exploration episodes number'] = self.exploration_episode_number
-        for name, d in zip(
-                ['episode length',
-                 'episode return',
-                 'episode mean Q',
-                 'episode final energy',
-                 'episode final rl energy',
-                 'episode not converged',
-                 'episode threshold exceeded pct'],
-                [self.exploration_episode_lengths,
-                 self.exploration_episode_returns,
-                 self.exploration_episode_mean_Q,
-                 self.exploration_episode_final_energy,
-                 self.exploration_episode_final_rl_energy,
-                 self.exploration_not_converged,
-                 self.exploration_threshold_exceeded_pct]
-            ):
-            metrics[f'Exploration {name}, mean'] = np.mean(d)
-            metrics[f'Exploration {name}, std'] = np.std(d)
-        with open(self.metrics_file, 'a') as out_metrics:
-            json.dump(metrics, out_metrics)
-            out_metrics.write('\n')
-
-    def update_evaluation_statistics(self,
-                                     episode_length,
-                                     episode_return,
-                                     episode_mean_Q,
-                                     episode_final_energy,
-                                     episode_final_rl_energy,
-                                     threshold_exceeded_pct,
-                                     not_converged):
-        self.exploration_episode_number += 1
-        self.exploration_episode_lengths.append(episode_length)
-        self.exploration_episode_returns.append(episode_return)
-        self.exploration_episode_mean_Q.append(episode_mean_Q)
-        self.exploration_episode_final_energy.append(episode_final_energy)
-        self.exploration_episode_final_rl_energy.append(episode_final_rl_energy)
-        self.exploration_threshold_exceeded_pct.append(threshold_exceeded_pct)
-        self.exploration_not_converged.append(not_converged)
 
 def main(args, experiment_folder):
     # Set env name
@@ -337,79 +276,7 @@ def main(args, experiment_folder):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    # Algoruthm
-    parser.add_argument("--algorithm", default='TQC', choices=['TQC', 'PPO'])
-    # Env args
-    parser.add_argument("--num_processes", default=1, type=int, help="Number of copies of env to run in parallel")
-    parser.add_argument("--db_path", default="env/data/malonaldehyde.db", type=str, help="Path to molecules database")
-    parser.add_argument("--num_initial_conformations", default=50000, type=int, help="Number of initial molecule conformations to sample from DB")
-    parser.add_argument("--sample_initial_conformation", default=False, type=bool, help="Sample new conformation for every seed")
-    parser.add_argument("--inject_noise", type=bool, default=False, help="Whether to inject random noise into initial states")
-    parser.add_argument("--noise_std", type=float, default=0.1, help="Std of the injected noise")
-    parser.add_argument("--remove_hydrogen", type=bool, default=False, help="Whether to remove hydrogen atoms from the molecule")
-    # Timelimit args
-    parser.add_argument("--timelimit", default=100, type=int, help="Timelimit for MD env")
-    parser.add_argument("--increment_timelimit", default=False, type=bool, help="Whether to increment timelimit during training")
-    parser.add_argument("--timelimit_step", default=10, type=int, help="By which number to increment timelimit")
-    parser.add_argument("--timelimit_interval", default=150000, type=int, help="How often to increment timelimit")
-    parser.add_argument("--greedy", default=False, type=bool, help="Returns done on every step independent of the timelimit")
-    parser.add_argument("--done_on_timelimit", type=bool, default=False, help="Env returns done when timelimit is reached")
-    parser.add_argument("--done_when_not_improved", type=bool, default=False, help="Return done if energy has not improved")
-    # Reward args
-    parser.add_argument("--reward", choices=["rdkit", "dft"], default="rdkit", help="How the energy is calculated")
-    parser.add_argument("--minimize_on_every_step", type=bool, default=False, help="Whether to minimize conformation with rdkit on every step")
-    parser.add_argument("--M", type=int, default=10, help="Number of steps to run rdkit minimization for")
-    parser.add_argument("--molecules_xyz_prefix", type=str, default="", help="Path to env/ folder. For cluster compatability")
-    # Action scale args. Action scale bounds actions to [-action_scale, action_scale]
-    parser.add_argument("--action_scale_init", default=0.01, type=float, help="Initial value of action_scale")
-    parser.add_argument("--action_scale_end", default=0.05, type=float, help="Final value of action_scale")
-    parser.add_argument("--action_scale_n_step_end", default=int(8e5), type=int, help="Step at which the final value of action_scale is reached")
-    parser.add_argument("--action_scale_mode", choices=["constant", "discrete", "continuous"], default="constant", help="Mode of action scale scheduler")
-    parser.add_argument("--target_entropy_action_scale", default=0.01, type=float, help="Controls target entropy of the distribution")
-    # Schnet args
-    parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")
-    parser.add_argument("--cutoff", default=20.0, type=float, help="Cutoff for Schnet in actor/critic")
-    parser.add_argument("--n_gaussians", default=50, type=int, help="Number of Gaussians for Schnet in actor/critic")
-    # Policy args
-    parser.add_argument("--out_embedding_size", default=128, type=int, help="Output embedding size for policy")
-    parser.add_argument("--tanh", choices=["before_projection", "after_projection"], help="Whether to put tanh() before projection operator or after")
-    parser.add_argument("--n_quantiles", default=25, type=int)
-    parser.add_argument("--n_nets", default=5, type=int)
-    # Eval args
-    parser.add_argument("--eval_freq", default=1e3, type=int)       # How often (time steps) we evaluate
-    parser.add_argument("--n_eval_runs", default=10, type=int, help="Number of evaluation episodes")
-    parser.add_argument("--n_explore_runs", default=5, type=int, help="Number of exploration episodes during evaluation")
-    parser.add_argument("--evaluate_multiple_timesteps", default=False, type=bool, help="Evaluate at multiple timesteps")
-    # TQC args
-    parser.add_argument("--top_quantiles_to_drop_per_net", default=2, type=int)
-    parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
-    parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
-    parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
-    parser.add_argument("--actor_lr", default=3e-4, type=float, help="Actor learning rate")
-    parser.add_argument("--actor_clip_value", default=None, help="Clipping value for actor gradients")
-    parser.add_argument("--critic_lr", default=3e-4, type=float, help="Critic learning rate")
-    parser.add_argument("--critic_clip_value", default=None, help="Clipping value for critic gradients")
-    parser.add_argument("--alpha_lr", default=3e-4, type=float, help="Alpha learning rate")
-    parser.add_argument("--initial_alpha", default=1.0, type=float, help="Initial value for alpha")
-    # PPO args
-    parser.add_argument("--clip_param", default=0.2, type=float)
-    parser.add_argument("--ppo_epoch", default=4, type=int)
-    parser.add_argument("--num_mini_batch", default=16, type=int)
-    parser.add_argument("--value_loss_coef", default=0.5, type=float)
-    parser.add_argument("--entropy_coef", default=0.01, type=float)
-    parser.add_argument("--use_clipped_value_loss", default=True, type=bool)
-    # Other args
-    parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
-    parser.add_argument("--replay_buffer_size", default=int(1e5), type=int, help="Size of replay buffer")
-    parser.add_argument("--update_frequency", default=1, type=int, help="How often agent is updated")
-    parser.add_argument("--max_timesteps", default=1e6, type=int, help="Max time steps to run environment")
-    parser.add_argument("--seed", default=None, type=int, help="Random seed")
-    parser.add_argument("--light_checkpoint_freq", type=int, default=100000, help="How often light checkpoint is saved")
-    parser.add_argument("--save_checkpoints", type=bool, default=False, help="Save light and full checkpoints")
-    parser.add_argument("--load_model", type=str, default=None, help="Path to load the model from")
-    parser.add_argument("--log_dir", default='.', help="Directory where runs are saved")
-    args = parser.parse_args()
+    args = get_args()
 
     log_dir = Path(args.log_dir)
     if args.seed is None:
