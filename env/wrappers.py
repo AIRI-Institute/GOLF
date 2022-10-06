@@ -119,7 +119,6 @@ class RewardWrapper(gym.Wrapper):
             if not self.dft or (self.dft and final_energy > RDKIT_ENERGY_THRESH):
                 self.threshold_exceeded += 1
                 reward = rdkit_reward
-
             else:
                 not_converged, final_energy = self.minimize_dft()
                 reward = self.initial_energy['dft'] - final_energy
@@ -139,7 +138,7 @@ class RewardWrapper(gym.Wrapper):
             # Then the initial DFT energy would be calculated from the
             # rdkit reward but the final energy would come from DFT.
             if self.dft:
-                self.initial_energy['rdkit'] -= reward
+                self.initial_energy['dft'] -= reward
 
         # If energy has not improved and done_when_not_improved=True set done to True 
         if self.done_when_not_improved and reward < 0:
