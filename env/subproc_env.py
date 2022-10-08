@@ -2,6 +2,7 @@
 
 import cloudpickle
 import multiprocessing as mp
+import os
 from typing import Any, Callable, List, Optional, Union, Iterable
 
 import gym
@@ -94,6 +95,9 @@ class SubprocVecEnv():
         self.waiting = False
         self.closed = False
         self.n_envs = len(env_fns)
+
+        if not os.path.exists("/dev/shm/tmp"):
+            os.makedirs("/dev/shm/tmp")
 
         if start_method is None:
             # Fork is not a thread safe method (see issue #217)

@@ -1,6 +1,9 @@
+import os
 import psi4
 
 from psi4 import SCFConvergenceError
+
+os.environ['PSI_SCRATCH'] = "/dev/shm/tmp"
 
 psi4.set_options({
     "CACHELEVEL": 0,
