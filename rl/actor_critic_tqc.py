@@ -1,17 +1,23 @@
 import copy
 import torch
 import torch.nn as nn
+
 import schnetpack as spk
-
-
-from numpy.linalg import norm
 from torch.distributions import Normal
 from schnetpack.nn.blocks import MLP
 
 from rl import DEVICE
+from rl.backbones.painn import PaiNN
+from utils.utils import ignore_extra_args
 
 
 LOG_STD_MIN_MAX = (-20, 2)
+
+
+backbones = {
+    "schnet": ignore_extra_args(spk.SchNet),
+    "painn": ignore_extra_args(PaiNN)
+}
 
 
 class GenerateActionsBlock(nn.Module):
@@ -50,11 +56,6 @@ class GenerateActionsBlock(nn.Module):
         if self.tanh == "after_projection":
             actions_mean = torch.tanh(actions_mean)
 
-        # print("Action means shape = ", actions_mean.shape)
-        # norm_reshape = torch.norm(actions_mean * action_scale, p=2, dim=-1).reshape(1, -1).squeeze()
-        # mask_reshape = atoms_mask.reshape(1, -1).squeeze().long()
-        # print("training = ", self.training, " norm = ", norm_reshape[mask_reshape].mean())
-
         if self.training:
             # Clamp and exp log_std
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
@@ -73,25 +74,20 @@ class GenerateActionsBlock(nn.Module):
         return actions, log_prob
 
 class Actor(nn.Module):
-    def __init__(self, schnet_args, out_embedding_size, action_scale_scheduler, tanh="after_projection"):
+    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler, tanh="after_projection"):
         super(Actor, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
-        self.out_embedding_size = out_embedding_size
-        # SchNet backbone is shared between actor and all critics
-        schnet = spk.SchNet(
-                        n_interactions=schnet_args["n_interactions"], #3
-                        cutoff=schnet_args["cutoff"], #20.0
-                        n_gaussians=schnet_args["n_gaussians"] #50
-                    )
-        output_modules = [ 
-                                spk.atomistic.Atomwise(
-                                    n_in=schnet.n_atom_basis,
-                                    n_out=out_embedding_size * 2 + 1,
-                                    n_neurons=[out_embedding_size],
-                                    contributions='kv'
-                                )
-                            ]
-        self.model = spk.atomistic.model.AtomisticModel(schnet, output_modules)
+
+        representation = backbones[backbone](**backbone_args)
+        output_modules = [
+            spk.atomistic.Atomwise(
+                n_in=representation.n_atom_basis,
+                n_out=out_embedding_size * 2 + 1,
+                n_neurons=[out_embedding_size],
+                contributions='kv'
+            )
+        ]
+        self.model = spk.atomistic.model.AtomisticModel(representation, output_modules)
         self.generate_actions_block = GenerateActionsBlock(out_embedding_size, tanh)
     
     def forward(self, state_dict):
@@ -108,28 +104,24 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, schnet_args, n_nets, schnet_out_embedding_size, n_quantiles):
+    def __init__(self, backbone, backbone_args, n_nets, out_embedding_size, n_quantiles):
         super(Critic, self).__init__()
         self.nets = []
         self.mlps = []
         self.n_nets = n_nets
-        self.schnet_out_embedding_size = schnet_out_embedding_size
         self.n_quantiles = n_quantiles
+
         for i in range(self.n_nets):
-            schnet = spk.SchNet(
-                            n_interactions=schnet_args["n_interactions"], #3
-                            cutoff=schnet_args["cutoff"], #20.0
-                            n_gaussians=schnet_args["n_gaussians"] #50
-                        )
+            representation = backbones[backbone](**backbone_args)
             output_modules = [ 
-                                    spk.atomistic.Atomwise(
-                                        n_in=schnet.n_atom_basis,
-                                        n_out=self.schnet_out_embedding_size,
-                                        property='embedding'
-                                    )
-                                ]
-            net = spk.atomistic.model.AtomisticModel(schnet, output_modules)
-            mlp = MLP(2 * self.schnet_out_embedding_size, self.n_quantiles)
+                spk.atomistic.Atomwise(
+                    n_in=representation.n_atom_basis,
+                    n_out=out_embedding_size,
+                    property='embedding'
+                )
+            ]
+            net = spk.atomistic.model.AtomisticModel(representation, output_modules)
+            mlp = MLP(2 * out_embedding_size, n_quantiles)
             self.add_module(f'qf_{i}', net)
             self.add_module(f'mlp_{i}', mlp)
             self.nets.append(net)
@@ -151,10 +143,10 @@ class Critic(nn.Module):
         return quantiles
 
 class TQCPolicy(nn.Module):
-    def __init__(self, schnet_args, out_embedding_size, action_scale_scheduler, n_nets, n_quantiles, tanh="after_projection"):
+    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler, n_nets, n_quantiles, tanh="after_projection"):
         super().__init__()
-        self.actor = Actor(schnet_args, out_embedding_size, action_scale_scheduler, tanh)
-        self.critic = Critic(schnet_args, n_nets, out_embedding_size, n_quantiles)
+        self.actor = Actor(backbone, backbone_args, out_embedding_size, action_scale_scheduler, tanh)
+        self.critic = Critic(backbone, backbone_args, n_nets, out_embedding_size, n_quantiles)
         self.critic_target = copy.deepcopy(self.critic)
 
     def act(self, state_dict):

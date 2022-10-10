@@ -155,7 +155,13 @@ def get_args():
         type=float,
         help="Controls target entropy of the distribution")
 
-    # Schnet args
+    # Backbone args
+    parser.add_argument(
+        "--backbone",
+        choices=["schnet", "painn"],
+        required=True,
+        help="Type of backbone to use for actor and critic"
+    )
     parser.add_argument(
         "--n_interactions",
         default=3,

@@ -97,7 +97,7 @@ def main(args, experiment_folder):
     use_ppo = args.algorithm == 'PPO'
     
     # Initialize replay buffer
-    if  use_ppo:
+    if use_ppo:
         assert args.replay_buffer_size == args.update_frequency, \
             f"PPO algorithm requires replay_buffer_size == update_frequency, got {args.replay_buffer_size} and {args.update_frequency}"
     replay_buffer = replay_buffers[args.algorithm](
@@ -107,13 +107,15 @@ def main(args, experiment_folder):
     )
 
     # Inititalize actor and critic
-    schnet_args = {
+    backbone_args = {
         'n_interactions': args.n_interactions,
         'cutoff': args.cutoff,
         'n_gaussians': args.n_gaussians,
+        'n_rbf':  args.n_gaussians
     }
     policy = policies[args.algorithm](
-        schnet_args=schnet_args,
+        backbone=args.backbone,
+        backbone_args=backbone_args,
         out_embedding_size=args.out_embedding_size,
         action_scale_scheduler=action_scale_scheduler,
         n_nets=args.n_nets,

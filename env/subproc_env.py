@@ -96,9 +96,6 @@ class SubprocVecEnv():
         self.closed = False
         self.n_envs = len(env_fns)
 
-        if not os.path.exists("/dev/shm/tmp"):
-            os.makedirs("/dev/shm/tmp")
-
         if start_method is None:
             # Fork is not a thread safe method (see issue #217)
             # but is more user friendly (does not require to wrap the code in
