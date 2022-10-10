@@ -113,7 +113,7 @@ class Critic(nn.Module):
 
         for i in range(self.n_nets):
             representation = backbones[backbone](**backbone_args)
-            output_modules = [ 
+            output_modules = [
                 spk.atomistic.Atomwise(
                     n_in=representation.n_atom_basis,
                     n_out=out_embedding_size,
