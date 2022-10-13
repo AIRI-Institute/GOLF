@@ -224,6 +224,11 @@ def get_args():
 
     # TQC args
     parser.add_argument(
+        "--pretrain_critic",
+        default=0,
+        type=int,
+        help="Number of steps to pretrain critic on random actions")
+    parser.add_argument(
         "--top_quantiles_to_drop_per_net",
         default=2,
         type=int,

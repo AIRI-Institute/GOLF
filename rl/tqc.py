@@ -47,7 +47,7 @@ class TQC(object):
 			total_quantiles_to_keep = t * self.critic.n_nets
 			metrics[f'Target_Q/Q_value_t={t}'] = next_z[:, :total_quantiles_to_keep].mean().__float__()
 
-	def update(self, replay_buffer):
+	def update(self, replay_buffer, update_actor):
 		metrics = dict()
 		state, action, next_state, reward, not_done = replay_buffer.sample(self.batch_size)
 		alpha = torch.exp(self.log_alpha)
@@ -77,28 +77,29 @@ class TQC(object):
 			torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.critic_clip_value)
 		self.critic_optimizer.step()
 
-		# --- Policy loss ---
-		new_action, log_pi = self.actor(state)
-		metrics['actor_entropy'] = - log_pi.mean().item()
-		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
-		metrics['actor_loss'] = actor_loss.item()
+		if update_actor:
+			# --- Policy loss ---
+			new_action, log_pi = self.actor(state)
+			metrics['actor_entropy'] = - log_pi.mean().item()
+			actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
+			metrics['actor_loss'] = actor_loss.item()
 
-		# --- Update actor ---
-		self.actor_optimizer.zero_grad()
-		actor_loss.backward()
-		metrics['actor_grad_norm'] = calculate_gradient_norm(self.actor).item()
-		if self.actor_clip_value is not None:
-			torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_clip_value)
-		self.actor_optimizer.step()
+			# --- Update actor ---
+			self.actor_optimizer.zero_grad()
+			actor_loss.backward()
+			metrics['actor_grad_norm'] = calculate_gradient_norm(self.actor).item()
+			if self.actor_clip_value is not None:
+				torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_clip_value)
+			self.actor_optimizer.step()
 
-		# --- Alpha loss ---
-		target_entropy = self.per_atom_target_entropy * state['_atom_mask'].sum(-1)
-		alpha_loss = -self.log_alpha * (log_pi + target_entropy).detach().mean()
+			# --- Alpha loss ---
+			target_entropy = self.per_atom_target_entropy * state['_atom_mask'].sum(-1)
+			alpha_loss = -self.log_alpha * (log_pi + target_entropy).detach().mean()
 
-		# --- Update alpha ---
-		self.alpha_optimizer.zero_grad()
-		alpha_loss.backward()
-		self.alpha_optimizer.step()
+			# --- Update alpha ---
+			self.alpha_optimizer.zero_grad()
+			alpha_loss.backward()
+			self.alpha_optimizer.step()
 
 		# --- Update target net ---
 		for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):

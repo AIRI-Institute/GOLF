@@ -1,4 +1,3 @@
-import argparse
 import datetime
 import numpy as np
 import pickle
@@ -173,7 +172,8 @@ def main(args, experiment_folder):
         if use_ppo:
             update_condition = ((t + 1) % args.update_frequency) == 0
         else:
-            update_condition = t >= args.batch_size // args.num_processes and t % args.update_frequency == 0
+            update_condition = (t + 1) >= args.batch_size // args.num_processes and (t + 1) % args.update_frequency == 0
+            update_actor_condition = (t + 1) > args.pretrain_critic // args.num_processes
         action_scale_scheduler.update(t)
         
         # Update timelimit
@@ -221,7 +221,7 @@ def main(args, experiment_folder):
             else:
                 # Update TQC several times
                 for _ in range(args.num_processes):
-                    step_metrics = trainer.update(replay_buffer)
+                    step_metrics = trainer.update(replay_buffer, update_actor_condition)
         else:
             step_metrics = dict()
 
