@@ -112,7 +112,7 @@ class Critic(nn.Module):
         self.n_quantiles = n_quantiles
 
         for i in range(self.n_nets):
-            representation = backbones[backbone](**backbone_args)
+            representation = backbones[backbone](activation='softplus', **backbone_args)
             output_modules = [
                 spk.atomistic.Atomwise(
                     n_in=representation.n_atom_basis,
