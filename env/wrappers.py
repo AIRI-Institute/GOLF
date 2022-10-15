@@ -13,16 +13,16 @@ RDKIT_ENERGY_THRESH = 200
 
 class RewardWrapper(gym.Wrapper):
     molecules_xyz = {
-        # 'C7O3C2OH8': 'env/molecules_xyz/aspirin.xyz',
-        # 'N2C12H10': 'env/molecules_xyz/azobenzene.xyz',
-        # 'C6H6': 'env/molecules_xyz/benzene.xyz',
-        # 'C2OH6': 'env/molecules_xyz/ethanol.xyz',
-        'C3O2H4': 'env/molecules_xyz/malonaldehyde.xyz',
-        # 'C10H8': 'env/molecules_xyz/naphthalene.xyz',
-        # 'C2ONC4OC2H9': 'env/molecules_xyz/paracetamol.xyz',
-        # 'C3OC4O2H6': 'env/molecules_xyz/salicylic_acid.xyz',
-        # 'C7H8': 'env/molecules_xyz/toluene.xyz',
-        # 'C2NCNCO2H4': 'env/molecules_xyz/uracil.xyz'
+        'C7O3C2OH8': 'aspirin.xyz',
+        'N2C12H10': 'azobenzene.xyz',
+        'C6H6': 'benzene.xyz',
+        'C2OH6': 'ethanol.xyz',
+        'C3O2H4': 'malonaldehyde.xyz',
+        'C10H8': 'naphthalene.xyz',
+        'C2ONC4OC2H9': 'paracetamol.xyz',
+        'C3OC4O2H6': 'salicylic_acid.xyz',
+        'C7H8': 'toluene.xyz',
+        'C2NCNCO2H4': 'uracil.xyz'
     }
 
     def __init__(self,
