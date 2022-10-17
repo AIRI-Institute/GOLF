@@ -266,13 +266,14 @@ def main(args, experiment_folder):
             )
             logger.log(step_metrics)
 
-        if t in full_checkpoints and args.save_checkpoints:
+        if (t + 1) in full_checkpoints and args.save_checkpoints:
             trainer_save_name = f'{experiment_folder}/iter_{t}'
             trainer.save(trainer_save_name)
             #with open(f'{experiment_folder}/iter_{t}_replay', 'wb') as outF:
             #    pickle.dump(replay_buffer, outF)
             # Remove previous checkpoint?
-        elif (t + 1) % (args.light_checkpoint_freq // args.num_processes) == 0 and args.save_checkpoints:
+        elif (t + 1) % (args.light_checkpoint_freq // args.num_processes) == 0 and\
+             (t + 1) not in full_checkpoints and args.save_checkpoints:
             trainer_save_name = f'{experiment_folder}/iter_{t}'
             trainer.light_save(trainer_save_name)
 
