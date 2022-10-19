@@ -25,7 +25,6 @@ class TQC(object):
 		self.critic_target = policy.critic_target
 		self.log_alpha = torch.tensor([log_alpha], requires_grad=True, device=DEVICE)
 
-		# TODO: check hyperparams
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
 		self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)

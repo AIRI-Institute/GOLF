@@ -19,7 +19,7 @@ from rl.actor_critic_ppo import PPOPolicy
 from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
 from rl.utils import recollate_batch, calculate_action_norm
 from rl.utils import ActionScaleScheduler, TimelimitScheduler
-from rl.eval import eval_policy
+from rl.eval import eval_policy_rdkit, eval_policy_dft
 
 from utils.logging import Logger
 from utils.arguments import get_args
@@ -38,6 +38,11 @@ trainers = {
 replay_buffers = {
     "PPO": ignore_extra_args(ReplayBufferPPO),
     "TQC": ignore_extra_args(ReplayBufferTQC)
+}
+
+eval_function = {
+    "rdkit": ignore_extra_args(eval_policy_rdkit),
+    "dft": ignore_extra_args(eval_policy_dft)
 }
 
 def main(args, experiment_folder):
@@ -61,7 +66,7 @@ def main(args, experiment_folder):
     
     # Reward wrapper kwargs
     reward_wrapper_kwargs = {
-        'dft': args.reward == "dft",
+        'dft': args.reward == 'dft',
         'minimize_on_every_step': args.minimize_on_every_step,
         'greedy': args.greedy,
         'remove_hydrogen': args.remove_hydrogen,
@@ -73,13 +78,20 @@ def main(args, experiment_folder):
     # Make parallel environments
     env = make_envs(env_kwargs, reward_wrapper_kwargs, args.seed, args.num_processes)
     
-    # Update kwargs and make an environment for evaluation
+    # Update kwargs
     env_kwargs['inject_noise'] = False
-    eval_env = env_fn(**env_kwargs)
-    reward_wrapper_kwargs.update({
-        'env': eval_env,
-    })
-    eval_env = RewardWrapper(**reward_wrapper_kwargs)
+    if args.eval_db_path != '':
+        env_kwargs['db_path'] = args.eval_db_path
+
+    # Make environment for evaluation. Parallel for DFT and single for Rdkit
+    if args.reward == "rdkit":
+        eval_env = env_fn(**env_kwargs)
+        reward_wrapper_kwargs.update({
+            'env': eval_env,
+        })
+        eval_env = RewardWrapper(**reward_wrapper_kwargs)
+    else:
+        eval_env = make_envs(env_kwargs, reward_wrapper_kwargs, args.seed, args.n_eval_runs)
 
     # Initialize action_scale scheduler and timelimit scheduler
     action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
@@ -260,9 +272,14 @@ def main(args, experiment_folder):
         if (t + 1) % (args.eval_freq // args.num_processes) == 0:
             step_metrics['Total_timesteps'] = (t + 1) * args.num_processes
             step_metrics.update(
-                eval_policy(policy, eval_env, current_timelimit, args.n_eval_runs,
-                            args.n_explore_runs, args.reward == "rdkit",
-                            args.evaluate_multiple_timesteps)
+                eval_function[args.reward](
+                    actor=policy,
+                    env=eval_env,
+                    max_timestamps=current_timelimit,
+                    eval_episodes=args.n_eval_runs,
+                    n_explore_runs=args.n_explore_runs,
+                    evaluate_multiple_timesteps=args.evaluate_multiple_timesteps
+                )
             )
             logger.log(step_metrics)
 

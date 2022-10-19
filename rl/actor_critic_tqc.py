@@ -100,7 +100,7 @@ class Actor(nn.Module):
 
     def select_action(self, state_dict):
         action, _ = self.forward(state_dict)
-        return action[0].cpu().detach().numpy()
+        return action.squeeze().cpu().detach().numpy()
 
 
 class Critic(nn.Module):

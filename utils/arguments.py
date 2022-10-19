@@ -28,7 +28,12 @@ def get_args():
         "--db_path",
         default="env/data/malonaldehyde.db",
         type=str,
-        help="Path to molecules database")
+        help="Path to molecules database for training")
+    parser.add_argument(
+        "--eval_db_path",
+        default="",
+        type=str,
+        help="Path to molecules database for evaluation")
     parser.add_argument(
         "--num_initial_conformations",
         default=50000,
