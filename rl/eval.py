@@ -47,15 +47,11 @@ def eval_policy_dft(actor, env, max_timestamps, eval_episodes=10):
     while len(result['eval/delta_energy']) < eval_episodes:
         with torch.no_grad():
             actions = actor.select_action(state)
-        print(actions)
         # Obser reward and next obs
         state, rewards, dones, infos = env.step(actions)
         episode_timesteps = env.env_method("get_env_step")
         dones = [done or t > max_timestamps for done, t in zip(dones, episode_timesteps)]
         episode_returns += rewards
-        print("rewards: ", rewards)
-        print("dones: ", dones)
-        print("episode_returns: ", episode_returns)
 
         envs_to_reset = []
         for i in range(env.n_envs):
@@ -81,8 +77,8 @@ def eval_policy_rdkit(actor, env, max_timestamps, eval_episodes=10,
     result = defaultdict(lambda: 0.0)
     for _ in range(eval_episodes):
         env.reset()
-        if hasattr(env.env, 'smiles'):
-            smiles = env.env.smiles
+        if hasattr(env.unwrapped, 'smiles'):
+            smiles = env.unwrapped.smiles
         else:
             smiles = None
         fixed_atoms = env.unwrapped.atoms.copy()

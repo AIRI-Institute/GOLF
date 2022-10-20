@@ -63,13 +63,10 @@ def xyz2psi4mol(atoms, coordinates):
     mol = psi4.geometry(molecule_string)
     return mol
 
-
-def parse_psi4_molecule(xyz_file):
-    mol_data = read_xyz_file(xyz_file)
-    atoms, xyz_coordinates, charge = mol_data[0]
-    mol_initial = xyz2psi4mol(atoms, xyz_coordinates)
-    return mol_initial
-
+def atoms2psi4mol(atoms):
+    atomic_numbers = [str(atom) for atom in atoms.get_atomic_numbers().tolist()]
+    coordinates = atoms.get_positions().tolist()
+    return xyz2psi4mol(atomic_numbers, coordinates)
 
 def get_dft_energy(mol):
     try:

@@ -73,13 +73,26 @@ class MolecularDynamics(gym.Env):
         else:
             db_idx = self.conformation_idx % len(self.initial_molecule_conformations)
             self.conformation_idx += 1
+        row = self.initial_molecule_conformations[db_idx]
+
         # Copy to avoid changing the atoms object inplace
-        self.atoms = self.initial_molecule_conformations[db_idx].copy()
+        self.atoms = row.toatoms().copy()
+
+        # Remove hydrogen
+        if self.remove_hydrogen:
+                del self.atoms[[atom.index for atom in self.atoms if atom.symbol=='H']]
+
+        # Check if row has Smiles
+        if hasattr(row, 'smiles'):
+            self.smiles = row.smiles
+            self.energy = row.data['energy']
+
         # Inject noise into the initial state
         if self.inject_noise:
             current_positions = self.atoms.get_positions()
             noise = np.random.normal(scale=self.noise_std, size=current_positions.shape)
             self.atoms.set_positions(current_positions + noise)
+
         self.env_steps = 0
         self.env_done = False
         obs = self.converter(self.atoms)
@@ -103,10 +116,8 @@ class MolecularDynamics(gym.Env):
             indices = np.random.choice(np.arange(1, self.db_len + 1), min(self.db_len, num_initial_conformations), replace=False)
         self.initial_molecule_conformations = []
         for idx in indices:
-            atoms = self.get_molecule(int(idx)).toatoms()
-            if self.remove_hydrogen:
-                del atoms[[atom.index for atom in atoms if atom.symbol=='H']]
-            self.initial_molecule_conformations.append(atoms)
+            row = self.get_molecule(int(idx))
+            self.initial_molecule_conformations.append(row)
     
     # Makes sqllite3 database compatible with NFS storages
     @backoff.on_exception(

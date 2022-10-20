@@ -2,12 +2,12 @@ import gym
 import os
 import psi4
 
-from rdkit.Chem import AllChem, rdmolops
+from rdkit.Chem import AllChem, rdmolops, MolFromSmiles, Conformer, AddHs
 from psi4.driver.p4util.exceptions import OptimizationConvergenceError
 
 from .moldynamics_env import MolecularDynamics
 from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates
-from .dft import parse_psi4_molecule, get_dft_energy, update_psi4_geometry, FUNCTIONAL_STRING
+from .dft import atoms2psi4mol, get_dft_energy, update_psi4_geometry, FUNCTIONAL_STRING
 
 RDKIT_ENERGY_THRESH = 200
 
@@ -43,11 +43,6 @@ class RewardWrapper(gym.Wrapper):
         self.molecules_xyz_prefix = molecules_xyz_prefix
         self.done_when_not_improved=done_when_not_improved
 
-        self.initial_energy = {}
-        self.parse_molecule = {
-            'rdkit': parse_molecule,
-            'dft': parse_psi4_molecule
-        }
         self.update_coordinates = {
             'rdkit': set_coordinates,
             'dft': update_psi4_geometry
@@ -56,7 +51,7 @@ class RewardWrapper(gym.Wrapper):
             'rdkit': get_rdkit_energy,
             'dft': get_dft_energy
         }
-
+        self.initial_energy = {}
         self.molecules = {}
         self.molecule = {}
         self.parse_molecules()
@@ -72,7 +67,7 @@ class RewardWrapper(gym.Wrapper):
         # Parse rdkit molecules 
         self.molecules['rdkit'] = {}
         for formula, path in RewardWrapper.molecules_xyz.items():
-            molecule = self.parse_molecule['rdkit'](os.path.join(self.molecules_xyz_prefix, path))
+            molecule = parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
             # Check if the provided molecule is valid
             try:
                 self.get_energy['rdkit'](molecule)
@@ -86,15 +81,6 @@ class RewardWrapper(gym.Wrapper):
 
         # Parse DFT molecules if needed
         if self.dft:
-            self.molecules['dft'] = {}
-            for formula, path in RewardWrapper.molecules_xyz.items():
-                molecule = self.parse_molecule['dft'](os.path.join(self.molecules_xyz_prefix, path))
-                # Check if the provided molecule is valid
-                try:
-                    self.get_energy['dft'](molecule)
-                except AttributeError:
-                    raise ValueError("Provided molucule was not parsed correctly")
-                self.molecules['dft'][formula] = molecule
             self.molecule['dft'] = None
 
     
@@ -179,36 +165,58 @@ class RewardWrapper(gym.Wrapper):
     
     def reset(self):
         obs = super().reset()
-        
+
         # Calculate initial rdkit energy
-        self.molecule['rdkit'] = self.molecules['rdkit'][str(self.env.atoms.symbols)]
+        if hasattr(self.env, 'smiles'):
+            # Initialize molecule from Smiles
+            self.molecule['rdkit'] = MolFromSmiles(self.env.smiles)
+            self.molecule['rdkit'] = AddHs(self.molecule['rdkit'])
+            # Add random conformer
+            self.molecule['rdkit'].AddConformer(Conformer(self.env.get_atoms_num()))
+        elif str(self.env.atoms.symbols) in self.molecules['rdkit']:
+            self.molecule['rdkit'] = self.molecules['rdkit'][str(self.env.atoms.symbols)]
+        else:
+            raise ValueError("Unknown molecule type {}".format(str(self.env.atoms.symbols)))
         self.update_coordinates['rdkit'](self.molecule['rdkit'], self.env.atoms.get_positions())
         _, self.initial_energy['rdkit'] = self.minimize_rdkit()
 
         # Calculate initial dft energy
         if self.dft:
             self.threshold_exceeded = 0
-            self.molecule['dft'] = self.molecules['dft'][str(self.env.atoms.symbols)]
-            self.update_coordinates['dft'](self.molecule['dft'], self.env.atoms.get_positions())
-            _,  self.initial_energy['dft'] = self.minimize_dft()
+            self.molecule['dft'] = atoms2psi4mol(self.env.atoms)
+            if hasattr(self.env, 'energy') and self.M == 0:
+                self.initial_energy = self.env.energy
+            else:
+                _,  self.initial_energy['dft'] = self.minimize_dft()
         return obs
 
-    def set_initial_positions(self, atoms, M=None):
-        self.env.reset()
+    def set_initial_positions(self, atoms, smiles=None, energy=None):
+        super().reset()
         self.env.atoms = atoms.copy()
         obs = self.env.converter(self.env.atoms)
 
         # Calculate initial rdkit energy
-        self.molecule['rdkit'] = self.molecules['rdkit'][str(self.env.atoms.symbols)]
+        if smiles is not None:
+            # Initialize molecule from Smiles
+            self.molecule['rdkit'] = MolFromSmiles(smiles)
+            self.molecule['rdkit'] = AddHs(self.molecule['rdkit'])
+            # Add random conformer
+            self.molecule['rdkit'].AddConformer(Conformer(self.env.get_atoms_num()))
+        elif str(self.env.atoms.symbols) in self.molecules['rdkit']:
+            self.molecule['rdkit'] = self.molecules['rdkit'][str(self.env.atoms.symbols)]
+        else:
+            raise ValueError("Unknown molecule type {}".format(str(self.env.atoms.symbols)))
         self.update_coordinates['rdkit'](self.molecule['rdkit'], self.env.atoms.get_positions())
         _, self.initial_energy['rdkit'] = self.minimize_rdkit()
 
         # Calculate initial dft energy
         if self.dft:
             self.threshold_exceeded = 0
-            self.molecule['dft'] = self.molecules['dft'][str(self.env.atoms.symbols)]
-            self.update_coordinates['dft'](self.molecule['dft'], self.env.atoms.get_positions())
-            _,  self.initial_energy['dft'] = self.minimize_dft()
+            self.molecule['dft'] = atoms2psi4mol(self.env.atoms)
+            if energy is not None and self.M == 0:
+                self.initial_energy = energy
+            else:
+                _,  self.initial_energy['dft'] = self.minimize_dft()
         return obs
 
     def minimize_rdkit(self, M=None, confId=0):
