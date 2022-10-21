@@ -190,9 +190,9 @@ def get_args():
         type=int,
         help="Output embedding size for policy")
     parser.add_argument(
-        "--tanh",
-        choices=["before_projection", "after_projection"],
-        help="Whether to put tanh() before projection operator or after")
+        "--limit_actions",
+        choices=["tanh", "softmax"],
+        help="Function used to limit action norms")
     parser.add_argument(
         "--n_quantiles",
         default=25,

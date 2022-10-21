@@ -21,12 +21,13 @@ backbones = {
 
 
 class GenerateActionsBlock(nn.Module):
-    def __init__(self, out_embedding_size, tanh):
+    def __init__(self, out_embedding_size, limit_actions):
         super().__init__()
         self.out_embedding_size = out_embedding_size
-        assert tanh in ["before_projection", "after_projection"],\
-            "Variable tanh must take one of two values: {}, {}".format("before_projection", "after_projection")
-        self.tanh = tanh
+        #assert tanh in ["before_projection", "after_projection"],\
+        #    "Variable tanh must take one of two values: {}, {}".format("before_projection", "after_projection")
+        # self.tanh = tanh
+        self.limit_actions = limit_actions
 
     def forward(self, kv, positions, atoms_mask, action_scale):
         # Mask kv
@@ -36,10 +37,6 @@ class GenerateActionsBlock(nn.Module):
         # Calculate mean and std of shifts relative to other atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
-        
-        # Bound relative_shifts with tanh if self.tanh == "before_projection"
-        if  self.tanh == "before_projection":
-            rel_shifts_mean = torch.tanh(rel_shifts_mean)
         
         # Calculate matrix of 1-vectors to other atoms
         P = positions[:, :, None, :] - positions[:, None, :, :]
@@ -52,9 +49,14 @@ class GenerateActionsBlock(nn.Module):
         # Make actions norm independent of the number of atoms
         actions_mean /= atoms_mask.sum(-1)[:, None, None]
         
-        # Bound means with tanh if self.tanh == "after_projection"
-        if self.tanh == "after_projection":
-            actions_mean = torch.tanh(actions_mean)
+        # Limit actions by scaling norms of actions
+        actions_norm = torch.norm(actions_mean, p=2, dim=-1) + 1e-8
+        if self.limit_actions == "tanh":
+            actions_mean = (actions_mean / actions_norm[..., None]) * torch.tanh(actions_norm)[..., None]
+        elif self.limit_actions == "softmax":
+            # Mask action norms so that masked atoms do not affect softmax
+            actions_norm = torch.where(atoms_mask == 0.0, -1e6, actions_norm.double())
+            actions_mean = (actions_mean / actions_norm[..., None]) * torch.softmax(actions_norm, dim=1)[..., None]
 
         if self.training:
             # Clamp and exp log_std
@@ -74,7 +76,7 @@ class GenerateActionsBlock(nn.Module):
         return actions, log_prob
 
 class Actor(nn.Module):
-    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler, tanh="after_projection"):
+    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler, limit_actions):
         super(Actor, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
 
@@ -88,7 +90,7 @@ class Actor(nn.Module):
             )
         ]
         self.model = spk.atomistic.model.AtomisticModel(representation, output_modules)
-        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, tanh)
+        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions)
     
     def forward(self, state_dict):
         action_scale = self.action_scale_scheduler.get_action_scale()
@@ -143,9 +145,10 @@ class Critic(nn.Module):
         return quantiles
 
 class TQCPolicy(nn.Module):
-    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler, n_nets, n_quantiles, tanh="after_projection"):
+    def __init__(self, backbone, backbone_args, out_embedding_size,
+                 action_scale_scheduler, n_nets, n_quantiles, limit_actions):
         super().__init__()
-        self.actor = Actor(backbone, backbone_args, out_embedding_size, action_scale_scheduler, tanh)
+        self.actor = Actor(backbone, backbone_args, out_embedding_size, action_scale_scheduler, limit_actions)
         self.critic = Critic(backbone, backbone_args, n_nets, out_embedding_size, n_quantiles)
         self.critic_target = copy.deepcopy(self.critic)
 

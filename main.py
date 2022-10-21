@@ -131,7 +131,7 @@ def main(args, experiment_folder):
         action_scale_scheduler=action_scale_scheduler,
         n_nets=args.n_nets,
         n_quantiles=args.n_quantiles,
-        tanh=args.tanh
+        limit_actions=args.limit_actions
     ).to(DEVICE)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
@@ -166,7 +166,7 @@ def main(args, experiment_folder):
 
     state = env.reset()
     episode_returns = np.zeros(args.num_processes)
-    episode_mean_Q = np.zeros(args.num_processes)
+    episode_Q = np.zeros(args.num_processes)
 
     max_timesteps = int(args.max_timesteps) // args.num_processes
 
@@ -221,7 +221,8 @@ def main(args, experiment_folder):
 
         state = next_state
         episode_returns += rewards
-        episode_mean_Q += values
+        # Set episode Q if t == 1
+        episode_Q = [value if t == 1 else Q for value, t, Q in zip(values, episode_timesteps, episode_Q)]
 
         # Train agent after collecting sufficient data
         if update_condition:
@@ -247,13 +248,12 @@ def main(args, experiment_folder):
             if done or (not args.greedy and ep_end):
                 logger.update_evaluation_statistics(episode_timesteps[i],
                                                     episode_returns[i].item(),
-                                                    episode_mean_Q[i].item(),
+                                                    episode_Q[i].item(),
                                                     info['final_energy'],
                                                     info['final_rl_energy'],
                                                     info['threshold_exceeded_pct'],
                                                     info['not_converged'])
                 episode_returns[i] = 0
-                episode_mean_Q[i] = 0
 
         # If timelimit is reached or a real done comes from the environement reset the environment 
         envs_to_reset = [i for i, (done, ep_end) in enumerate(zip(dones, ep_ends)) if ep_end or (done and not args.greedy)]
