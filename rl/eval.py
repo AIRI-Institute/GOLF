@@ -23,7 +23,7 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps):
         state = {k:v.to(DEVICE) for k, v in state.items()}
         delta_energy += reward
         t += 1
-    return delta_energy, info['final_energy'], info['final_rl_energy']
+    return delta_energy, info['final_energy'], info['final_rl_energy'], t
 
 def rdkit_minimize_until_convergence(env, fixed_atoms, smiles):
     M_init = 1000
@@ -85,36 +85,44 @@ def eval_policy_rdkit(actor, env, max_timestamps, eval_episodes=10,
 
         # Evaluate policy in eval mode
         actor.eval()
-        eval_delta_energy, eval_final_energy, eval_final_rl_energy = run_policy(env, actor, fixed_atoms, smiles, max_timestamps)
+        eval_delta_energy, eval_final_energy, eval_final_rl_energy, eval_episode_len = \
+            run_policy(env, actor, fixed_atoms.copy(), smiles, max_timestamps)
         result['eval/delta_energy'] += eval_delta_energy
         result['eval/final_energy'] += eval_final_energy
         result['eval/final_rl_energy'] += eval_final_rl_energy
+        result['eval/episode_len'] += eval_episode_len
 
         # Compute minimal energy of the molecule
-        initial_energy, final_energy = rdkit_minimize_until_convergence(env, fixed_atoms, smiles)
-        result['eval/pct_of_minimized_energy'] += (initial_energy - eval_final_energy) / (initial_energy - final_energy)
+        initial_energy, final_energy = rdkit_minimize_until_convergence(env, fixed_atoms.copy(), smiles)
+        result['eval/pct_of_minimized_energy'] += \
+            (initial_energy - eval_final_energy) / (initial_energy - final_energy)
 
         # Evaluate policy at multiple timelimits
         if evaluate_multiple_timesteps:
             for timelimit in TIMELIMITS:
                 # Set env's TL to current timelimit
                 env.update_timelimit(timelimit)
-                delta_energy_at, final_energy_at, _ = run_policy(env, actor, fixed_atoms, smiles, timelimit)
+                delta_energy_at, final_energy_at, _, _ = run_policy(env, actor, fixed_atoms.copy(), smiles, timelimit)
                 result[f'eval/delta_energy_at_{timelimit}'] += delta_energy_at
 
                 # If reward is given by rdkit we know the optimal energy for the conformation.
-                result[f'eval/pct_of_minimized_energy_at_{timelimit}'] += (initial_energy - final_energy_at)  / (initial_energy - final_energy)
+                result[f'eval/pct_of_minimized_energy_at_{timelimit}'] += \
+                    (initial_energy - final_energy_at)  / (initial_energy - final_energy)
             # Set env's TL to original value
             env.update_timelimit(max_timestamps)
 
         # Evaluate policy in explore mode
         actor.train()
         if n_explore_runs > 0:
-            explore_results = np.array([run_policy(env, actor, fixed_atoms, smiles, max_timestamps) for _ in range(n_explore_runs)])
-            explore_delta_energy, explore_final_energy, explore_final_rl_energy = explore_results.mean(axis=0)
+            explore_results = np.array(
+                [run_policy(env, actor, fixed_atoms.copy(), smiles, max_timestamps) for _ in range(n_explore_runs)]
+            )
+            explore_delta_energy, explore_final_energy, explore_final_rl_energy, explore_episode_len = \
+                explore_results.mean(axis=0)
             result['explore/delta_energy'] += explore_delta_energy
             result['explore/final_energy'] += explore_final_energy
             result['explore/final_rl_energy'] += explore_final_rl_energy
+            result['explore/episode_len'] += explore_episode_len
         
     result = {k: v / eval_episodes for k, v in result.items()}
     return result
