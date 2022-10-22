@@ -76,14 +76,15 @@ class TQC(object):
 			torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.critic_clip_value)
 		self.critic_optimizer.step()
 
-		if update_actor:
-			# --- Policy loss ---
-			new_action, log_pi = self.actor(state)
-			metrics['actor_entropy'] = - log_pi.mean().item()
-			actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
-			metrics['actor_loss'] = actor_loss.item()
+		#if update_actor:
+		# --- Policy loss ---
+		new_action, log_pi = self.actor(state)
+		metrics['actor_entropy'] = - log_pi.mean().item()
+		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
+		metrics['actor_loss'] = actor_loss.item()
 
-			# --- Update actor ---
+		# --- Update actor ---
+		if update_actor:
 			self.actor_optimizer.zero_grad()
 			actor_loss.backward()
 			metrics['actor_grad_norm'] = calculate_gradient_norm(self.actor).item()
@@ -99,11 +100,12 @@ class TQC(object):
 			self.alpha_optimizer.zero_grad()
 			alpha_loss.backward()
 			self.alpha_optimizer.step()
+		else:
+			metrics['actor_grad_norm'] = 0.0
 
 		# --- Update target net ---
 		for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
 			target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-
 		self.total_it += 1
 		return metrics
 
