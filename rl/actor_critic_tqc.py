@@ -49,14 +49,10 @@ class GenerateActionsBlock(nn.Module):
         # Make actions norm independent of the number of atoms
         actions_mean /= atoms_mask.sum(-1)[:, None, None]
         
-        # Limit actions by scaling norms of actions
-        actions_norm = torch.norm(actions_mean, p=2, dim=-1) + 1e-8
-        if self.limit_actions == "tanh":
+        # Limit actions by scaling their norms
+        if self.limit_actions:
+            actions_norm = torch.norm(actions_mean, p=2, dim=-1) + 1e-8
             actions_mean = (actions_mean / actions_norm[..., None]) * torch.tanh(actions_norm)[..., None]
-        elif self.limit_actions == "softmax":
-            # Mask action norms so that masked atoms do not affect softmax
-            actions_norm = torch.where(atoms_mask == 0.0, -1e6, actions_norm.double())
-            actions_mean = (actions_mean / actions_norm[..., None]) * torch.softmax(actions_norm, dim=1)[..., None]
 
         if self.training:
             # Clamp and exp log_std
@@ -80,7 +76,7 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
 
-        representation = backbones[backbone](activation='softplus', **backbone_args)
+        representation = backbones[backbone](**backbone_args)
         output_modules = [
             spk.atomistic.Atomwise(
                 n_in=representation.n_atom_basis,
@@ -114,7 +110,7 @@ class Critic(nn.Module):
         self.n_quantiles = n_quantiles
 
         for i in range(self.n_nets):
-            representation = backbones[backbone](activation='softplus', **backbone_args)
+            representation = backbones[backbone](**backbone_args)
             output_modules = [
                 spk.atomistic.Atomwise(
                     n_in=representation.n_atom_basis,

@@ -120,7 +120,8 @@ def get_args():
         "--minimize_on_every_step",
         default=False,
         choices=[True, False],
-        metavar='True|False', type=str2bool,
+        metavar='True|False',
+        type=str2bool,
         help="Whether to minimize conformation with rdkit on every step")
     parser.add_argument(
         "--M",
@@ -191,8 +192,11 @@ def get_args():
         help="Output embedding size for policy")
     parser.add_argument(
         "--limit_actions",
-        choices=["tanh", "softmax"],
-        help="Function used to limit action norms")
+        default=False,
+        choices=[True, False],
+        metavar='True|False',
+        type=str2bool,
+        help="Whether to limit action norms with tanh")
     parser.add_argument(
         "--n_quantiles",
         default=25,
