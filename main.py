@@ -1,5 +1,7 @@
 import datetime
+import glob
 import numpy as np
+import os
 import pickle
 import random
 import time
@@ -168,19 +170,18 @@ def main(args, experiment_folder):
     episode_returns = np.zeros(args.num_processes)
     episode_Q = np.zeros(args.num_processes)
 
-    max_timesteps = int(args.max_timesteps) // args.num_processes
 
-    policy.train()    
-    full_checkpoints = [max_timesteps // 3, max_timesteps * 2 // 3, args.max_timesteps - 1]
     if args.load_model is not None:
-        start_iter = int(args.load_model.split('/')[-1].split('_')[1]) + 1
+        start_iter = int(args.load_model.split('/')[-1].split('_')[1]) // args.num_processes + 1 
         trainer.load(args.load_model)
         replay_buffer = pickle.load(open(f'{args.load_model}_replay', 'rb'))
     else:
         start_iter = 0
 
+    policy.train()
+    max_timesteps = int(args.max_timesteps) // args.num_processes
     for t in range(start_iter, max_timesteps):
-        start = time.time()
+        start = time.perf_counter()
         if use_ppo:
             update_condition = ((t + 1) % args.update_frequency) == 0
         else:
@@ -266,7 +267,7 @@ def main(args, experiment_folder):
             state = recollate_batch(state, envs_to_reset, reset_states)
 
         # Print update time
-        print(time.time() - start)
+        print(time.perf_counter() - start)
 
         # Evaluate episode
         if (t + 1) % (args.eval_freq // args.num_processes) == 0:
@@ -283,15 +284,21 @@ def main(args, experiment_folder):
             )
             logger.log(step_metrics)
 
-        if (t + 1) in full_checkpoints and args.save_checkpoints:
-            trainer_save_name = f'{experiment_folder}/iter_{t}'
+        # Save checkpoints
+        if (t + 1) % (args.full_checkpoint_freq // args.num_processes) == 0 and args.save_checkpoints:
+            # Remove previous checkpoint
+            old_checkpoint_files = glob.glob(f'{experiment_folder}/full_cp_iter*')
+            for cp_file in old_checkpoint_files:
+                os.remove(cp_file)
+            
+            # Save new checkpoint
+            trainer_save_name = f'{experiment_folder}/full_cp_iter_{t + 1}'
             trainer.save(trainer_save_name)
-            #with open(f'{experiment_folder}/iter_{t}_replay', 'wb') as outF:
-            #    pickle.dump(replay_buffer, outF)
-            # Remove previous checkpoint?
-        elif (t + 1) % (args.light_checkpoint_freq // args.num_processes) == 0 and\
-             (t + 1) not in full_checkpoints and args.save_checkpoints:
-            trainer_save_name = f'{experiment_folder}/iter_{t}'
+            with open(f'{experiment_folder}/full_cp_iter_{t + 1}_replay', 'wb') as outF:
+               pickle.dump(replay_buffer, outF)
+
+        if (t + 1) % (args.light_checkpoint_freq // args.num_processes) == 0 and args.save_checkpoints:
+            trainer_save_name = f'{experiment_folder}/light_cp_iter_{t + 1}'
             trainer.light_save(trainer_save_name)
 
 

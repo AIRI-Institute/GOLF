@@ -345,10 +345,16 @@ def get_args():
         type=int,
         help="Random seed")
     parser.add_argument(
+        "--full_checkpoint_freq",
+        type=int,
+        default=10000,
+        help="How often full checkpoints are saved.\
+              Note that only the most recent full checkpoint is available")
+    parser.add_argument(
         "--light_checkpoint_freq",
         type=int,
-        default=100000,
-        help="How often light checkpoint is saved")
+        default=10000,
+        help="How often light checkpoints are saved")
     parser.add_argument(
         "--save_checkpoints",
         default=False,
