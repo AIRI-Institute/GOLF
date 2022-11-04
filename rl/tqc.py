@@ -72,7 +72,7 @@ class TQC(object):
 			# Manually fill with zeros where done is True to avoid Nans
 			#target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
 			target = reward + self.discount * \
-				(sorted_z_part - alpha * next_log_pi).masked_fill_((1.0 - not_done), 0.0)
+				(sorted_z_part - alpha * next_log_pi).masked_fill_((1.0 - not_done).bool(), 0.0)
 			if target.mean(dim=1).isnan().sum() > 0:
 				self.save(f"{experiment_folder}/full_cp_iter_{self.total_it}_FAIL")
 		
