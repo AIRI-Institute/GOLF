@@ -7,6 +7,8 @@ import random
 import time
 import torch
 
+from collections import defaultdict, deque
+from functools import partial
 from pathlib import Path
 
 from env.moldynamics_env import env_fn
@@ -172,7 +174,7 @@ def main(args, experiment_folder):
 
 
     if args.load_model is not None:
-        start_iter = int(args.load_model.split('/')[-1].split('_')[1]) // args.num_processes + 1 
+        start_iter = int(args.load_model.split('/')[-1].split('_')[-1]) // args.num_processes + 1 
         trainer.load(args.load_model)
         replay_buffer = pickle.load(open(f'{args.load_model}_replay', 'rb'))
     else:
@@ -180,126 +182,136 @@ def main(args, experiment_folder):
 
     policy.train()
     max_timesteps = int(args.max_timesteps) // args.num_processes
-    for t in range(start_iter, max_timesteps):
-        start = time.perf_counter()
-        if use_ppo:
-            update_condition = ((t + 1) % args.update_frequency) == 0
-        else:
-            update_condition = (t + 1) >= args.batch_size // args.num_processes and (t + 1) % args.update_frequency == 0
-            update_actor_condition = (t + 1) > args.pretrain_critic // args.num_processes
-        action_scale_scheduler.update(t)
-        
-        # Update timelimit
-        timelimit_scheduler.update(t)
-        current_timelimit = timelimit_scheduler.get_timelimit()
-        
-        # Update timelimit in envs
-        env.env_method("update_timelimit", current_timelimit)
-        
-        # Select next action
-        with torch.no_grad():
-            policy_out = policy.act(state)
-            values, actions, log_probs = [x.cpu().numpy() for x in policy_out]
-            if not use_ppo:
-                # Mean over nets and quantiles to log
-                values = values.mean(axis=(1, 2))
-            else:
-                # Remove extra dimension to store correctly
-                values = values.squeeze(-1)
-                log_probs = log_probs.squeeze(-1)
 
-        next_state, rewards, dones, infos = env.step(actions)
-        # Done on every step or at the end of the episode
-        dones = [done or args.greedy for done in dones]
-        episode_timesteps = env.env_method("get_env_step")
-        ep_ends = [ep_t >= current_timelimit for ep_t in episode_timesteps]
-        
-        transition = [state, actions, next_state, rewards, dones]
-        # if PPO then add log_prob, value and next value to RB
-        if use_ppo:
-            transition.extend([ep_ends, log_probs, values])
-        replay_buffer.add(*transition)
 
-        state = next_state
-        episode_returns += rewards
-        # Set episode Q if t == 1
-        episode_Q = [value if t == 1 else Q for value, t, Q in zip(values, episode_timesteps, episode_Q)]
+    # For debugging purposes!
+    full_statistics = defaultdict(partial(deque, maxlen=100))
 
-        # Train agent after collecting sufficient data
-        if update_condition:
+    try:
+        for t in range(start_iter, max_timesteps):
+            start = time.perf_counter()
             if use_ppo:
-                with torch.no_grad():
-                    next_value = policy.get_value(state).cpu()
-                replay_buffer.compute_returns(next_value, args.discount, args.done_on_timelimit or args.greedy)
-                step_metrics = trainer.update(replay_buffer)
+                update_condition = ((t + 1) % args.update_frequency) == 0
             else:
-                # Update TQC several times
-                for _ in range(args.num_processes):
-                    step_metrics = trainer.update(replay_buffer, update_actor_condition)
-        else:
-            step_metrics = dict()
-
-        step_metrics['Timestamp'] = str(datetime.datetime.now())
-        step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
-        step_metrics['Timelimit'] = current_timelimit
-        step_metrics['Action_norm'] = calculate_action_norm(actions, state['_atom_mask']).item()
-        
-        # Update training statistics
-        for i, (done, ep_end, info) in enumerate(zip(dones, ep_ends, infos)):
-            if done or (not args.greedy and ep_end):
-                logger.update_evaluation_statistics(episode_timesteps[i],
-                                                    episode_returns[i].item(),
-                                                    episode_Q[i].item(),
-                                                    info['final_energy'],
-                                                    info['final_rl_energy'],
-                                                    info['threshold_exceeded_pct'],
-                                                    info['not_converged'])
-                episode_returns[i] = 0
-
-        # If timelimit is reached or a real done comes from the environement reset the environment 
-        envs_to_reset = [i for i, (done, ep_end) in enumerate(zip(dones, ep_ends)) if ep_end or (done and not args.greedy)]
-        # Get new states and remove extra dimension
-        reset_states = [{k:v.squeeze() for k, v in s.items()} for s in env.env_method("reset", indices=envs_to_reset)]
-
-        # Recollate state_batch after resets as atomic numbers might have changed.
-        # Execute only if at least one env has reset.
-        if len(envs_to_reset) > 0:
-            state = recollate_batch(state, envs_to_reset, reset_states)
-
-        # Print update time
-        print(time.perf_counter() - start)
-
-        # Evaluate episode
-        if (t + 1) % (args.eval_freq // args.num_processes) == 0:
-            step_metrics['Total_timesteps'] = (t + 1) * args.num_processes
-            step_metrics.update(
-                eval_function[args.reward](
-                    actor=policy,
-                    env=eval_env,
-                    max_timestamps=current_timelimit,
-                    eval_episodes=args.n_eval_runs,
-                    n_explore_runs=args.n_explore_runs,
-                    evaluate_multiple_timesteps=args.evaluate_multiple_timesteps
-                )
-            )
-            logger.log(step_metrics)
-
-        # Save checkpoints
-        if (t + 1) % (args.full_checkpoint_freq // args.num_processes) == 0 and args.save_checkpoints:
-            # Remove previous checkpoint
-            old_checkpoint_files = glob.glob(f'{experiment_folder}/full_cp_iter*')
-            for cp_file in old_checkpoint_files:
-                os.remove(cp_file)
+                update_condition = (t + 1) >= args.batch_size // args.num_processes and (t + 1) % args.update_frequency == 0
+                update_actor_condition = (t + 1) > args.pretrain_critic // args.num_processes
+            action_scale_scheduler.update(t)
             
-            # Save new checkpoint
-            trainer_save_name = f'{experiment_folder}/full_cp_iter_{t + 1}'
-            trainer.save(trainer_save_name)
-            with open(f'{experiment_folder}/full_cp_iter_{t + 1}_replay', 'wb') as outF:
-               pickle.dump(replay_buffer, outF)
+            # Update timelimit
+            timelimit_scheduler.update(t)
+            current_timelimit = timelimit_scheduler.get_timelimit()
+            
+            # Update timelimit in envs
+            env.env_method("update_timelimit", current_timelimit)
+            
+            # Select next action
+            with torch.no_grad():
+                policy_out = policy.act(state)
+                values, actions, log_probs = [x.cpu().numpy() for x in policy_out]
+                if not use_ppo:
+                    # Mean over nets and quantiles to log
+                    values = values.mean(axis=(1, 2))
+                else:
+                    # Remove extra dimension to store correctly
+                    values = values.squeeze(-1)
+                    log_probs = log_probs.squeeze(-1)
 
-        if (t + 1) % (args.light_checkpoint_freq // args.num_processes) == 0 and args.save_checkpoints:
-            trainer_save_name = f'{experiment_folder}/light_cp_iter_{t + 1}'
-            trainer.light_save(trainer_save_name)
+            next_state, rewards, dones, infos = env.step(actions)
+            # Done on every step or at the end of the episode
+            dones = [done or args.greedy for done in dones]
+            episode_timesteps = env.env_method("get_env_step")
+            ep_ends = [ep_t >= current_timelimit for ep_t in episode_timesteps]
+            
+            transition = [state, actions, next_state, rewards, dones]
+            # if PPO then add log_prob, value and next value to RB
+            if use_ppo:
+                transition.extend([ep_ends, log_probs, values])
+            replay_buffer.add(*transition)
+
+            state = next_state
+            episode_returns += rewards
+            # Set episode Q if t == 1
+            episode_Q = [value if t == 1 else Q for value, t, Q in zip(values, episode_timesteps, episode_Q)]
+
+            # Train agent after collecting sufficient data
+            if update_condition:
+                if use_ppo:
+                    with torch.no_grad():
+                        next_value = policy.get_value(state).cpu()
+                    replay_buffer.compute_returns(next_value, args.discount, args.done_on_timelimit or args.greedy)
+                    step_metrics = trainer.update(replay_buffer)
+                else:
+                    # Update TQC several times
+                    for _ in range(args.num_processes):
+                        step_metrics = trainer.update(experiment_folder, full_statistics, replay_buffer, update_actor_condition)
+            else:
+                step_metrics = dict()
+
+            step_metrics['Timestamp'] = str(datetime.datetime.now())
+            step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
+            step_metrics['Timelimit'] = current_timelimit
+            step_metrics['Action_norm'] = calculate_action_norm(actions, state['_atom_mask']).item()
+            
+            # Update training statistics
+            for i, (done, ep_end, info) in enumerate(zip(dones, ep_ends, infos)):
+                if done or (not args.greedy and ep_end):
+                    logger.update_evaluation_statistics(episode_timesteps[i],
+                                                        episode_returns[i].item(),
+                                                        episode_Q[i].item(),
+                                                        info['final_energy'],
+                                                        info['final_rl_energy'],
+                                                        info['threshold_exceeded_pct'],
+                                                        info['not_converged'])
+                    episode_returns[i] = 0
+
+            # If timelimit is reached or a real done comes from the environement reset the environment 
+            envs_to_reset = [i for i, (done, ep_end) in enumerate(zip(dones, ep_ends)) if ep_end or (done and not args.greedy)]
+            # Get new states and remove extra dimension
+            reset_states = [{k:v.squeeze() for k, v in s.items()} for s in env.env_method("reset", indices=envs_to_reset)]
+
+            # Recollate state_batch after resets as atomic numbers might have changed.
+            # Execute only if at least one env has reset.
+            if len(envs_to_reset) > 0:
+                state = recollate_batch(state, envs_to_reset, reset_states)
+
+            # Print update time
+            # print(time.perf_counter() - start)
+
+            # Evaluate episode
+            if (t + 1) % (args.eval_freq // args.num_processes) == 0:
+                step_metrics['Total_timesteps'] = (t + 1) * args.num_processes
+                step_metrics.update(
+                    eval_function[args.reward](
+                        actor=policy,
+                        env=eval_env,
+                        max_timestamps=current_timelimit,
+                        eval_episodes=args.n_eval_runs,
+                        n_explore_runs=args.n_explore_runs,
+                        evaluate_multiple_timesteps=args.evaluate_multiple_timesteps
+                    )
+                )
+                logger.log(step_metrics)
+
+            # Save checkpoints
+            if (t + 1) % (args.full_checkpoint_freq // args.num_processes) == 0 and args.save_checkpoints:
+                # Remove previous checkpoint
+                old_checkpoint_files = glob.glob(f'{experiment_folder}/full_cp_iter*')
+                for cp_file in old_checkpoint_files:
+                    os.remove(cp_file)
+                
+                # Save new checkpoint
+                trainer_save_name = f'{experiment_folder}/full_cp_iter_{t + 1}'
+                trainer.save(trainer_save_name)
+                with open(f'{experiment_folder}/full_cp_iter_{t + 1}_replay', 'wb') as outF:
+                    pickle.dump(replay_buffer, outF)
+
+            if (t + 1) % (args.light_checkpoint_freq // args.num_processes) == 0 and args.save_checkpoints:
+                trainer_save_name = f'{experiment_folder}/light_cp_iter_{t + 1}'
+                trainer.light_save(trainer_save_name)
+    except ValueError as e:
+        with open(f'{experiment_folder}/full_statistics.pickle', 'wb') as f:
+            pickle.dump(full_statistics, f)
+        raise e
 
 
 if __name__ == "__main__":

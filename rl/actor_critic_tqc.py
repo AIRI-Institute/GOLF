@@ -37,7 +37,7 @@ class GenerateActionsBlock(nn.Module):
         # Calculate mean and std of shifts relative to other atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
-        
+
         # Calculate matrix of 1-vectors to other atoms
         P = positions[:, :, None, :] - positions[:, None, :, :]
         norm = torch.norm(P, p=2, dim=-1) + 1e-8
