@@ -94,8 +94,11 @@ def eval_policy_rdkit(actor, env, max_timestamps, eval_episodes=10,
 
         # Compute minimal energy of the molecule
         initial_energy, final_energy = rdkit_minimize_until_convergence(env, fixed_atoms.copy(), smiles)
-        result['eval/pct_of_minimized_energy'] += \
-            (initial_energy - eval_final_energy) / (initial_energy - final_energy)
+        pct = (initial_energy - eval_final_energy) / (initial_energy - final_energy)
+        result['eval/pct_of_minimized_energy'] += pct
+        if pct > 1.0 or pct < -100:
+            print("Strange conformation encountered: pct={:.3f} \nSmiles: {} \
+                \n Coords: \n{}".format(result['eval/pct_of_minimized_energy'], smiles, fixed_atoms.get_positions()))
 
         # Evaluate policy at multiple timelimits
         if evaluate_multiple_timesteps:
