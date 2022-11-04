@@ -175,7 +175,7 @@ def get_args():
         help="Number of interaction blocks for Schnet in actor/critic")
     parser.add_argument(
         "--cutoff",
-        default=20.0,
+        default=5.0,
         type=float,
         help="Cutoff for Schnet in actor/critic")
     parser.add_argument(
