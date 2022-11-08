@@ -179,7 +179,7 @@ def get_args():
         type=float,
         help="Cutoff for Schnet in actor/critic")
     parser.add_argument(
-        "--n_gaussians",
+        "--n_rbf",
         default=50,
         type=int,
         help="Number of Gaussians for Schnet in actor/critic")

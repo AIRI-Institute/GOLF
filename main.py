@@ -125,8 +125,8 @@ def main(args, experiment_folder):
     backbone_args = {
         'n_interactions': args.n_interactions,
         'cutoff': args.cutoff,
-        'n_gaussians': args.n_gaussians,
-        'n_rbf':  args.n_gaussians
+        'n_gaussians': args.n_rbf,
+        'n_rbf':  args.n_rbf
     }
     policy = policies[args.algorithm](
         backbone=args.backbone,
