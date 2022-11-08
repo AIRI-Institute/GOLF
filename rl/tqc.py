@@ -70,9 +70,9 @@ class TQC(object):
 			self.add_next_z_metrics(metrics, sorted_z)
 			sorted_z_part = sorted_z[:, :self.quantiles_total-self.top_quantiles_to_drop]
 			# Manually fill with zeros where done is True to avoid Nans
-			#target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
-			target = reward + self.discount * \
-				(sorted_z_part - alpha * next_log_pi).masked_fill_((1.0 - not_done).bool(), 0.0)
+			target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
+			# target = reward + self.discount * \
+			# 	(sorted_z_part - alpha * next_log_pi).masked_fill_((1.0 - not_done).bool(), 0.0)
 			if target.mean(dim=1).isnan().sum() > 0:
 				self.save(f"{experiment_folder}/full_cp_iter_{self.total_it}_FAIL")
 		

@@ -167,7 +167,14 @@ class PaiNN(nn.Module):
             h_i = self.intraatomic_context_net[i](ctx)
             ds, dv, dsv = torch.split(h_i, self.n_atom_basis, dim=-1)
             dv = dv.unsqueeze(2) * vectors_U
-            dsv = dsv * torch.einsum("bidf,bidf->bif", vectors_V, vectors_U)
+
+            # Divide scalar product by norm to avoid overflows
+            Un = torch.norm(vectors_U, dim=2)
+            Un = torch.where(Un == 0, torch.tensor(1.0, device=Un.device), Un)
+            Vn = torch.where(mu_Vn == 0, torch.tensor(1.0, device=mu_Vn.device), mu_Vn)
+            
+            VU_cosine  = torch.einsum("bidf,bidf->bif", vectors_V, vectors_U) / (Vn * Un)
+            dsv = dsv * VU_cosine
 
             # calculate atomwise updates
             scalars = scalars + ds + dsv
