@@ -1,7 +1,7 @@
 import torch
 
-from rl.utils import quantile_huber_loss_f, calculate_gradient_norm
 from rl import DEVICE
+from rl.utils import calculate_gradient_norm, quantile_huber_loss_f
 
 
 class TQC(object):
