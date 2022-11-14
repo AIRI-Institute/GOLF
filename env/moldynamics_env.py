@@ -2,12 +2,14 @@ import backoff
 import gym
 import numpy as np
 import torch
+import warnings
 
 from ase.db import connect
 from sqlite3 import DatabaseError
 from schnetpack.data.atoms import AtomsConverter
+from schnetpack.data.loader import _collate_aseatoms
 
-import warnings
+
 np.seterr(all="ignore")
 warnings.filterwarnings("ignore", category=DeprecationWarning) 
 
@@ -22,22 +24,19 @@ class MolecularDynamics(gym.Env):
     
     def __init__(self,
                  db_path,
-                 converter, 
+                 converter,
+                 n_parallel=1,
                  timelimit=10,
                  done_on_timelimit=False,
                  sample_initial_conformations=True,
                  num_initial_conformations=50000,
-                 inject_noise=False,
-                 noise_std=0.1,
-                 remove_hydrogen=False):
+                ):
         self.db_path = db_path
         self.converter = converter
+        self.n_parallel=n_parallel
         self.TL = timelimit
         self.done_on_timelimit = done_on_timelimit
         self.sample_initial_conformations = sample_initial_conformations
-        self.inject_noise = inject_noise
-        self.noise_std = noise_std
-        self.remove_hydrogen = remove_hydrogen
         
         self.db_len = self.get_db_length()
         self.env_done = True
@@ -50,52 +49,80 @@ class MolecularDynamics(gym.Env):
         self.get_initial_molecule_conformations(num_initial_conformations)
         self.conformation_idx = 0
 
+        # Initialize lists
+        self.atoms = [None] * self.n_parallel
+        self.smiles = [None] * self.n_parallel
+        self.energy = [None] * self.n_parallel
+        self.env_steps = [None] * self.n_parallel
+        self.env_done = [None] * self.n_parallel
+
     def step(self, actions):
-        self.atoms.set_positions(self.atoms.get_positions() + actions)
+        # Get number of atoms in each molecule
+        numbers_atoms = self.get_atoms_num()
 
-        self.env_steps += 1
-        self.env_done = self.env_steps >= self.TL
+        obs = []
+        rewards = [None] * self.n_parallel
+        dones = [None] * self.n_parallel
+        info = {'env_done': [None] * self.n_parallel}
 
-        obs = self.converter(self.atoms)
-        reward = None
-        if self.done_on_timelimit:
-            done = self.env_done
-        else:
-            done = False
-        info = {'env_done': self.env_done}
+        for idx, (number_atoms, action) in enumerate(zip(numbers_atoms, actions)):
+            # Unpad action
+            self.atoms[idx].set_positions(self.atoms[idx].get_positions() + action[:number_atoms])
 
-        return obs, reward, done, info
+            self.env_steps[idx] += 1
+            self.env_done[idx] = self.env_steps[idx] >= self.TL
 
-    def reset(self):
+            # Convert atoms to obs
+            obs.append(self.converter(self.atoms[idx]))
+            
+            if self.done_on_timelimit:
+                dones[idx] = self.env_done[idx]
+            else:
+                dones[idx] = False
+            info['env_done'][idx] = self.env_done[idx]
+        
+        # Collate observations into a batch
+        obs = _collate_aseatoms(obs)
+        obs = {k:v.squeeze(1) for k, v in obs.items()}
+
+        return obs, rewards, dones, info
+
+    def reset(self, indices=None):
+        # If indices is not provided reset all molecules
+        if indices is None:
+            indices = np.arange(self.n_parallel)
+
         # If sample_initial_conformations iterate over all initial conformations sequentially
         if self.sample_initial_conformations:
-            db_idx = np.random.randint(len(self.initial_molecule_conformations))
+            db_indices = np.random.choice(len(self.initial_molecule_conformations), len(indices), replace=False)
         else:
-            db_idx = self.conformation_idx % len(self.initial_molecule_conformations)
-            self.conformation_idx += 1
-        row = self.initial_molecule_conformations[db_idx]
+            start_conf_idx = self.conformation_idx % len(self.initial_molecule_conformations)
+            db_indices = np.arange(start_conf_idx, start_conf_idx + len(indices))
+            self.conformation_idx += len(indices)
 
-        # Copy to avoid changing the atoms object inplace
-        self.atoms = row.toatoms().copy()
+        rows = [self.initial_molecule_conformations[db_idx] for db_idx in db_indices]
 
-        # Remove hydrogen
-        if self.remove_hydrogen:
-                del self.atoms[[atom.index for atom in self.atoms if atom.symbol=='H']]
+        obs = []
+        for idx, row in zip(indices, rows):
+            # Copy to avoid changing the atoms object inplace
+            self.atoms[idx] = row.toatoms().copy()
 
-        # Check if row has Smiles
-        if hasattr(row, 'smiles'):
-            self.smiles = row.smiles
-            self.energy = row.data['energy']
+            # Check if row has Smiles
+            if hasattr(row, 'smiles'):
+                self.smiles[idx] = row.smiles
+                self.energy[idx] = row.data['energy']
 
-        # Inject noise into the initial state
-        if self.inject_noise:
-            current_positions = self.atoms.get_positions()
-            noise = np.random.normal(scale=self.noise_std, size=current_positions.shape)
-            self.atoms.set_positions(current_positions + noise)
+            # Reset env_steps and done
+            self.env_steps[idx] = 0
+            self.env_done[idx] = False
 
-        self.env_steps = 0
-        self.env_done = False
-        obs = self.converter(self.atoms)
+            # Convert atoms to obs
+            obs.append(self.converter(self.atoms[idx]))
+
+        # Collate observations into a batch
+        obs = _collate_aseatoms(obs)
+        obs = {k:v.squeeze(1) for k, v in obs.items()}
+
         return obs
 
     def update_timelimit(self, new_timelimit):
@@ -132,7 +159,7 @@ class MolecularDynamics(gym.Env):
             return conn.get(idx)
 
     def get_atoms_num(self):
-        return len(self.atoms.get_atomic_numbers())
+        return [len(atom.get_atomic_numbers()) for atom in self.atoms]
 
     def seed(self, seed=None):
         if seed is None:

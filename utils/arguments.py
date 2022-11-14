@@ -12,7 +12,7 @@ def str2bool(s):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    # Algoruthm
+    # Algorthm
     parser.add_argument(
         "--algorithm",
         default='TQC',
@@ -20,10 +20,15 @@ def get_args():
 
     # Env args
     parser.add_argument(
-        "--num_processes",
+        "--n_parallel",
         default=1,
         type=int,
         help="Number of copies of env to run in parallel")
+    parser.add_argument(
+        "--n_threads",
+        default=1,
+        type=int,
+        help="Number of parallel threads for DFT computations")
     parser.add_argument(
         "--db_path",
         default="env/data/malonaldehyde.db",
@@ -38,7 +43,8 @@ def get_args():
         "--num_initial_conformations",
         default=50000,
         type=int,
-        help="Number of initial molecule conformations to sample from DB")
+        help="Number of initial molecule conformations to sample from the database. \
+              If equals to '-1' sample all conformations from the database.")
     parser.add_argument(
         "--sample_initial_conformation",
         default=False,
@@ -46,24 +52,6 @@ def get_args():
         metavar='True|False',
         type=str2bool,
         help="Sample new conformation for every seed")
-    parser.add_argument(
-        "--inject_noise",
-        default=False,
-        choices=[True, False],
-        metavar='True|False', type=str2bool,
-        help="Whether to inject random noise into initial states")
-    parser.add_argument(
-        "--noise_std",
-        type=float,
-        default=0.1,
-        help="Std of the injected noise")
-    parser.add_argument(
-        "--remove_hydrogen",
-        default=False,
-        choices=[True, False],
-        metavar='True|False',
-        type=str2bool,
-        help="Whether to remove hydrogen atoms from the molecule")
 
     # Timelimit args
     parser.add_argument(
@@ -104,7 +92,7 @@ def get_args():
         help="Env returns done when timelimit is reached")
     parser.add_argument(
         "--done_when_not_improved",
-        default=False,
+        default=True,
         choices=[True, False],
         metavar='True|False',
         type=str2bool,
@@ -118,7 +106,7 @@ def get_args():
         help="How the energy is calculated")
     parser.add_argument(
         "--minimize_on_every_step",
-        default=False,
+        default=True,
         choices=[True, False],
         metavar='True|False',
         type=str2bool,
@@ -183,6 +171,13 @@ def get_args():
         default=50,
         type=int,
         help="Number of Gaussians for Schnet in actor/critic")
+    parser.add_argument(
+        '--use_cosine_between_vectors',
+        default=True,
+        choices=[True, False],
+        metavar='True|False',
+        type=str2bool,
+        help="Use cosine of vectors instead of scalar product in PaiNN")
 
     # Policy args
     parser.add_argument(

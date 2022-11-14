@@ -46,19 +46,11 @@ class TQC(object):
 			total_quantiles_to_keep = t * self.critic.n_nets
 			metrics[f'Target_Q/Q_value_t={t}'] = next_z[:, :total_quantiles_to_keep].mean().__float__()
 
-	def update(self, experiment_folder, full_statistics, replay_buffer, update_actor):
+	def update(self, replay_buffer, update_actor):
 		metrics = dict()
 		state, action, next_state, reward, not_done = replay_buffer.sample(self.batch_size)
 		alpha = torch.exp(self.log_alpha)
 		metrics['alpha'] = alpha.item()
-
-		# Debug
-		full_statistics['alpha'].append(alpha.detach().cpu())
-		full_statistics['state'].append({k:v.detach().cpu() for k, v in state.items()})
-		full_statistics['action'].append(action.detach().cpu())
-		full_statistics['next_state'].append({k:v.detach().cpu() for k, v in next_state.items()})
-		full_statistics['not_done'].append(not_done.detach().cpu())
-		full_statistics['reward'].append(reward.detach().cpu())
 
 		# --- Compute critic target ---
 		with torch.no_grad():
@@ -69,29 +61,12 @@ class TQC(object):
 			sorted_z, _ = torch.sort(next_z.reshape(self.batch_size, -1))
 			self.add_next_z_metrics(metrics, sorted_z)
 			sorted_z_part = sorted_z[:, :self.quantiles_total-self.top_quantiles_to_drop]
-			# Manually fill with zeros where done is True to avoid Nans
 			target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
-			# target = reward + self.discount * \
-			# 	(sorted_z_part - alpha * next_log_pi).masked_fill_((1.0 - not_done).bool(), 0.0)
-			if target.mean(dim=1).isnan().sum() > 0:
-				self.save(f"{experiment_folder}/full_cp_iter_{self.total_it}_FAIL")
-		
-
-		# Debug
-		full_statistics['new_next_action'].append(new_next_action.detach().cpu())
-		full_statistics['next_log_pi'].append(next_log_pi.detach().cpu())
-		full_statistics['next_z'].append(next_z.detach().cpu())
-		full_statistics['sorted_z_part'].append(sorted_z_part.detach().cpu())
-		full_statistics['target'].append(target.detach().cpu())
 		
 		# --- Critic loss ---
 		cur_z = self.critic(state, action)
 		critic_loss = quantile_huber_loss_f(cur_z, target)
 		metrics['critic_loss'] = critic_loss.item()
-
-		# Debug
-		full_statistics['cur_z'].append(cur_z.detach().cpu())
-		full_statistics['critic_loss'].append(critic_loss.item())
 
 		# --- Update critic --- 
 		self.critic_optimizer.zero_grad()
@@ -101,23 +76,11 @@ class TQC(object):
 			torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.critic_clip_value)
 		self.critic_optimizer.step()
 
-		# Debug
-		full_statistics['critic_grad_norm'].append(metrics['critic_grad_norm'])
-
-		#if update_actor:
 		# --- Policy loss ---
 		new_action, log_pi = self.actor(state)
 		metrics['actor_entropy'] = - log_pi.mean().item()
-		critic_out = self.critic(state, new_action).mean(dim=(1, 2))
-		actor_loss = (alpha * log_pi.squeeze() - critic_out).mean()
+		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
 		metrics['actor_loss'] = actor_loss.item()
-
-		# Debug
-		full_statistics['new_action'].append(new_action.detach().cpu())
-		full_statistics['log_pi'].append(log_pi.detach().cpu())
-		full_statistics['critic_out'].append(critic_out.detach().cpu())
-		full_statistics['actor_loss'].append(actor_loss.item())
-		full_statistics['actor_entropy'].append(metrics['actor_entropy'])
 
 		# --- Update actor ---
 		if update_actor:
@@ -127,9 +90,6 @@ class TQC(object):
 			if self.actor_clip_value is not None:
 				torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_clip_value)
 			self.actor_optimizer.step()
-
-			# Debug
-			full_statistics['actor_grad_norm'].append(metrics['actor_grad_norm'])
 
 			# --- Alpha loss ---
 			target_entropy = self.per_atom_target_entropy * state['_atom_mask'].sum(-1)

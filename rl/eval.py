@@ -11,28 +11,28 @@ TIMELIMITS = [1, 5, 10, 50, 100]
 
 
 def run_policy(env, actor, fixed_atoms, smiles, max_timestamps):
-    done = False
+    done = np.array([False])
     delta_energy = 0
     t = 0
-    state = env.set_initial_positions(fixed_atoms, smiles, energy=None)
+    state = env.set_initial_positions(fixed_atoms, smiles, energy=[None])
     state = {k:v.to(DEVICE) for k, v in state.items()}
-    while not done and t < max_timestamps:
+    while not done[0] and t < max_timestamps:
         with torch.no_grad():
             action = actor.select_action(state)
         state, reward, done, info = env.step(action)
         state = {k:v.to(DEVICE) for k, v in state.items()}
         delta_energy += reward
         t += 1
-    return delta_energy, info['final_energy'], info['final_rl_energy'], t
+    return delta_energy, info['final_energy'][0], info['final_rl_energy'][0], t
 
 def rdkit_minimize_until_convergence(env, fixed_atoms, smiles):
     M_init = 1000
-    env.set_initial_positions(fixed_atoms, smiles, energy=None)
-    initial_energy = env.initial_energy['rdkit']
-    not_converged, final_energy = env.minimize_rdkit(M=M_init)
+    env.set_initial_positions(fixed_atoms, smiles, energy=[None])
+    initial_energy = env.initial_energy['rdkit'][0]
+    not_converged, final_energy = env.minimize_rdkit(idx=0, M=M_init)
     while not_converged:
         M_init *= 2
-        not_converged, final_energy = env.minimize_rdkit(M=M_init)
+        not_converged, final_energy = env.minimize_rdkit(idx=0, M=M_init)
         if M_init > 5000:
             print("Minimization did not converge!")
             return initial_energy, final_energy
@@ -74,14 +74,16 @@ def eval_policy_dft(actor, env, max_timestamps, eval_episodes=10):
 
 def eval_policy_rdkit(actor, env, max_timestamps, eval_episodes=10,
                       n_explore_runs=5, evaluate_multiple_timesteps=True):
+    assert env.n_parallel == 1, "Eval env is supposed to have n_parallel=1."
+    
     result = defaultdict(lambda: 0.0)
     for _ in range(eval_episodes):
         env.reset()
         if hasattr(env.unwrapped, 'smiles'):
             smiles = env.unwrapped.smiles
         else:
-            smiles = None
-        fixed_atoms = env.unwrapped.atoms.copy()
+            smiles = [None]
+        fixed_atoms = env.unwrapped.atoms
 
         # Evaluate policy in eval mode
         actor.eval()
@@ -93,7 +95,7 @@ def eval_policy_rdkit(actor, env, max_timestamps, eval_episodes=10,
         result['eval/episode_len'] += eval_episode_len
 
         # Compute minimal energy of the molecule
-        initial_energy, final_energy = rdkit_minimize_until_convergence(env, fixed_atoms.copy(), smiles)
+        initial_energy, final_energy = rdkit_minimize_until_convergence(env, fixed_atoms, smiles)
         pct = (initial_energy - eval_final_energy) / (initial_energy - final_energy)
         result['eval/pct_of_minimized_energy'] += pct
         if pct > 1.0 or pct < -100:

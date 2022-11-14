@@ -1,12 +1,13 @@
 # Copied from http://proceedings.mlr.press/v139/schutt21a/schutt21a-supp.zip
 import math
+from typing import Callable, Union
+
 import schnetpack.nn as snn
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from schnetpack import Properties
 from schnetpack.nn.neighbors import atom_distances
-from typing import Union, Callable
 
 
 class BesselBasis(nn.Module):
@@ -48,6 +49,7 @@ class PaiNN(nn.Module):
             radial_basis: Callable = BesselBasis,
             activation=F.silu,
             max_z: int = 100,
+            use_cosine_between_vectors: bool = True,
             store_neighbors: bool = False,
             store_embeddings: bool = False,
     ):
@@ -60,6 +62,7 @@ class PaiNN(nn.Module):
         self.radial_basis = radial_basis(cutoff=cutoff, n_rbf=n_rbf)
         self.embedding = nn.Embedding(max_z, n_atom_basis, padding_idx=0)
 
+        self.use_cosine_between_vectors = use_cosine_between_vectors
         self.store_neighbors = store_neighbors
         self.store_embeddings = store_embeddings
 
@@ -109,6 +112,7 @@ class PaiNN(nn.Module):
         cell_offset = inputs[Properties.cell_offset]
         neighbors = inputs[Properties.neighbors]
         neighbor_mask = inputs[Properties.neighbor_mask]
+        atom_mask = inputs[Properties.atom_mask]
 
         # get interatomic vectors and distances
         rij, dir_ij = atom_distances(
@@ -168,13 +172,16 @@ class PaiNN(nn.Module):
             ds, dv, dsv = torch.split(h_i, self.n_atom_basis, dim=-1)
             dv = dv.unsqueeze(2) * vectors_U
 
-            # Divide scalar product by norm to avoid overflows
-            Un = torch.norm(vectors_U, dim=2)
-            Un = torch.where(Un == 0, torch.tensor(1.0, device=Un.device), Un)
-            Vn = torch.where(mu_Vn == 0, torch.tensor(1.0, device=mu_Vn.device), mu_Vn)
+            # Compute scalar product
+            scalar_VU = torch.einsum("bidf,bidf->bif", vectors_V, vectors_U)
+
+            # Divide by norms if needed
+            if self.use_cosine_between_vectors:
+                Vn = torch.norm(vectors_V, dim=2).masked_fill_(~atom_mask[..., None].bool(), 1.0)
+                Un = torch.norm(vectors_U, dim=2).masked_fill_(~atom_mask[..., None].bool(), 1.0)
+                scalar_VU /= Vn * Un
             
-            VU_cosine  = torch.einsum("bidf,bidf->bif", vectors_V, vectors_U) / (Vn * Un)
-            dsv = dsv * VU_cosine
+            dsv = dsv * scalar_VU
 
             # calculate atomwise updates
             scalars = scalars + ds + dsv

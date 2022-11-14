@@ -63,12 +63,18 @@ def quantile_huber_loss_f(quantiles, samples):
     loss = (torch.abs(tau[None, None, :, None] - (pairwise_delta < 0).float()) * huber_loss).mean()
     return loss
 
-def recollate_batch(state_batch, indices, new_states):
-    # Unpads states in batch.
-    # Replaces some states with new ones and collates them into batch.
+def recollate_batch(state_batch, indices, new_state_batch):
+    # Unpad states.
     num_atoms = state_batch['_atom_mask'].sum(-1).long()
     states = [{k:v[i, :num_atoms[i]].cpu() for k, v in state_batch.items()  if k != "representation"}\
               for i in range(len(num_atoms))]
+    
+    # Unpad new states.
+    new_num_atoms = new_state_batch['_atom_mask'].sum(-1).long()
+    new_states = [{k:v[i, :new_num_atoms[i]].cpu() for k, v in new_state_batch.items()  if k != "representation"}\
+              for i in range(len(new_num_atoms))]
+    
+    # Replaces some states with new ones and collates them into batch.
     for i, ind in enumerate(indices):
         states[ind] = new_states[i]
     return {k:v.to(DEVICE) for k, v in _collate_aseatoms(states).items()}
