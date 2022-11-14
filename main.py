@@ -1,32 +1,30 @@
 import datetime
 import glob
-import numpy as np
 import os
 import pickle
 import random
 import time
-import torch
-
 from collections import defaultdict, deque
 from functools import partial
 from pathlib import Path
 
+import numpy as np
+import torch
+
+from env.make_envs import make_envs
 from env.moldynamics_env import env_fn
 from env.wrappers import RewardWrapper
-from env.make_envs import make_envs
-
 from rl import DEVICE
-from rl.tqc import TQC
-from rl.ppo import PPO
-from rl.actor_critic_tqc import TQCPolicy
 from rl.actor_critic_ppo import PPOPolicy
+from rl.actor_critic_tqc import TQCPolicy
+from rl.eval import eval_policy_dft, eval_policy_rdkit
+from rl.ppo import PPO
 from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
-from rl.utils import recollate_batch, calculate_action_norm
-from rl.utils import ActionScaleScheduler, TimelimitScheduler
-from rl.eval import eval_policy_rdkit, eval_policy_dft
-
-from utils.logging import Logger
+from rl.tqc import TQC
+from rl.utils import (ActionScaleScheduler, TimelimitScheduler,
+                      calculate_action_norm, recollate_batch)
 from utils.arguments import get_args
+from utils.logging import Logger
 from utils.utils import ignore_extra_args
 
 policies = {
