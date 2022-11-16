@@ -21,13 +21,14 @@ backbones = {
 
 
 class GenerateActionsBlock(nn.Module):
-    def __init__(self, out_embedding_size, limit_actions):
+    def __init__(self, out_embedding_size, limit_actions, cutoff_network):
         super().__init__()
         self.out_embedding_size = out_embedding_size
         #assert tanh in ["before_projection", "after_projection"],\
         #    "Variable tanh must take one of two values: {}, {}".format("before_projection", "after_projection")
         # self.tanh = tanh
         self.limit_actions = limit_actions
+        self.cutoff_network = cutoff_network
 
     def forward(self, kv, positions, atoms_mask, action_scale):
         # Mask kv
@@ -40,11 +41,13 @@ class GenerateActionsBlock(nn.Module):
 
         # Calculate matrix of 1-vectors to other atoms
         P = positions[:, :, None, :] - positions[:, None, :, :]
-        norm = torch.norm(P, p=2, dim=-1) + 1e-8
-        P /= norm[..., None]
+        r_ij = torch.norm(P, p=2, dim=-1)
+        P /= (r_ij[..., None] + 1e-8)
         
         # Project actions
-        actions_mean = (P * rel_shifts_mean[..., None]).sum(-2)
+        # Atoms are assumed to be affected only by atoms inside te cutoff radius
+        fcut = self.cutoff_network(r_ij)
+        actions_mean = (P * rel_shifts_mean[..., None] * fcut[..., None]).sum(-2)
         
         # Make actions norm independent of the number of atoms
         actions_mean /= atoms_mask.sum(-1)[:, None, None]
@@ -86,7 +89,8 @@ class Actor(nn.Module):
             )
         ]
         self.model = spk.atomistic.model.AtomisticModel(representation, output_modules)
-        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions)
+        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions,
+                                                           representation.cutoff_network)
     
     def forward(self, state_dict):
         action_scale = self.action_scale_scheduler.get_action_scale()
