@@ -14,7 +14,7 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps):
     done = np.array([False])
     delta_energy = 0
     t = 0
-    state = env.set_initial_positions(fixed_atoms, smiles, energy=[None])
+    state = env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
     state = {k:v.to(DEVICE) for k, v in state.items()}
     while not done[0] and t < max_timestamps:
         with torch.no_grad():
@@ -23,11 +23,11 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps):
         state = {k:v.to(DEVICE) for k, v in state.items()}
         delta_energy += reward
         t += 1
-    return delta_energy, info['final_energy'][0], info['final_rl_energy'][0], t
+    return delta_energy[0], info['final_energy'][0], info['final_rl_energy'][0], t
 
 def rdkit_minimize_until_convergence(env, fixed_atoms, smiles):
     M_init = 1000
-    env.set_initial_positions(fixed_atoms, smiles, energy=[None])
+    env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
     initial_energy = env.initial_energy['rdkit'][0]
     not_converged, final_energy = env.minimize_rdkit(idx=0, M=M_init)
     while not_converged:
@@ -80,15 +80,15 @@ def eval_policy_rdkit(actor, env, max_timestamps, eval_episodes=10,
     for _ in range(eval_episodes):
         env.reset()
         if hasattr(env.unwrapped, 'smiles'):
-            smiles = env.unwrapped.smiles
+            smiles = env.unwrapped.smiles.copy()
         else:
             smiles = [None]
-        fixed_atoms = env.unwrapped.atoms
+        fixed_atoms = env.unwrapped.atoms.copy()
 
         # Evaluate policy in eval mode
         actor.eval()
         eval_delta_energy, eval_final_energy, eval_final_rl_energy, eval_episode_len = \
-            run_policy(env, actor, fixed_atoms.copy(), smiles, max_timestamps)
+            run_policy(env, actor, fixed_atoms, smiles, max_timestamps)
         result['eval/delta_energy'] += eval_delta_energy
         result['eval/final_energy'] += eval_final_energy
         result['eval/final_rl_energy'] += eval_final_rl_energy
@@ -100,14 +100,14 @@ def eval_policy_rdkit(actor, env, max_timestamps, eval_episodes=10,
         result['eval/pct_of_minimized_energy'] += pct
         if pct > 1.0 or pct < -100:
             print("Strange conformation encountered: pct={:.3f} \nSmiles: {} \
-                \n Coords: \n{}".format(result['eval/pct_of_minimized_energy'], smiles, fixed_atoms.get_positions()))
+                \n Coords: \n{}".format(result['eval/pct_of_minimized_energy'], smiles, fixed_atoms[0].get_positions()))
 
         # Evaluate policy at multiple timelimits
         if evaluate_multiple_timesteps:
             for timelimit in TIMELIMITS:
                 # Set env's TL to current timelimit
                 env.update_timelimit(timelimit)
-                delta_energy_at, final_energy_at, _, _ = run_policy(env, actor, fixed_atoms.copy(), smiles, timelimit)
+                delta_energy_at, final_energy_at, _, _ = run_policy(env, actor, fixed_atoms, smiles, timelimit)
                 result[f'eval/delta_energy_at_{timelimit}'] += delta_energy_at
 
                 # If reward is given by rdkit we know the optimal energy for the conformation.
@@ -120,7 +120,7 @@ def eval_policy_rdkit(actor, env, max_timestamps, eval_episodes=10,
         actor.train()
         if n_explore_runs > 0:
             explore_results = np.array(
-                [run_policy(env, actor, fixed_atoms.copy(), smiles, max_timestamps) for _ in range(n_explore_runs)]
+                [run_policy(env, actor, fixed_atoms, smiles, max_timestamps) for _ in range(n_explore_runs)]
             )
             explore_delta_energy, explore_final_energy, explore_final_rl_energy, explore_episode_len = \
                 explore_results.mean(axis=0)

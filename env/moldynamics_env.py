@@ -9,6 +9,8 @@ from sqlite3 import DatabaseError
 from schnetpack.data.atoms import AtomsConverter
 from schnetpack.data.loader import _collate_aseatoms
 
+from rl import DEVICE
+
 
 np.seterr(all="ignore")
 warnings.filterwarnings("ignore", category=DeprecationWarning) 
@@ -172,6 +174,6 @@ def env_fn(**kwargs):
     To support the AEC API, the raw_env() function just uses the from_parallel
     function to convert from a ParallelEnv to an AEC env
     '''
-    converter = AtomsConverter(device=torch.device('cpu'))
+    converter = AtomsConverter(device=torch.device(DEVICE))
     env = MolecularDynamics(converter=converter, **kwargs)
     return env

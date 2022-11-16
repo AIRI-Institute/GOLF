@@ -241,23 +241,20 @@ class RewardWrapper(gym.Wrapper):
 
     def set_initial_positions(self, atoms_list, smiles_list, energy_list):
         super().reset()
-        
-        # Get sizes of molecules
-        atoms_num = self.env.get_atoms_num()
 
         # Set molecules and get observation
         obs_list = []
-        for idx, (atoms, smiles, energy) in enumerate(atoms_list, smiles_list, energy_list):
+        for idx, (atoms, smiles, energy) in enumerate(zip(atoms_list, smiles_list, energy_list)):
             self.env.atoms[idx] = atoms.copy()
             obs_list.append(self.env.converter(self.env.atoms[idx]))
 
             # Calculate initial rdkit energy
             if smiles is not None:
                 # Initialize molecule from Smiles
-                self.molecule['rdkit'][idx] = MolFromSmiles(self.env.smiles[idx])
+                self.molecule['rdkit'][idx] = MolFromSmiles(smiles)
                 self.molecule['rdkit'][idx] = AddHs(self.molecule['rdkit'][idx])
                 # Add random conformer
-                self.molecule['rdkit'][idx].AddConformer(Conformer(atoms_num[idx]))
+                self.molecule['rdkit'][idx].AddConformer(Conformer(len(atoms.get_atomic_numbers())))
             elif str(self.env.atoms[idx].symbols) in self.molecules['rdkit']:
                 self.molecule['rdkit'][idx] = self.molecules['rdkit'][str(self.env.atoms[idx].symbols)]
             else:
@@ -271,9 +268,9 @@ class RewardWrapper(gym.Wrapper):
                 self.threshold_exceeded[idx] = 0
                 self.molecule['dft'][idx] = atoms2psi4mol(self.env.atoms[idx])
                 if energy is not None and self.M == 0:
-                    self.initial_energy['dft'][idx] = self.env.energy[idx]
+                    self.initial_energy['dft'][idx] = energy
                 else:
-                    queue.append((self.molecule['dft'][idx], atoms_num[idx], idx))
+                    queue.append((self.molecule['dft'][idx], len(atoms.get_atomic_numbers()), idx))
         
         # Calculate initial dft energy if it is not provided 
         if self.dft and len(queue) > 0:
