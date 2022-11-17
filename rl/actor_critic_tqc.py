@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 
 import schnetpack as spk
+import schnetpack.nn as snn
 from torch.distributions import Normal
 from schnetpack.nn.blocks import MLP
 
@@ -79,6 +80,7 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
 
+        cutoff_network = snn.get_cutoff_by_string('cosine')(backbone_args['cutoff'])
         representation = backbones[backbone](**backbone_args)
         output_modules = [
             spk.atomistic.Atomwise(
@@ -89,8 +91,7 @@ class Actor(nn.Module):
             )
         ]
         self.model = spk.atomistic.model.AtomisticModel(representation, output_modules)
-        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions,
-                                                           representation.cutoff_network)
+        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions, cutoff_network)
     
     def forward(self, state_dict):
         action_scale = self.action_scale_scheduler.get_action_scale()
