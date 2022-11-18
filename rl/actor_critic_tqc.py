@@ -41,7 +41,7 @@ class GenerateActionsBlock(nn.Module):
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
 
         # Calculate matrix of 1-vectors to other atoms
-        P = positions[:, :, None, :] - positions[:, None, :, :]
+        P = positions[:, None, :, :] - positions[:, :, None, :]
         r_ij = torch.norm(P, p=2, dim=-1)
         P /= (r_ij[..., None] + 1e-8)
         
