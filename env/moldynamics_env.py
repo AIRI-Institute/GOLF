@@ -23,6 +23,7 @@ def on_giveup(details):
 
 class MolecularDynamics(gym.Env):
     metadata = {"render_modes":["human"], "name":"md_v0"}
+    DISTANCE_THRESH = 0.7
     
     def __init__(self,
                  db_path,
@@ -65,11 +66,20 @@ class MolecularDynamics(gym.Env):
         obs = []
         rewards = [None] * self.n_parallel
         dones = [None] * self.n_parallel
-        info = {'env_done': [None] * self.n_parallel}
+        info = {
+            'env_done': [None] * self.n_parallel,
+            'bad_pairs_before_process': [None] * self.n_parallel,
+            'bad_pairs_after_process': [None] * self.n_parallel
+        }
 
         for idx, (number_atoms, action) in enumerate(zip(numbers_atoms, actions)):
             # Unpad action
             self.atoms[idx].set_positions(self.atoms[idx].get_positions() + action[:number_atoms])
+
+            # Check if there are atoms too close to each other in the molecule
+            self.atoms[idx], num_bad_pairs_before, num_bad_pairs_after = self.process_molecule(self.atoms[idx])
+            info['bad_pairs_before_process'][idx] = num_bad_pairs_before
+            info['bad_pairs_after_process'][idx] = num_bad_pairs_after
 
             self.env_steps[idx] += 1
             self.env_done[idx] = self.env_steps[idx] >= self.TL
@@ -147,7 +157,7 @@ class MolecularDynamics(gym.Env):
         for idx in indices:
             row = self.get_molecule(int(idx))
             self.initial_molecule_conformations.append(row)
-    
+
     # Makes sqllite3 database compatible with NFS storages
     @backoff.on_exception(
         backoff.expo,
@@ -162,6 +172,42 @@ class MolecularDynamics(gym.Env):
 
     def get_atoms_num(self):
         return [len(atom.get_atomic_numbers()) for atom in self.atoms]
+
+    def get_bad_pairs_indices(self, positions):
+        dir_ij = positions[None, :, :] - positions[:, None, :]
+        r_ij = np.linalg.norm(dir_ij, axis=2)
+
+        # Set diagonal elements to a large positive number
+        r_ij[np.diag_indices_from(r_ij)] = 10.0
+        dir_ij /= r_ij[..., None]
+
+        # Set lower triangle matrix of r_ij to a large positive number
+        # to avoid finding dublicate pairs
+        r_ij[np.tri(r_ij.shape[0], k=-1).astype(bool)] = 10.0
+
+        return np.argwhere(r_ij < MolecularDynamics.DISTANCE_THRESH), dir_ij, r_ij
+
+    def process_molecule(self, atoms):
+        new_atoms = atoms.copy()
+        positions = new_atoms.get_positions()
+
+        # Detect atoms too close to each other
+        bad_indices_before, dir_ij, r_ij = self.get_bad_pairs_indices(positions)
+
+        # Move atoms apart. At the moment we assume
+        # that r_ij < THRESH is a rare event that affects at most 
+        # one pair of atoms so moving them apart should not cause 
+        # any other r_kl to become < THRESH.
+        for (i, j) in bad_indices_before:
+            coef = MolecularDynamics.DISTANCE_THRESH + 0.05 - r_ij[i, j]
+            positions[i] -= 0.5 * coef * dir_ij[i, j]
+            positions[j] -= 0.5 * coef * dir_ij[j, i]
+        new_atoms.set_positions(positions)
+
+        # Check if out assumption does not hold
+        bad_indices_after, _, _ = self.get_bad_pairs_indices(positions)
+
+        return new_atoms, len(bad_indices_before), len(bad_indices_after)
 
     def seed(self, seed=None):
         if seed is None:

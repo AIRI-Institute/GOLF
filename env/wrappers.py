@@ -118,6 +118,7 @@ class RewardWrapper(gym.Wrapper):
             if self.minimize_on_every_step or info['env_done'][idx]:
                 not_converged[idx], final_energy[idx] = self.minimize_rdkit(idx)
                 rdkit_rewards[idx] = self.initial_energy['rdkit'][idx] - final_energy[idx]
+
         # DFT rewards
         if self.dft:
             queue = []

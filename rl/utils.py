@@ -2,7 +2,9 @@ import torch
 import numpy as np
 
 from math import floor
+from schnetpack import Properties
 from schnetpack.data.loader import _collate_aseatoms
+from schnetpack.nn.neighbors import atom_distances
 
 from rl import DEVICE
 
@@ -78,6 +80,52 @@ def recollate_batch(state_batch, indices, new_state_batch):
     for i, ind in enumerate(indices):
         states[ind] = new_states[i]
     return {k:v.to(DEVICE) for k, v in _collate_aseatoms(states).items()}
+
+def calculate_molecule_metrics(state, next_state, cutoff_network):
+    n_atoms = state[Properties.atom_mask].sum(dim=1).long()
+    n_mol = n_atoms.shape[0]
+
+    # get interatomic vectors and distances for state
+    rij = atom_distances(
+        positions=state[Properties.R],
+        neighbors=state[Properties.neighbors],
+        neighbor_mask=state[Properties.neighbor_mask],
+        cell=state[Properties.cell],
+        cell_offsets=state[Properties.cell_offset]
+    )
+
+    min_r, avg_r, max_r = 0, 0, 0
+    for r, n in zip(rij, n_atoms):
+        current_molecule_r = r[:n, :n - 1]
+        min_r += current_molecule_r.min()
+        avg_r += current_molecule_r.mean()
+        max_r += current_molecule_r.max()
+    min_r, avg_r, max_r = min_r / n_mol, avg_r / n_mol, max_r / n_mol
+
+    fcut = cutoff_network(rij) * state[Properties.neighbor_mask]
+    avg_atoms_in_cutoff_before = fcut.sum(dim=(1, 2)) / n_atoms
+
+    n_atoms_ns = next_state[Properties.atom_mask].sum(dim=1).long()
+    # get interatomic vectors and distances for next state
+    rij_ns = atom_distances(
+        positions=next_state[Properties.R],
+        neighbors=next_state[Properties.neighbors],
+        neighbor_mask=next_state[Properties.neighbor_mask],
+        cell=next_state[Properties.cell],
+        cell_offsets=next_state[Properties.cell_offset]
+    )
+    fcut_ns = cutoff_network(rij_ns) * next_state[Properties.neighbor_mask]
+    avg_atoms_in_cutoff_after = fcut_ns.sum(dim=(1, 2)) / n_atoms_ns
+
+
+    metrics = {
+        "Molecule/min_interatomic_dist": min_r.item(),
+        "Molecule/avg_interatomic_dist": avg_r.item(),
+        "Molecule/max_interatomic_dist": max_r.item(),
+        "Molecule/avg_atoms_inside_cutoff_state": avg_atoms_in_cutoff_before.mean().item(),
+        "Molecule/avg_atoms_inside_cutoff_next_state": avg_atoms_in_cutoff_after.mean().item()
+    }
+    return metrics
 
 def calculate_gradient_norm(model):
     total_norm = 0.0

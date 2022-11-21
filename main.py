@@ -18,7 +18,8 @@ from rl.ppo import PPO
 from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
 from rl.tqc import TQC
 from rl.utils import (ActionScaleScheduler, TimelimitScheduler,
-                      calculate_action_norm, recollate_batch)
+                      calculate_action_norm, recollate_batch, 
+                      calculate_molecule_metrics)
 from utils.arguments import get_args
 from utils.logging import Logger
 from utils.utils import ignore_extra_args
@@ -181,6 +182,12 @@ def main(args, experiment_folder):
             transition.extend([ep_ends, log_probs, values])
         replay_buffer.add(*transition)
 
+        # Estimate average number of atoms inside cutoff radius
+        # and min/avg/max distance between atoms for both
+        # state and next_state before moving to the next state
+        molecule_metrics = calculate_molecule_metrics(state, next_state,
+                                                      policy.actor.cutoff_network)
+
         state = next_state
         episode_returns += rewards
         # Set episode Q if t == 1
@@ -204,6 +211,15 @@ def main(args, experiment_folder):
         step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
         step_metrics['Timelimit'] = current_timelimit
         step_metrics['Action_norm'] = calculate_action_norm(actions, state['_atom_mask']).item()
+        
+        # Calculate average number of pairs of atoms too close together
+        # in env before and after processing
+        num_bad_pairs_before = np.array(info['bad_pairs_before_process']).mean().item()
+        num_bad_pairs_after = np.array(info['bad_pairs_after_process']).mean().item()
+        step_metrics['Molecule/num_bad_pairs_before'] = num_bad_pairs_before
+        step_metrics['Molecule/num_bad_pairs_after'] = num_bad_pairs_after
+        step_metrics.update(molecule_metrics)
+        print("# of bad pairs before and after: ", num_bad_pairs_before, num_bad_pairs_after)
         
         # Update training statistics
         for i, (done, ep_end) in enumerate(zip(dones, ep_ends)):
