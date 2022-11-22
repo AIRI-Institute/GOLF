@@ -34,11 +34,13 @@ class GenerateActionsBlock(nn.Module):
     def forward(self, kv, positions, atoms_mask, action_scale):
         # Mask kv
         kv *= atoms_mask[..., None]
-        k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 1], dim=-1)
+        #k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 1], dim=-1)
+        k_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, 1], dim=-1)
         
         # Calculate mean and std of shifts relative to other atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
-        rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
+        #rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
+        rel_shifts_mean = torch.matmul(k_mu, k_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
 
         # Calculate matrix of 1-vectors to other atoms
         P = positions[:, None, :, :] - positions[:, :, None, :]
@@ -85,7 +87,8 @@ class Actor(nn.Module):
         output_modules = [
             spk.atomistic.Atomwise(
                 n_in=representation.n_atom_basis,
-                n_out=out_embedding_size * 2 + 1,
+                #n_out=out_embedding_size * 2 + 1,
+                n_out=out_embedding_size + 1,
                 n_neurons=[out_embedding_size],
                 contributions='kv'
             )
