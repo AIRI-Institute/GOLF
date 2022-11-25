@@ -214,12 +214,9 @@ def main(args, experiment_folder):
         
         # Calculate average number of pairs of atoms too close together
         # in env before and after processing
-        num_bad_pairs_before = np.array(info['bad_pairs_before_process']).mean().item()
-        num_bad_pairs_after = np.array(info['bad_pairs_after_process']).mean().item()
-        step_metrics['Molecule/num_bad_pairs_before'] = num_bad_pairs_before
-        step_metrics['Molecule/num_bad_pairs_after'] = num_bad_pairs_after
+        step_metrics['Molecule/num_bad_pairs_before'] = info['total_bad_pairs_before_process']
+        step_metrics['Molecule/num_bad_pairs_after'] = info['total_bad_pairs_after_process']
         step_metrics.update(molecule_metrics)
-        print("# of bad pairs before and after: ", num_bad_pairs_before, num_bad_pairs_after)
         
         # Update training statistics
         for i, (done, ep_end) in enumerate(zip(dones, ep_ends)):

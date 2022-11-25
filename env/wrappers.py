@@ -206,7 +206,7 @@ class RewardWrapper(gym.Wrapper):
 
         for idx in indices:
             # Calculate initial rdkit energy
-            if hasattr(self.env, 'smiles'):
+            if self.env.smiles[idx] is not None:
                 # Initialize molecule from Smiles
                 self.molecule['rdkit'][idx] = MolFromSmiles(self.env.smiles[idx])
                 self.molecule['rdkit'][idx] = AddHs(self.molecule['rdkit'][idx])
@@ -224,7 +224,7 @@ class RewardWrapper(gym.Wrapper):
                 queue = []
                 self.threshold_exceeded[idx] = 0
                 self.molecule['dft'][idx] = atoms2psi4mol(self.env.atoms[idx])
-                if hasattr(self.env, 'energy') and self.M == 0:
+                if self.env.energy[idx] is not None and self.M == 0:
                     self.initial_energy['dft'][idx] = self.env.energy[idx]
                 else:
                     queue.append((self.molecule['dft'][idx], atoms_num[idx], idx))

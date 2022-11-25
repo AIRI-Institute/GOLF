@@ -59,6 +59,9 @@ class MolecularDynamics(gym.Env):
         self.env_steps = [None] * self.n_parallel
         self.env_done = [None] * self.n_parallel
 
+        self.total_num_bad_pairs_before = 0
+        self.total_num_bad_pairs_after = 0
+
     def step(self, actions):
         # Get number of atoms in each molecule
         numbers_atoms = self.get_atoms_num()
@@ -68,8 +71,6 @@ class MolecularDynamics(gym.Env):
         dones = [None] * self.n_parallel
         info = {
             'env_done': [None] * self.n_parallel,
-            'bad_pairs_before_process': [None] * self.n_parallel,
-            'bad_pairs_after_process': [None] * self.n_parallel
         }
 
         for idx, (number_atoms, action) in enumerate(zip(numbers_atoms, actions)):
@@ -78,8 +79,8 @@ class MolecularDynamics(gym.Env):
 
             # Check if there are atoms too close to each other in the molecule
             self.atoms[idx], num_bad_pairs_before, num_bad_pairs_after = self.process_molecule(self.atoms[idx])
-            info['bad_pairs_before_process'][idx] = num_bad_pairs_before
-            info['bad_pairs_after_process'][idx] = num_bad_pairs_after
+            self.total_num_bad_pairs_before += num_bad_pairs_before
+            self.total_num_bad_pairs_after += num_bad_pairs_after
 
             self.env_steps[idx] += 1
             self.env_done[idx] = self.env_steps[idx] >= self.TL
@@ -92,6 +93,10 @@ class MolecularDynamics(gym.Env):
             else:
                 dones[idx] = False
             info['env_done'][idx] = self.env_done[idx]
+        
+        # Add info about bad pairs
+        info['total_bad_pairs_before_process'] = self.total_num_bad_pairs_before
+        info['total_bad_pairs_after_process'] = self.total_num_bad_pairs_after
         
         # Collate observations into a batch
         obs = _collate_aseatoms(obs)
