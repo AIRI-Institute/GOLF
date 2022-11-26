@@ -185,8 +185,11 @@ def main(args, experiment_folder):
         # Estimate average number of atoms inside cutoff radius
         # and min/avg/max distance between atoms for both
         # state and next_state before moving to the next state
-        molecule_metrics = calculate_molecule_metrics(state, next_state,
-                                                      policy.actor.cutoff_network)
+        if use_ppo:
+            cutoff_network = policy.base.cutoff_network
+        else:
+            cutoff_network = policy.actor.cutoff_network
+        molecule_metrics = calculate_molecule_metrics(state, next_state, cutoff_network)
 
         state = next_state
         episode_returns += rewards
