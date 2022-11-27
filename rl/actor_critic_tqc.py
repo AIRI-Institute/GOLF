@@ -27,7 +27,7 @@ class Actor(nn.Module):
         output_modules = [
             spk.atomistic.Atomwise(
                 n_in=representation.n_atom_basis,
-                n_out=2 * out_embedding_size + 1,
+                n_out=out_embedding_size * 2 + 1,
                 n_neurons=[out_embedding_size],
                 contributions='kv'
             )

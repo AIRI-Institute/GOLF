@@ -1,13 +1,15 @@
 import torch
+from torch import nn
 from torch.distributions import Normal
-
-LOG_STD_MIN_MAX = (-20, 2)
 
 
 from rl import DEVICE
 
 
-class GenerateActionsBlock(torch.nn.Module):
+LOG_STD_MIN_MAX = (-20, 2)
+
+
+class GenerateActionsBlock(nn.Module):
     def __init__(self, out_embedding_size, limit_actions, cutoff_network):
         super().__init__()
         self.out_embedding_size = out_embedding_size
@@ -27,7 +29,7 @@ class GenerateActionsBlock(torch.nn.Module):
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
 
         # Calculate matrix of 1-vectors to other atoms
-        P = positions[:, None, :, :] - positions[:, :, None, :]
+        P = positions[:, :, None, :] - positions[:, None, :, :]
         r_ij = torch.norm(P, p=2, dim=-1)
         P /= (r_ij[..., None] + 1e-8)
         
