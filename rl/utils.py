@@ -7,6 +7,7 @@ from schnetpack.data.loader import _collate_aseatoms
 from schnetpack.nn.neighbors import atom_distances
 
 from rl import DEVICE
+from rl.replay_buffer import UNWANTED_KEYS
 
 
 class ActionScaleScheduler():
@@ -66,15 +67,12 @@ def quantile_huber_loss_f(quantiles, samples):
     return loss
 
 def recollate_batch(state_batch, indices, new_state_batch):
-    # Unpad states.
-    num_atoms = state_batch['_atom_mask'].sum(-1).long()
-    states = [{k:v[i, :num_atoms[i]].cpu() for k, v in state_batch.items()  if k != "representation"}\
-              for i in range(len(num_atoms))]
+    # Transform state_batch and new_state_batch to lists.
+    bs = state_batch['_positions'].shape[0]
+    states = [{k:v[i].cpu() for k, v in state_batch.items() if k not in UNWANTED_KEYS} for i in range(bs)]
     
-    # Unpad new states.
-    new_num_atoms = new_state_batch['_atom_mask'].sum(-1).long()
-    new_states = [{k:v[i, :new_num_atoms[i]].cpu() for k, v in new_state_batch.items()  if k != "representation"}\
-              for i in range(len(new_num_atoms))]
+    new_bs = new_state_batch['_positions'].shape[0]
+    new_states = [{k:v[i].cpu() for k, v in new_state_batch.items() if k not in UNWANTED_KEYS} for i in range(new_bs)]
     
     # Replaces some states with new ones and collates them into batch.
     for i, ind in enumerate(indices):

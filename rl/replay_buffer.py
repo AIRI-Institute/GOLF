@@ -5,6 +5,10 @@ from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 
 from schnetpack.data.loader import _collate_aseatoms
 
+
+UNWANTED_KEYS = ["representation", "vector_representation"]
+
+
 class ReplayBufferPPO(object):
     def __init__(self, device, n_processes, max_size):
         self.device = device
@@ -30,20 +34,14 @@ class ReplayBufferPPO(object):
                                                                      torch.FloatTensor(ep_ends), \
                                                                      torch.FloatTensor(action_log_probs), \
                                                                      torch.FloatTensor(values)
-        #print(rewards.shape, dones.shape, ep_ends.shape, action_log_probs.shape, values.shape)
                                
-        num_atoms = states['_atom_mask'].sum(-1).long()
-        # Unpad states, next_states and actions
-        actions_list = [action[:num_atoms[i]].cpu() for i, action in enumerate(actions)]
-        states_list = [{k:v[i, :num_atoms[i]].cpu() for k, v in states.items() if k != "representation"}\
-                       for i in range(len(num_atoms))]
-        next_states_list = [{k:v[i, :num_atoms[i]].cpu() for k, v in next_states.items() if k != "representation"}\
-                            for i in range(len(num_atoms))]
-
-        for proc_num in range(len(num_atoms)):
-            self.states[self.ptr][proc_num] = states_list[proc_num]
-            self.next_states[self.ptr][proc_num] = next_states_list[proc_num]
-            self.actions[self.ptr][proc_num] = actions_list[proc_num]
+        # Store transitions
+        for proc_num in range(len(rewards)):
+            self.states[self.ptr][proc_num] = {k: v[proc_num].cpu() for k, v in states.items() \
+                                               if k not in UNWANTED_KEYS}
+            self.next_states[self.ptr][proc_num] = {k: v[proc_num].cpu() for k, v in next_states.items()\
+                                                    if k not in UNWANTED_KEYS}
+            self.actions[self.ptr][proc_num] = actions[proc_num].cpu()
         
         self.reward[self.ptr].copy_(rewards)
         self.not_done[self.ptr].copy_(1. - dones)
@@ -121,19 +119,12 @@ class ReplayBufferTQC(object):
                                   torch.FloatTensor(rewards),\
                                   torch.FloatTensor(dones)
 
-        num_atoms = states['_atom_mask'].sum(-1).long()
-        # Unpad states, next_states and actions
-        actions_list = [action[:num_atoms[i]].cpu() for i, action in enumerate(actions)]
-        states_list = [{k:v[i, :num_atoms[i]].cpu() for k, v in states.items() if k != "representation"}\
-                       for i in range(len(num_atoms))]
-        next_states_list = [{k:v[i, :num_atoms[i]].cpu() for k, v in next_states.items() if k != "representation"}\
-                            for i in range(len(num_atoms))]
-
-        # Update replay buffer
-        for i in range(len(num_atoms)):
-            self.states[self.ptr] = states_list[i]
-            self.next_states[self.ptr] = next_states_list[i]
-            self.actions[self.ptr] = actions_list[i]
+        
+        # Store transitions
+        for i in range(len(rewards)):
+            self.states[self.ptr] = {k:v[i].cpu() for k, v in states.items() if k not in UNWANTED_KEYS}
+            self.next_states[self.ptr] = {k:v[i].cpu() for k, v in next_states.items() if k not in UNWANTED_KEYS}
+            self.actions[self.ptr] = actions[i].cpu()
             self.reward[self.ptr] = rewards[i]
             self.not_done[self.ptr] = 1. - dones[i]
             
