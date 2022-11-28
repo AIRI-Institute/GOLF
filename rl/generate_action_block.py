@@ -19,7 +19,7 @@ class GenerateActionsBlock(nn.Module):
         self.limit_actions = limit_actions
         self.cutoff_network = cutoff_network
 
-    def forward(self, kv, positions, atoms_mask, action_scale):
+    def forward(self, kv, positions, atoms_mask, action_scale, eval_actions=None):
         # Mask kv
         kv *= atoms_mask[..., None]
         k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 1], dim=-1)
@@ -28,15 +28,17 @@ class GenerateActionsBlock(nn.Module):
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)
 
-        # Calculate matrix of 1-vectors to other atoms
-        P = positions[:, :, None, :] - positions[:, None, :, :]
+        # Calculate matrix of directions from atoms to all other atoms
+        P = positions[:, None, :, :] - positions[:, :, None, :]
         r_ij = torch.norm(P, p=2, dim=-1)
-        P /= (r_ij[..., None] + 1e-8)
+
+        # TODO Try either binary cutoff or no norm!!
+        # P /= (r_ij[..., None] + 1e-8)
         
         # Project actions
         # Atoms are assumed to be affected only by atoms inside te cutoff radius
         fcut = self.cutoff_network(r_ij)
-        actions_mean = (P * rel_shifts_mean[..., None] * fcut[..., None]).sum(-2)
+        actions_mean = (P * rel_shifts_mean[..., None] * fcut[..., None]).sum(1)
         
         # Make actions norm independent of the number of atoms
         actions_mean /= atoms_mask.sum(-1)[:, None, None]
@@ -52,7 +54,11 @@ class GenerateActionsBlock(nn.Module):
             actions_std = torch.exp(actions_log_std)
             # Sample actions and calculate log prob
             self.scaled_normal = Normal(actions_mean * action_scale, actions_std * action_scale)
-            actions = self.scaled_normal.rsample()
+            # In case of PPO
+            if eval_actions is None:
+                actions = self.scaled_normal.rsample() # think about rsample/sample
+            else:
+                actions = eval_actions
             log_prob = self.scaled_normal.log_prob(actions)
             log_prob *= atoms_mask[..., None]
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)

@@ -37,7 +37,7 @@ class PPOBase(nn.Module):
         self.linear_embedding_to_V = nn.Linear(out_embedding_size, 1)
         self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions, self.cutoff_network)
     
-    def forward(self, state_dict):
+    def forward(self, state_dict, eval_actions=None):
         action_scale = self.action_scale_scheduler.get_action_scale()
         atoms_mask = state_dict['_atom_mask']
         
@@ -52,7 +52,7 @@ class PPOBase(nn.Module):
 
         # Get actions
         kv = self.linear_embedding_to_kv(self.activation(embedding_for_actor))
-        actions, log_prob = self.generate_actions_block(kv, state_dict['_positions'], atoms_mask, action_scale)
+        actions, log_prob = self.generate_actions_block(kv, state_dict['_positions'], atoms_mask, action_scale, eval_actions)
 
         # Get values
         value = self.linear_embedding_to_V(self.activation(embedding_for_critic))

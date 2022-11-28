@@ -72,10 +72,13 @@ def main(args, experiment_folder):
     if use_ppo:
         assert args.replay_buffer_size == args.update_frequency, \
             f"PPO algorithm requires replay_buffer_size == update_frequency, got {args.replay_buffer_size} and {args.update_frequency}"
+        max_size = args.replay_buffer_size // args.n_parallel
+    else:
+        max_size = args.replay_buffer_size
     replay_buffer = replay_buffers[args.algorithm](
         device=DEVICE,
         n_processes=args.n_parallel,
-        max_size=args.replay_buffer_size
+        max_size=max_size
     )
 
     # Inititalize actor and critic
@@ -145,7 +148,7 @@ def main(args, experiment_folder):
     for t in range(start_iter, max_timesteps):
         start = time.perf_counter()
         if use_ppo:
-            update_condition = ((t + 1) % args.update_frequency) == 0
+            update_condition = (((t + 1) * args.n_parallel) % args.update_frequency) == 0
         else:
             update_condition = (t + 1) >= args.batch_size // args.n_parallel and (t + 1) % args.update_frequency == 0
             update_actor_condition = (t + 1) > args.pretrain_critic // args.n_parallel
