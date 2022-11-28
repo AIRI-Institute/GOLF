@@ -14,7 +14,8 @@ backbones = {
 
 
 class PPOBase(nn.Module):
-    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler, limit_actions):
+    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler,
+                 limit_actions, summation_order):
         super(PPOBase, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
         self.activation = snn.activations.shifted_softplus
@@ -35,7 +36,8 @@ class PPOBase(nn.Module):
 
         self.linear_embedding_to_kv = nn.Linear(out_embedding_size, 2 * out_embedding_size + 1)
         self.linear_embedding_to_V = nn.Linear(out_embedding_size, 1)
-        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions, self.cutoff_network)
+        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions,
+                                                           self.cutoff_network, summation_order)
     
     def forward(self, state_dict, eval_actions=None):
         action_scale = self.action_scale_scheduler.get_action_scale()
@@ -65,10 +67,10 @@ class PPOBase(nn.Module):
 
 class PPOPolicy(nn.Module):
     def __init__(self, backbone, backbone_args, out_embedding_size,
-                 action_scale_scheduler, limit_actions):
+                 action_scale_scheduler, limit_actions, summation_order):
         super().__init__()
         self.base = PPOBase(backbone, backbone_args, out_embedding_size,
-                            action_scale_scheduler, limit_actions)
+                            action_scale_scheduler, limit_actions, summation_order)
 
     def act(self, state_dict):
         value, action, log_prob = self.base(state_dict)

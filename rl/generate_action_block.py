@@ -10,7 +10,7 @@ LOG_STD_MIN_MAX = (-20, 2)
 
 
 class GenerateActionsBlock(nn.Module):
-    def __init__(self, out_embedding_size, limit_actions, cutoff_network):
+    def __init__(self, out_embedding_size, limit_actions, cutoff_network, summation_order):
         super().__init__()
         self.out_embedding_size = out_embedding_size
         #assert tanh in ["before_projection", "after_projection"],\
@@ -18,6 +18,10 @@ class GenerateActionsBlock(nn.Module):
         # self.tanh = tanh
         self.limit_actions = limit_actions
         self.cutoff_network = cutoff_network
+        if summation_order == "to":
+            self.summation_dim = 1
+        elif summation_order == "from":
+            self.summation_dim = 2
 
     def forward(self, kv, positions, atoms_mask, action_scale, eval_actions=None):
         # Mask kv
@@ -30,15 +34,12 @@ class GenerateActionsBlock(nn.Module):
 
         # Calculate matrix of directions from atoms to all other atoms
         P = positions[:, None, :, :] - positions[:, :, None, :]
-        r_ij = torch.norm(P, p=2, dim=-1)
 
-        # TODO Try either binary cutoff or no norm!!
-        # P /= (r_ij[..., None] + 1e-8)
-        
         # Project actions
-        # Atoms are assumed to be affected only by atoms inside te cutoff radius
+        # Atoms are assumed to be affected only by atoms inside the cutoff radius
+        r_ij = torch.norm(P, p=2, dim=-1)
         fcut = self.cutoff_network(r_ij)
-        actions_mean = (P * rel_shifts_mean[..., None] * fcut[..., None]).sum(1)
+        actions_mean = (P * rel_shifts_mean[..., None] * fcut[..., None]).sum(self.summation_dim)
         
         # Make actions norm independent of the number of atoms
         actions_mean /= atoms_mask.sum(-1)[:, None, None]

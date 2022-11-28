@@ -18,7 +18,8 @@ backbones = {
 
 
 class Actor(nn.Module):
-    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler, limit_actions):
+    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler,
+                 limit_actions, summation_order):
         super(Actor, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
 
@@ -33,7 +34,8 @@ class Actor(nn.Module):
             )
         ]
         self.model = spk.atomistic.model.AtomisticModel(representation, output_modules)
-        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions, self.cutoff_network)
+        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions,
+                                                           self.cutoff_network, summation_order)
     
     def forward(self, state_dict):
         action_scale = self.action_scale_scheduler.get_action_scale()
@@ -88,10 +90,11 @@ class Critic(nn.Module):
         return quantiles
 
 class TQCPolicy(nn.Module):
-    def __init__(self, backbone, backbone_args, out_embedding_size,
-                 action_scale_scheduler, n_nets, n_quantiles, limit_actions):
+    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler, 
+                 n_nets, n_quantiles, limit_actions, summation_order):
         super().__init__()
-        self.actor = Actor(backbone, backbone_args, out_embedding_size, action_scale_scheduler, limit_actions)
+        self.actor = Actor(backbone, backbone_args, out_embedding_size, action_scale_scheduler,
+                           limit_actions, summation_order)
         self.critic = Critic(backbone, backbone_args, n_nets, out_embedding_size, n_quantiles)
         self.critic_target = copy.deepcopy(self.critic)
 

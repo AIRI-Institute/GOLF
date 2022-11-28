@@ -202,6 +202,12 @@ def get_args():
         default=5,
         type=int,
         help="Number of nets in critic")
+    parser.add_argument(
+        "--summation_order",
+        default="to",
+        choices=["to", "from"],
+        help="If 'to' then action is calculated by summing all vectors coming to atom.\
+              If 'from' then action is calculated by summing all vectors coming from atom")
 
     # Eval args
     parser.add_argument(

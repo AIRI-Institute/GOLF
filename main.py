@@ -96,7 +96,8 @@ def main(args, experiment_folder):
         action_scale_scheduler=action_scale_scheduler,
         n_nets=args.n_nets,
         n_quantiles=args.n_quantiles,
-        limit_actions=args.limit_actions
+        limit_actions=args.limit_actions,
+        summation_order=args.summation_order
     ).to(DEVICE)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
