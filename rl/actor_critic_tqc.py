@@ -23,7 +23,7 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
 
-        self.cutoff_network = snn.get_cutoff_by_string('cosine')(backbone_args['cutoff'])
+        self.cutoff_network = snn.get_cutoff_by_string('hard')(backbone_args['cutoff'])
         representation = backbones[backbone](**backbone_args)
         output_modules = [
             spk.atomistic.Atomwise(

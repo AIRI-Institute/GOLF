@@ -34,10 +34,11 @@ class GenerateActionsBlock(nn.Module):
 
         # Calculate matrix of directions from atoms to all other atoms
         P = positions[:, None, :, :] - positions[:, :, None, :]
+        r_ij = torch.norm(P, p=2, dim=-1)
+        P /= r_ij[..., None] + 1e-8
 
         # Project actions
         # Atoms are assumed to be affected only by atoms inside the cutoff radius
-        r_ij = torch.norm(P, p=2, dim=-1)
         fcut = self.cutoff_network(r_ij)
         actions_mean = (P * rel_shifts_mean[..., None] * fcut[..., None]).sum(self.summation_dim)
         

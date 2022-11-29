@@ -20,7 +20,7 @@ class PPOBase(nn.Module):
         self.action_scale_scheduler = action_scale_scheduler
         self.activation = snn.activations.shifted_softplus
 
-        self.cutoff_network = snn.get_cutoff_by_string('cosine')(backbone_args['cutoff'])
+        self.cutoff_network = snn.get_cutoff_by_string('hard')(backbone_args['cutoff'])
         representation = backbones[backbone](**backbone_args)
         # SchNet backbone is shared between actor and critic
         output_modules = [ 
