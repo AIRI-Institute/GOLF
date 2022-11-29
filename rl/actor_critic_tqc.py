@@ -19,7 +19,7 @@ backbones = {
 
 class Actor(nn.Module):
     def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler,
-                 limit_actions, summation_order):
+                 limit_actions, summation_order, activation=snn.activations.shifted_softplus):
         super(Actor, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
 
@@ -30,12 +30,13 @@ class Actor(nn.Module):
                 n_in=representation.n_atom_basis,
                 n_out=out_embedding_size * 2 + 1,
                 n_neurons=[out_embedding_size],
-                contributions='kv'
+                contributions='kv',
+                activation=activation
             )
         ]
         self.model = spk.atomistic.model.AtomisticModel(representation, output_modules)
         self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions,
-                                                           self.cutoff_network, summation_order)
+                                                           self.cutoff_network, summation_order, activation)
     
     def forward(self, state_dict):
         action_scale = self.action_scale_scheduler.get_action_scale()

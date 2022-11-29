@@ -10,24 +10,31 @@ LOG_STD_MIN_MAX = (-20, 2)
 
 
 class GenerateActionsBlock(nn.Module):
-    def __init__(self, out_embedding_size, limit_actions, cutoff_network, summation_order):
+    def __init__(self, out_embedding_size, limit_actions, cutoff_network, summation_order, activation):
         super().__init__()
         self.out_embedding_size = out_embedding_size
-        #assert tanh in ["before_projection", "after_projection"],\
-        #    "Variable tanh must take one of two values: {}, {}".format("before_projection", "after_projection")
-        # self.tanh = tanh
         self.limit_actions = limit_actions
         self.cutoff_network = cutoff_network
+
         if summation_order == "to":
             self.summation_dim = 1
         elif summation_order == "from":
             self.summation_dim = 2
+
+        self.activation = activation
+        self.linear_k = nn.Linear(out_embedding_size, out_embedding_size)
+        self.linear_v = nn.Linear(out_embedding_size, out_embedding_size)
 
     def forward(self, kv, positions, atoms_mask, action_scale, eval_actions=None):
         # Mask kv
         kv *= atoms_mask[..., None]
         k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 1], dim=-1)
         
+        # Right now both k and v linearly depend on backbone's output.
+        # Process them separately
+        k_mu = self.linear_k(self.activation(k_mu))
+        v_mu = self.linear_k(self.activation(v_mu))
+
         # Calculate mean and std of shifts relative to other atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
         rel_shifts_mean = torch.matmul(k_mu, v_mu.transpose(1, 2)) / torch.sqrt(torch.FloatTensor([k_mu.size(-1)])).to(DEVICE)

@@ -15,29 +15,29 @@ backbones = {
 
 class PPOBase(nn.Module):
     def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler,
-                 limit_actions, summation_order):
+                 limit_actions, summation_order, activation=snn.activations.shifted_softplus):
         super(PPOBase, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
-        self.activation = snn.activations.shifted_softplus
+        self.activation = activation
 
         self.cutoff_network = snn.get_cutoff_by_string('hard')(backbone_args['cutoff'])
         representation = backbones[backbone](**backbone_args)
         # SchNet backbone is shared between actor and critic
-        output_modules = [ 
-                                spk.atomistic.Atomwise(
-                                    n_in=representation.n_atom_basis,
-                                    n_out=out_embedding_size,
-                                    n_neurons=[out_embedding_size],
-                                    activation=self.activation,
-                                    contributions='embedding'
-                                )
-                            ]
+        output_modules = [
+            spk.atomistic.Atomwise(
+                n_in=representation.n_atom_basis,
+                n_out=out_embedding_size,
+                n_neurons=[out_embedding_size],
+                contributions='embedding',
+                activation=self.activation,
+            )
+        ]
         self.model = spk.atomistic.model.AtomisticModel(representation, output_modules)
 
         self.linear_embedding_to_kv = nn.Linear(out_embedding_size, 2 * out_embedding_size + 1)
         self.linear_embedding_to_V = nn.Linear(out_embedding_size, 1)
         self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions,
-                                                           self.cutoff_network, summation_order)
+                                                           self.cutoff_network, summation_order, activation)
     
     def forward(self, state_dict, eval_actions=None):
         action_scale = self.action_scale_scheduler.get_action_scale()
