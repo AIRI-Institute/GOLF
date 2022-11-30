@@ -21,7 +21,8 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps):
             action = actor.select_action(state)
         state, reward, done, info = env.step(action)
         state = {k:v.to(DEVICE) for k, v in state.items()}
-        delta_energy += reward
+        if not done[0]:
+            delta_energy += reward
         t += 1
     return delta_energy[0], info['final_energy'][0], info['final_rl_energy'][0], t
 

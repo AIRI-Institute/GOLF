@@ -9,14 +9,27 @@ import torch
 from collections import defaultdict
 from pathlib import Path
 
-from env.moldynamics_env import env_fn
-from env.wrappers import rdkit_reward_wrapper
-
+from env.make_envs import make_envs
 from rl import DEVICE
-from rl.actor_critic_tqc import Actor
-from rl.utils import ActionScaleScheduler, run_policy, rdkit_minimize_until_convergence
+from rl.actor_critic_ppo import PPOPolicy
+from rl.actor_critic_tqc import TQCPolicy
+from rl.utils import ActionScaleScheduler
+from rl.eval import run_policy, rdkit_minimize_until_convergence
+from utils.utils import ignore_extra_args
 
-def rdkit_minimize_until_convergence_binary_search(env, fixed_atoms):
+
+policies = {
+    "PPO": ignore_extra_args(PPOPolicy),
+    "TQC": ignore_extra_args(TQCPolicy),
+}
+
+
+class Config():
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+def rdkit_minimize_until_convergence_binary_search(env, fixed_atoms, smiles):
     # Binary search :/
     # A more efficient way requires messing with c++ code in rdkit
     left = 0
@@ -24,9 +37,9 @@ def rdkit_minimize_until_convergence_binary_search(env, fixed_atoms):
     mid = 0
     while left <= right:
         mid = (left + right) // 2
-        env.set_initial_positions(fixed_atoms, M=0)
+        env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
         not_converged_l, _ = env.minimize(M=mid)
-        env.set_initial_positions(fixed_atoms, M=0)
+        env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
         not_converged_r , _ = env.minimize(M=mid + 1)
         if not_converged_l and not_converged_r:
             left = mid + 1
@@ -40,7 +53,12 @@ def evaluate_final_energy(env, actor, args):
     result = defaultdict(lambda: 0.0)
     for _ in range(args.conf_number):
         env.reset()
-        fixed_atoms = env.atoms.copy()
+        if hasattr(env.unwrapped, 'smiles'):
+            smiles = env.unwrapped.smiles.copy()
+        else:
+            smiles = [None]
+        fixed_atoms = env.unwrapped.atoms.copy()
+
         # Minimize with rdkit until convergence
         initial_energy, full_rdkit_final_energy = rdkit_minimize_until_convergence(env, fixed_atoms, M=0)
         # Rdkit minimization for L iterations
@@ -72,13 +90,17 @@ def evaluate_convergence(env, actor, args):
     for _ in range(args.conf_number):
         # RL
         env.reset()
-        fixed_atoms = env.atoms.copy()
-        run_policy(env, actor, fixed_atoms, args.N)
-        after_rl_atoms = env.atoms.copy()        
+        if hasattr(env.unwrapped, 'smiles'):
+            smiles = env.unwrapped.smiles.copy()
+        else:
+            smiles = [None]
+        fixed_atoms = env.unwrapped.atoms.copy()
+        run_policy(env, actor, fixed_atoms, smiles, args.N)
+        after_rl_atoms = env.unwrapped.atoms.copy()        
         # RL + rdkit until convergence
-        result['rl_rdkit_iterations'] += rdkit_minimize_until_convergence_binary_search(env, after_rl_atoms)
+        result['rl_rdkit_iterations'] += rdkit_minimize_until_convergence_binary_search(env, after_rl_atoms, smiles)
         # Rdkit until convergence
-        result['rdkit_iterations'] += rdkit_minimize_until_convergence_binary_search(env, fixed_atoms)
+        result['rdkit_iterations'] += rdkit_minimize_until_convergence_binary_search(env, fixed_atoms, smiles)
     result = {k: v / args.conf_number for k, v in result.items()}
 
     if args.verbose:
@@ -89,46 +111,36 @@ def evaluate_convergence(env, actor, args):
     
     return result
 
-def main(exp_folder, args):
-    # Initialize env
-    env_kwargs = {
-        'db_path': args.db_path,
-        'timelimit': args.N,
-        'done_on_timelimit': False,
-        'num_initial_conformations': args.conf_number,
-        'sample_initial_conformations': False,
-        'inject_noise': False,
-        'remove_hydrogen': args.remove_hydrogen,
-    }
-    env = env_fn(DEVICE, **env_kwargs)
-    # Initialize reward wrapper for training
-    reward_wrapper_kwargs = {
-        'env': env,
-        'minimize_on_every_step': True,
-        'remove_hydrogen': args.remove_hydrogen,
-        'molecules_xyz_prefix': args.molecules_xyz_prefix,
-        'M': args.M
-    }
-    env = rdkit_reward_wrapper(**reward_wrapper_kwargs)
+def main(exp_folder, args, config):
+   
+    _, eval_env = make_envs(config)
     # Initialize action_scale scheduler
-    action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale, 
-                                                  action_scale_end=args.action_scale,
-                                                  n_step_end=0,
-                                                  mode="constant")
+    action_scale_scheduler = ActionScaleScheduler(action_scale_init=config.action_scale_init)
     action_scale_scheduler.update(0)
-    schnet_args = {
-        'n_interactions': args.n_interactions,
-        'cutoff': args.cutoff,
-        'n_gaussians': args.n_gaussians,
+    backbone_args = {
+        'n_interactions': config.n_interactions,
+        'cutoff': config.cutoff,
+        'n_gaussians': config.n_rbf,
+        'n_rbf':  config.n_rbf,
+        'use_cosine_between_vectors': config.use_cosine_between_vectors
     }
-    actor = Actor(schnet_args, args.actor_out_embedding_size, action_scale_scheduler).to(DEVICE)
-    actor.load_state_dict(torch.load(args.load_model, map_location=DEVICE))
-    actor.eval()
+    policy = policies[config.algorithm](
+        backbone=config.backbone,
+        backbone_args=backbone_args,
+        out_embedding_size=config.out_embedding_size,
+        action_scale_scheduler=action_scale_scheduler,
+        n_nets=config.n_nets,
+        n_quantiles=config.n_quantiles,
+        limit_actions=config.limit_actions,
+        summation_order=config.summation_order
+    ).to(DEVICE)
+    policy.load_state_dict(torch.load(args.agent_path, map_location=DEVICE))
+    policy.eval()
 
     if args.mode == "energy":
-        result = evaluate_final_energy(env, actor, args)
+        result = evaluate_final_energy(eval_env, policy, args)
     elif args.mode == "convergence":
-        result = evaluate_convergence(env, actor, args)
+        result = evaluate_convergence(eval_env, policy, args)
     else:
         raise NotImplemented()
 
@@ -140,26 +152,15 @@ def main(exp_folder, args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # Env args
-    parser.add_argument("--db_path", default="env/data/malonaldehyde.db", type=str, help="Path to molecules database")
-    parser.add_argument("--molecules_xyz_prefix", type=str, default="", help="Path to env/ folder. For cluster compatability")
-    # Schnet args
-    parser.add_argument("--n_interactions", default=3, type=int, help="Number of interaction blocks for Schnet in actor/critic")
-    parser.add_argument("--cutoff", default=20.0, type=float, help="Cutoff for Schnet in actor/critic")
-    parser.add_argument("--n_gaussians", default=50, type=int, help="Number of Gaussians for Schnet in actor/critic")
-    parser.add_argument("--remove_hydrogen", type=bool, default=False, help="Whether to remove hydrogen atoms from the molecule")
-    # Agent args
-    parser.add_argument("--actor_out_embedding_size", default=128, type=int, help="Output embedding size for actor")
-    parser.add_argument("--action_scale", default=0.01, type=float, help="Bounds actions to [-action_scale, action_scale]")
-    # Other args
+    parser.add_argument("--config_path", type=str, required=True)
+    parser.add_argument("--agent_path", type=str, required=True)
     parser.add_argument("--mode", choices=["energy", "convergence"], help="Evaluation mode")
     parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
     parser.add_argument("--log_dir", default="evaluation_output", type=str, help="Which directory to store outputs to")
     parser.add_argument("--conf_number", default=int(1e5), type=int, help="Number of conformations to evaluate on")
-    parser.add_argument("--N", default=10, type=int, help="Run RL policy for N steps")
+    parser.add_argument("--N", default=10, type=int, help="Run RL policy for maximum of N steps")
     parser.add_argument("--M", default=5, type=int, help="Run rdkit minimization for M steps after RL")
     parser.add_argument("--L", default=15, type=int, help="Run separate rdkit minimization for L steps")
-    parser.add_argument("--load_model", type=str, default=None)
     parser.add_argument("--verbose", type=bool, default=False)
     args = parser.parse_args()
 
@@ -169,5 +170,10 @@ if __name__ == "__main__":
     if os.path.exists(exp_folder):
             raise Exception('Experiment folder exists, apparent seed conflict!')
     os.makedirs(exp_folder)
+
+    # Read config and turn it into a class object with properties
+    with open(args.config_path, "rb") as f:
+        config = json.load(f)
+    config = Config(config)
     
-    main(exp_folder, args)
+    main(exp_folder, args, config)
