@@ -21,19 +21,19 @@ class GenerateActionsBlock(nn.Module):
         elif summation_order == "from":
             self.summation_dim = 2
 
-        self.activation = activation
-        self.linear_k = nn.Linear(out_embedding_size, out_embedding_size)
-        self.linear_v = nn.Linear(out_embedding_size, out_embedding_size)
+        # self.activation = activation
+        # self.linear_k = nn.Linear(out_embedding_size, out_embedding_size)
+        # self.linear_v = nn.Linear(out_embedding_size, out_embedding_size)
 
     def forward(self, kv, positions, atoms_mask, action_scale, eval_actions=None):
         # Mask kv
         kv *= atoms_mask[..., None]
         k_mu, v_mu, actions_log_std = torch.split(kv, [self.out_embedding_size, self.out_embedding_size, 1], dim=-1)
         
-        # Right now both k and v linearly depend on backbone's output.
-        # Process them separately
-        k_mu = self.linear_k(self.activation(k_mu))
-        v_mu = self.linear_k(self.activation(v_mu))
+        # # Right now both k and v linearly depend on backbone's output.
+        # # Process them separately
+        # k_mu = self.linear_k(self.activation(k_mu))
+        # v_mu = self.linear_k(self.activation(v_mu))
 
         # Calculate mean and std of shifts relative to other atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
