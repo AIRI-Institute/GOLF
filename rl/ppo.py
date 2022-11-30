@@ -92,3 +92,13 @@ class PPO():
         })
 
         return metrics
+
+    def save(self, filename):
+        filename = str(filename)
+        torch.save(self.actor_critic.state_dict(), filename + "_actor_critic")
+        torch.save(self.optimizer.state_dict(), filename + "_optimizer")
+
+    def load(self, filename):
+        filename = str(filename)
+        self.actor_critic.load_state_dict(torch.load(filename + "_actor_critic"))
+        self.optimizer.load_state_dict(torch.load(filename + "_optimizer"))

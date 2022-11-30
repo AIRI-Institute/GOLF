@@ -274,10 +274,11 @@ def main(args, experiment_folder):
             # Save new checkpoint
             trainer_save_name = f'{experiment_folder}/full_cp_iter_{t + 1}'
             trainer.save(trainer_save_name)
-            with open(f'{experiment_folder}/full_cp_iter_{t + 1}_replay', 'wb') as outF:
-                pickle.dump(replay_buffer, outF)
+            if not use_ppo:
+                with open(f'{experiment_folder}/full_cp_iter_{t + 1}_replay', 'wb') as outF:
+                    pickle.dump(replay_buffer, outF)
 
-        if (t + 1) % (args.light_checkpoint_freq // args.n_parallel) == 0 and args.save_checkpoints:
+        if (t + 1) % (args.light_checkpoint_freq // args.n_parallel) == 0 and args.save_checkpoints and not use_ppo:
             trainer_save_name = f'{experiment_folder}/light_cp_iter_{t + 1}'
             trainer.light_save(trainer_save_name)
 
