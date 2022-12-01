@@ -21,9 +21,9 @@ class GenerateActionsBlock(nn.Module):
         elif summation_order == "from":
             self.summation_dim = 2
 
-        self.activation = activation
-        self.linear_x = nn.Linear(out_embedding_size, out_embedding_size)
-        self.linear_k = nn.Linear(out_embedding_size, out_embedding_size)
+        # self.activation = activation
+        # self.linear_x = nn.Linear(out_embedding_size, out_embedding_size)
+        # self.linear_k = nn.Linear(out_embedding_size, out_embedding_size)
 
     def forward(self, kx, positions, atoms_mask, action_scale, eval_actions=None):
         # Mask kx
@@ -42,8 +42,8 @@ class GenerateActionsBlock(nn.Module):
         
         # Right now both x and k linearly depend on backbone's output.
         # Process them separately
-        x = self.linear_k(self.activation(x))
-        k = self.linear_k(self.activation(k))
+        #x = self.linear_k(self.activation(x))
+        #k = self.linear_k(self.activation(k))
         
         # Calculate desired distances between pairs of atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
