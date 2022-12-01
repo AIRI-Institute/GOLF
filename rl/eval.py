@@ -24,7 +24,7 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps):
         if not done[0]:
             delta_energy += reward
         t += 1
-    return delta_energy[0], info['final_energy'][0], info['final_rl_energy'][0], t
+    return delta_energy, info['final_energy'][0], info['final_rl_energy'][0], t
 
 def rdkit_minimize_until_convergence(env, fixed_atoms, smiles):
     M_init = 1000

@@ -11,17 +11,10 @@ from pathlib import Path
 
 from env.make_envs import make_envs
 from rl import DEVICE
-from rl.actor_critic_ppo import PPOPolicy
-from rl.actor_critic_tqc import TQCPolicy
+from rl.actor_critic_tqc import Actor
 from rl.utils import ActionScaleScheduler
 from rl.eval import run_policy, rdkit_minimize_until_convergence
 from utils.utils import ignore_extra_args
-
-
-policies = {
-    "PPO": ignore_extra_args(PPOPolicy),
-    "TQC": ignore_extra_args(TQCPolicy),
-}
 
 
 class Config():
@@ -115,7 +108,10 @@ def main(exp_folder, args, config):
    
     _, eval_env = make_envs(config)
     # Initialize action_scale scheduler
-    action_scale_scheduler = ActionScaleScheduler(action_scale_init=config.action_scale_init)
+    action_scale_scheduler = ActionScaleScheduler(action_scale_init=config.action_scale_init,
+                                                  action_scale_end=config.action_scale_init,
+                                                  n_step_end=0,
+                                                  mode="constant")
     action_scale_scheduler.update(0)
     backbone_args = {
         'n_interactions': config.n_interactions,
@@ -124,23 +120,19 @@ def main(exp_folder, args, config):
         'n_rbf':  config.n_rbf,
         'use_cosine_between_vectors': config.use_cosine_between_vectors
     }
-    policy = policies[config.algorithm](
-        backbone=config.backbone,
-        backbone_args=backbone_args,
-        out_embedding_size=config.out_embedding_size,
-        action_scale_scheduler=action_scale_scheduler,
-        n_nets=config.n_nets,
-        n_quantiles=config.n_quantiles,
-        limit_actions=config.limit_actions,
-        summation_order=config.summation_order
-    ).to(DEVICE)
-    policy.load_state_dict(torch.load(args.agent_path, map_location=DEVICE))
-    policy.eval()
+    actor = Actor(
+        config.backbone,
+        backbone_args,
+        config.out_embedding_size,
+        action_scale_scheduler,
+        config.limit_actions,
+        "to").to(DEVICE)
+    actor.eval()
 
     if args.mode == "energy":
-        result = evaluate_final_energy(eval_env, policy, args)
+        result = evaluate_final_energy(eval_env, actor, args)
     elif args.mode == "convergence":
-        result = evaluate_convergence(eval_env, policy, args)
+        result = evaluate_convergence(eval_env, actor, args)
     else:
         raise NotImplemented()
 
@@ -174,6 +166,12 @@ if __name__ == "__main__":
     # Read config and turn it into a class object with properties
     with open(args.config_path, "rb") as f:
         config = json.load(f)
-    config = Config(config)
+
+    # TMP
+    config['db_path'] = "env/data/md17_mixed_1k.db"
+    config['eval_db_path'] = "env/data/md17_mixed_1k.db"
+    config['molecules_xyz_prefix'] = "/Users/artem/Desktop/work/MARL/MolDynamics/env/molecules_xyz"
+
+    config = Config(**config)
     
     main(exp_folder, args, config)
