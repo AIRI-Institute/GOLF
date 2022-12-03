@@ -30,6 +30,11 @@ def make_envs(args):
     # Update kwargs for eval_env
     if args.eval_db_path != '':
         env_kwargs['db_path'] = args.eval_db_path
+
+    # If greedy and done_when_not_improved set timelimit to 100
+    # to correctly log eval/episode_len
+    if args.greedy and args.done_when_not_improved:
+        env_kwargs['timelimit'] = 100
     if args.reward == "rdkit":
         env_kwargs['n_parallel'] = 1
     else:
