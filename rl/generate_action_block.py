@@ -21,9 +21,15 @@ class GenerateActionsBlock(nn.Module):
         elif summation_order == "from":
             self.summation_dim = 2
 
-        # self.activation = activation
-        # self.linear_x = nn.Linear(out_embedding_size, out_embedding_size)
-        # self.linear_k = nn.Linear(out_embedding_size, out_embedding_size)
+        # Matrix X might have negative elements. 
+        # A negative x_ij means that atoms have to change places with each other.
+        self.activation_x = activation
+        self.linear_x = nn.Linear(out_embedding_size, out_embedding_size)
+        
+        # Matrix K which represents stifness of the string
+        # must have positive elements only.
+        self.activation_k = nn.ReLU()
+        self.linear_k = nn.Linear(out_embedding_size, out_embedding_size)
 
     def forward(self, kx, positions, atoms_mask, action_scale, eval_actions=None):
         # Mask kx
@@ -40,10 +46,11 @@ class GenerateActionsBlock(nn.Module):
         # x and k must be symmetrical to agree with physics.
         x, k, actions_log_std = torch.split(kx, [self.out_embedding_size, self.out_embedding_size, 1], dim=-1)
         
+        # TODO check if needed.
         # Right now both x and k linearly depend on backbone's output.
-        # Process them separately
-        #x = self.linear_k(self.activation(x))
-        #k = self.linear_k(self.activation(k))
+        # Process them separately ?
+        x = self.linear_x(self.activation_x(x))
+        k = self.linear_k(self.activation_k(k))
         
         # Calculate desired distances between pairs of atoms
         # Divide by \sqrt(emb_size) to bring initial action means closer to 0
@@ -70,8 +77,8 @@ class GenerateActionsBlock(nn.Module):
         # TODO Summation dim must be 'from'. Check it.
         actions_mean = (P * f[..., None] * fcut[..., None]).sum(self.summation_dim)
         
-        # # Make actions norm independent of the number of atoms
-        # actions_mean /= atoms_mask.sum(-1)[:, None, None]
+        # # Make actions norm independent of the number of atoms inside cutoff
+        # actions_mean /= fcut.sum(self.summation_dim)[..., None] + 1e-8
         
         # Limit actions by scaling their norms
         if self.limit_actions:
