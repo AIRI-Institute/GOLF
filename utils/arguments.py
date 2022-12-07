@@ -193,6 +193,29 @@ def get_args():
         type=str2bool,
         help="Whether to limit action norms with tanh")
     parser.add_argument(
+        "--generate_action_type",
+        choices=["delta_x", "spring_and_mass"],
+        required=True,
+        help="Type of action generation block to use")
+    parser.add_argument(
+        "--cutoff_type",
+        choices=["hard", "cosine"],
+        required=True,
+        help="Type of cutoff to use in action generation block")
+    parser.add_argument(
+        "--use_activation",
+        default=False,
+        choices=[True, False],
+        metavar='True|False',
+        type=str2bool,
+        help="If True additionally process atom embeddings before generating action")
+    parser.add_argument(
+        "--summation_order",
+        default="to",
+        choices=["to", "from"],
+        help="If 'to' then action is calculated by summing all vectors coming to atom.\
+              If 'from' then action is calculated by summing all vectors coming from atom")
+    parser.add_argument(
         "--n_quantiles",
         default=25,
         type=int,
@@ -202,12 +225,6 @@ def get_args():
         default=5,
         type=int,
         help="Number of nets in critic")
-    parser.add_argument(
-        "--summation_order",
-        default="to",
-        choices=["to", "from"],
-        help="If 'to' then action is calculated by summing all vectors coming to atom.\
-              If 'from' then action is calculated by summing all vectors coming from atom")
 
     # Eval args
     parser.add_argument(

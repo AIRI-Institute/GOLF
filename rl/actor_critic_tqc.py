@@ -7,7 +7,7 @@ import schnetpack.nn as snn
 from schnetpack.nn.blocks import MLP
 
 from rl.backbones.painn import PaiNN
-from rl.generate_action_block import GenerateActionsBlock
+from rl.generate_action_block import SpringAndMassAction, DistanceChangeAction
 from utils.utils import ignore_extra_args
 
 
@@ -16,34 +16,43 @@ backbones = {
     "painn": ignore_extra_args(PaiNN)
 }
 
+generate_action_block = {
+    "delta_x": DistanceChangeAction,
+    "spring_and_mass": SpringAndMassAction
+}
+
 
 class Actor(nn.Module):
-    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler,
-                 limit_actions, summation_order, activation=snn.activations.shifted_softplus):
+    def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale_scheduler,
+                 limit_actions, summation_order, cutoff_type, use_activation):
         super(Actor, self).__init__()
         self.action_scale_scheduler = action_scale_scheduler
-
-        self.cutoff_network = snn.get_cutoff_by_string('hard')(backbone_args['cutoff'])
+        
         representation = backbones[backbone](**backbone_args)
         output_modules = [
             spk.atomistic.Atomwise(
                 n_in=representation.n_atom_basis,
                 n_out=out_embedding_size * 2 + 1,
-                n_neurons=[out_embedding_size],
-                contributions='kv',
-                activation=activation
+                contributions='embedding'
             )
         ]
         self.model = spk.atomistic.model.AtomisticModel(representation, output_modules)
-        self.generate_actions_block = GenerateActionsBlock(out_embedding_size, limit_actions,
-                                                           self.cutoff_network, summation_order, activation)
+
+        if use_activation or generate_action_type == "spring_and_mass":
+            activation = snn.activations.shifted_softplus
+        else:
+            activation = None
+        self.generate_actions_block = generate_action_block[generate_action_type](
+            out_embedding_size, limit_actions, cutoff_type,
+            backbone_args['cutoff'], summation_order, activation
+        )
     
     def forward(self, state_dict):
         action_scale = self.action_scale_scheduler.get_action_scale()
         atoms_mask = state_dict['_atom_mask']
-        kv = self.model(state_dict)['kv']
+        embeddings = self.model(state_dict)['embedding']
         
-        actions, log_prob = self.generate_actions_block(kv, state_dict['_positions'], atoms_mask, action_scale)
+        actions, log_prob = self.generate_actions_block(embeddings, state_dict['_positions'], atoms_mask, action_scale)
         return actions, log_prob
 
     def select_action(self, state_dict):
@@ -91,11 +100,11 @@ class Critic(nn.Module):
         return quantiles
 
 class TQCPolicy(nn.Module):
-    def __init__(self, backbone, backbone_args, out_embedding_size, action_scale_scheduler, 
-                 n_nets, n_quantiles, limit_actions, summation_order):
+    def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale_scheduler, 
+                 cutoff_type, use_activation, n_nets, n_quantiles, limit_actions, summation_order):
         super().__init__()
-        self.actor = Actor(backbone, backbone_args, out_embedding_size, action_scale_scheduler,
-                           limit_actions, summation_order)
+        self.actor = Actor(backbone, backbone_args, generate_action_type, out_embedding_size,
+                           action_scale_scheduler, limit_actions, summation_order, cutoff_type, use_activation)
         self.critic = Critic(backbone, backbone_args, n_nets, out_embedding_size, n_quantiles)
         self.critic_target = copy.deepcopy(self.critic)
 

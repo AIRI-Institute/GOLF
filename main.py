@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from schnetpack.nn import get_cutoff_by_string
 
 from env.make_envs import make_envs
 from rl import DEVICE
@@ -92,13 +93,19 @@ def main(args, experiment_folder):
     policy = policies[args.algorithm](
         backbone=args.backbone,
         backbone_args=backbone_args,
+        generate_action_type=args.generate_action_type,
         out_embedding_size=args.out_embedding_size,
         action_scale_scheduler=action_scale_scheduler,
+        cutoff_type=args.cutoff_type,
+        summation_order=args.summation_order,
+        use_activation=args.use_activation,
         n_nets=args.n_nets,
         n_quantiles=args.n_quantiles,
         limit_actions=args.limit_actions,
-        summation_order=args.summation_order
     ).to(DEVICE)
+
+    # Initialize cutoff network for logging purposes
+    cutoff_network = get_cutoff_by_string(args.cutoff_type)(args.cutoff).to(DEVICE)
 
     top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
     
@@ -189,10 +196,6 @@ def main(args, experiment_folder):
         # Estimate average number of atoms inside cutoff radius
         # and min/avg/max distance between atoms for both
         # state and next_state before moving to the next state
-        if use_ppo:
-            cutoff_network = policy.base.cutoff_network
-        else:
-            cutoff_network = policy.actor.cutoff_network
         molecule_metrics = calculate_molecule_metrics(state, next_state, cutoff_network)
 
         state = next_state
