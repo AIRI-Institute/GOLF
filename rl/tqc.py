@@ -46,22 +46,25 @@ class TQC(object):
 			total_quantiles_to_keep = t * self.critic.n_nets
 			metrics[f'Target_Q/Q_value_t={t}'] = next_z[:, :total_quantiles_to_keep].mean().__float__()
 
-	def update(self, replay_buffer, update_actor):
+	def update(self, replay_buffer, update_actor, greedy):
 		metrics = dict()
 		state, action, next_state, reward, not_done = replay_buffer.sample(self.batch_size)
 		alpha = torch.exp(self.log_alpha)
 		metrics['alpha'] = alpha.item()
 
 		# --- Compute critic target ---
-		with torch.no_grad():
-			# get policy action
-			new_next_action, next_log_pi = self.actor(next_state)
-			# compute and cut quantiles at the next state
-			next_z = self.critic_target(next_state, new_next_action)
-			sorted_z, _ = torch.sort(next_z.reshape(self.batch_size, -1))
-			self.add_next_z_metrics(metrics, sorted_z)
-			sorted_z_part = sorted_z[:, :self.quantiles_total-self.top_quantiles_to_drop]
-			target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
+		if not greedy:
+			with torch.no_grad():
+				# get policy action
+				new_next_action, next_log_pi = self.actor(next_state)
+				# compute and cut quantiles at the next state
+				next_z = self.critic_target(next_state, new_next_action)
+				sorted_z, _ = torch.sort(next_z.reshape(self.batch_size, -1))
+				self.add_next_z_metrics(metrics, sorted_z)
+				sorted_z_part = sorted_z[:, :self.quantiles_total-self.top_quantiles_to_drop]
+				target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
+		else:
+			target = reward
 		
 		# --- Critic loss ---
 		cur_z = self.critic(state, action)

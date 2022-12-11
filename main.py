@@ -213,7 +213,7 @@ def main(args, experiment_folder):
             else:
                 # Update TQC several times
                 for _ in range(args.n_parallel):
-                    step_metrics = trainer.update(replay_buffer, update_actor_condition)
+                    step_metrics = trainer.update(replay_buffer, update_actor_condition, args.greedy)
         else:
             step_metrics = dict()
 
