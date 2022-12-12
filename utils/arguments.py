@@ -16,7 +16,7 @@ def get_args():
     parser.add_argument(
         "--algorithm",
         default='TQC',
-        choices=['TQC', 'PPO'])
+        choices=['TQC', 'PPO', 'OneStepSAC'])
 
     # Env args
     parser.add_argument(

@@ -14,7 +14,9 @@ from env.make_envs import make_envs
 from rl import DEVICE
 from rl.actor_critic_ppo import PPOPolicy
 from rl.actor_critic_tqc import TQCPolicy
+from rl.actor_critic_one_step_sac import OneStepSACPolicy
 from rl.eval import eval_policy_dft, eval_policy_rdkit
+from rl.one_step_sac import OneStepSAC
 from rl.ppo import PPO
 from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
 from rl.tqc import TQC
@@ -28,16 +30,20 @@ from utils.utils import ignore_extra_args
 policies = {
     "PPO": ignore_extra_args(PPOPolicy),
     "TQC": ignore_extra_args(TQCPolicy),
+    "OneStepSAC": ignore_extra_args(OneStepSACPolicy)
 }
 
 trainers = {
     "PPO": ignore_extra_args(PPO),
-    "TQC": ignore_extra_args(TQC)
+    "TQC": ignore_extra_args(TQC),
+    "OneStepSAC": ignore_extra_args(OneStepSAC)
 }
 
 replay_buffers = {
     "PPO": ignore_extra_args(ReplayBufferPPO),
-    "TQC": ignore_extra_args(ReplayBufferTQC)
+    "TQC": ignore_extra_args(ReplayBufferTQC),
+    # Same replay buffer type as in TQC
+    "OneStepSAC": ignore_extra_args(ReplayBufferTQC)
 }
 
 eval_function = {
@@ -52,6 +58,13 @@ def main(args, experiment_folder):
     # Initialize logger
     logger = Logger(experiment_folder, args)
     
+    # OneStepSAC is specifically designed for greedy optimization
+    # For non-greedy optimization use TQC or PPO
+    if args.greedy or args.algorithm == "OneStepSAC":
+        assert args.greedy and args.algorithm == "OneStepSAC", \
+            "Greedy optimization can only be done with OneStepSAC and vice versa."
+    use_ppo = args.algorithm == 'PPO'
+
     # Initialize envs
     env, eval_env = make_envs(args)
 
@@ -67,7 +80,6 @@ def main(args, experiment_folder):
                                              interval=args.timelimit_interval,
                                              constant=not args.increment_timelimit)
     
-    use_ppo = args.algorithm == 'PPO'
     
     # Initialize replay buffer
     if use_ppo:
@@ -173,10 +185,10 @@ def main(args, experiment_folder):
         with torch.no_grad():
             policy_out = policy.act(state)
             values, actions, log_probs = [x.cpu().numpy() for x in policy_out]
-            if not use_ppo:
-                # Mean over nets and quantiles to log
-                values = values.mean(axis=(1, 2))
-            else:
+            if args.algorithm == "TQC":
+                # Mean over nets and quantiles
+                values = values.mean(dim=(1, 2))
+            elif use_ppo:
                 # Remove extra dimension to store correctly
                 values = values.squeeze(-1)
                 log_probs = log_probs.squeeze(-1)
