@@ -192,9 +192,9 @@ def main(args, experiment_folder):
             values, actions, log_probs = [x.cpu().numpy() for x in policy_out]
             if args.algorithm == "TQC":
                 # Mean over nets and quantiles
-                values = values.mean(dim=(1, 2))
+                values = values.mean(axis=(1, 2))
             elif args.algorithm == "OneStepREDQ":
-                values = values.mean(dim=1)
+                values = values.mean(axis=1)
             elif use_ppo:
                 # Remove extra dimension to store correctly
                 values = values.squeeze(-1)
