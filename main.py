@@ -12,14 +12,16 @@ from schnetpack.nn import get_cutoff_by_string
 
 from env.make_envs import make_envs
 from rl import DEVICE
-from rl.actor_critic_ppo import PPOPolicy
-from rl.actor_critic_tqc import TQCPolicy
-from rl.actor_critic_one_step_sac import OneStepSACPolicy
+from rl.actor_critics.one_step_redq import OneStepREDQPolicy
+from rl.actor_critics.one_step_sac import OneStepSACPolicy
+from rl.actor_critics.ppo import PPOPolicy
+from rl.actor_critics.tqc import TQCPolicy
+from rl.algos.one_step_redq import OneStepREDQ
+from rl.algos.one_step_sac import OneStepSAC
+from rl.algos.ppo import PPO
+from rl.algos.tqc import TQC
 from rl.eval import eval_policy_dft, eval_policy_rdkit
-from rl.one_step_sac import OneStepSAC
-from rl.ppo import PPO
 from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
-from rl.tqc import TQC
 from rl.utils import (ActionScaleScheduler, TimelimitScheduler,
                       calculate_action_norm, recollate_batch, 
                       calculate_molecule_metrics)
@@ -30,20 +32,23 @@ from utils.utils import ignore_extra_args
 policies = {
     "PPO": ignore_extra_args(PPOPolicy),
     "TQC": ignore_extra_args(TQCPolicy),
-    "OneStepSAC": ignore_extra_args(OneStepSACPolicy)
+    "OneStepSAC": ignore_extra_args(OneStepSACPolicy),
+    "OneStepREDQ": ignore_extra_args(OneStepREDQPolicy)
 }
 
 trainers = {
     "PPO": ignore_extra_args(PPO),
     "TQC": ignore_extra_args(TQC),
-    "OneStepSAC": ignore_extra_args(OneStepSAC)
+    "OneStepSAC": ignore_extra_args(OneStepSAC),
+    "OneStepREDQ": ignore_extra_args(OneStepREDQ)
 }
 
 replay_buffers = {
     "PPO": ignore_extra_args(ReplayBufferPPO),
     "TQC": ignore_extra_args(ReplayBufferTQC),
     # Same replay buffer type as in TQC
-    "OneStepSAC": ignore_extra_args(ReplayBufferTQC)
+    "OneStepSAC": ignore_extra_args(ReplayBufferTQC),
+    "OneStepREDQ": ignore_extra_args(ReplayBufferTQC)
 }
 
 eval_function = {
@@ -60,9 +65,8 @@ def main(args, experiment_folder):
     
     # OneStepSAC is specifically designed for greedy optimization
     # For non-greedy optimization use TQC or PPO
-    if args.greedy or args.algorithm == "OneStepSAC":
-        assert args.greedy and args.algorithm == "OneStepSAC", \
-            "Greedy optimization can only be done with OneStepSAC and vice versa."
+    if args.algorithm in ["OneStepSAC", "OneStepREDQ"]:
+        assert args.greedy, "OneStepSAC and OneStepREDQ are designed for greedy optimization only."
     use_ppo = args.algorithm == 'PPO'
 
     # Initialize envs
@@ -112,6 +116,7 @@ def main(args, experiment_folder):
         summation_order=args.summation_order,
         use_activation=args.use_activation,
         n_nets=args.n_nets,
+        m_nets=args.m_nets,
         n_quantiles=args.n_quantiles,
         limit_actions=args.limit_actions,
     ).to(DEVICE)
@@ -188,6 +193,8 @@ def main(args, experiment_folder):
             if args.algorithm == "TQC":
                 # Mean over nets and quantiles
                 values = values.mean(dim=(1, 2))
+            elif args.algorithm == "OneStepREDQ":
+                values = values.mean(dim=1)
             elif use_ppo:
                 # Remove extra dimension to store correctly
                 values = values.squeeze(-1)

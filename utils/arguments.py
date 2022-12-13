@@ -16,7 +16,7 @@ def get_args():
     parser.add_argument(
         "--algorithm",
         default='TQC',
-        choices=['TQC', 'PPO', 'OneStepSAC'])
+        choices=['TQC', 'PPO', 'OneStepSAC', 'OneStepREDQ'])
 
     # Env args
     parser.add_argument(
@@ -224,7 +224,13 @@ def get_args():
         "--n_nets",
         default=5,
         type=int,
-        help="Number of nets in critic")
+        help="Total number of nets in critic")
+    parser.add_argument(
+        '--m_nets',
+        default=2,
+        type=int,
+        help="Number of nets randomly sampled for update on each step"
+    )
 
     # Eval args
     parser.add_argument(

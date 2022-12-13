@@ -11,7 +11,7 @@ from pathlib import Path
 
 from env.make_envs import make_envs
 from rl import DEVICE
-from rl.actor_critic_tqc import Actor
+from rl.actor_critics.tqc import Actor
 from rl.utils import ActionScaleScheduler
 from rl.eval import run_policy, rdkit_minimize_until_convergence
 from utils.utils import ignore_extra_args

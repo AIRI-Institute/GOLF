@@ -14,7 +14,7 @@ from env.wrappers import rdkit_reward_wrapper
 from env.xyz2mol import get_rdkit_energy, parse_molecule, set_coordinates
 
 from rl import DEVICE
-from rl.actor_critic_tqc import Actor
+from rl.actor_critics.tqc import Actor
 from rl.utils import ActionScaleScheduler
 
 def rl_minimize(file_name, policy, env, timelimit):

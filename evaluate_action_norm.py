@@ -13,7 +13,7 @@ from env.moldynamics_env import env_fn
 from env.wrappers import rdkit_reward_wrapper
 
 from rl import DEVICE
-from rl.actor_critic_tqc import Actor
+from rl.actor_critics.tqc import Actor
 from rl.utils import ActionScaleScheduler, rdkit_minimize_until_convergence
 
 def run_policy(env, actor, fixed_atoms, max_timestamps):

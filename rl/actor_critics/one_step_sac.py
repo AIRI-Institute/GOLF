@@ -3,7 +3,7 @@ import schnetpack as spk
 import torch.nn as nn
 
 from rl.backbones.painn import PaiNN
-from rl.actor_critic_tqc import Actor
+from rl.actor_critics.tqc import Actor
 from utils.utils import ignore_extra_args
 
 
