@@ -49,7 +49,6 @@ class Critic(nn.Module):
     
     def select_critics(self):
         indices = np.random.choice(self.n_nets, self.m_nets, replace=False)
-        print(indices)
         self.current_nets = [self.nets[ind] for ind in indices]
 
 

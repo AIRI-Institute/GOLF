@@ -47,7 +47,7 @@ class OneStepREDQ(object):
 
         # Update selected critics
 		cur_Q = self.critic(state, action)
-		critic_loss = F.mse_loss(cur_Q, reward.unsqueeze(1))
+		critic_loss = F.mse_loss(cur_Q, reward.expand((-1, cur_Q.shape[1])))
 		metrics['critic_loss'] = critic_loss.item()
 
 		# --- Update critic --- 
