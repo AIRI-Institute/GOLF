@@ -1,4 +1,5 @@
 import copy
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -61,11 +62,12 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, backbone, backbone_args, n_nets, out_embedding_size, n_quantiles):
+    def __init__(self, backbone, backbone_args, n_nets, m_nets, out_embedding_size, n_quantiles):
         super(Critic, self).__init__()
         self.nets = []
         self.mlps = []
         self.n_nets = n_nets
+        self.m_nets = m_nets
         self.n_quantiles = n_quantiles
 
         for i in range(self.n_nets):
@@ -86,30 +88,42 @@ class Critic(nn.Module):
 
     def forward(self, state_dict, actions):
         quantiles_list = []
-        for i in range(self.n_nets):
+        for i in range(self.m_nets):
             # Schnet changes the state_dict so a deepcopy
             # has to be passed to each net in order to do .backwards()
             state = {k: v.detach().clone() for k, v in state_dict.items()}
             next_state = {k: v.detach().clone() for k, v in state_dict.items()}
             # Change state here to keep the gradients flowing
             next_state["_positions"] += actions
-            state_emb = self.nets[i](state)['embedding']
-            next_state_emb = self.nets[i](next_state)['embedding']
-            quantiles_list.append(self.mlps[i](torch.cat((state_emb, next_state_emb), dim=-1)))
+            state_emb = self.current_nets[i](state)['embedding']
+            next_state_emb = self.current_nets[i](next_state)['embedding']
+            quantiles_list.append(self.current_mlps[i](torch.cat((state_emb, next_state_emb), dim=-1)))
         quantiles = torch.stack(quantiles_list, dim=1)
         return quantiles
+    
+    def select_critics(self):
+        indices = np.random.choice(self.n_nets, self.m_nets, replace=False)
+        self.current_nets = [self.nets[ind] for ind in indices]
+        self.current_mlps = [self.mlps[ind] for ind in indices]
+        return indices
+
+    def set_critics(self, indices):
+        self.current_nets = [self.nets[ind] for ind in indices]
+        self.current_mlps = [self.mlps[ind] for ind in indices]
+
 
 class TQCPolicy(nn.Module):
     def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale_scheduler, 
-                 cutoff_type, use_activation, n_nets, n_quantiles, limit_actions, summation_order):
+                 cutoff_type, use_activation, n_nets, m_nets, n_quantiles, limit_actions, summation_order):
         super().__init__()
         self.actor = Actor(backbone, backbone_args, generate_action_type, out_embedding_size,
                            action_scale_scheduler, limit_actions, summation_order, cutoff_type, use_activation)
-        self.critic = Critic(backbone, backbone_args, n_nets, out_embedding_size, n_quantiles)
+        self.critic = Critic(backbone, backbone_args, n_nets, m_nets, out_embedding_size, n_quantiles)
         self.critic_target = copy.deepcopy(self.critic)
 
     def act(self, state_dict):
         action, log_prob = self.actor(state_dict)
+        self.critic.select_critics()
         Q = self.critic(state_dict, action)
         return Q, action, log_prob
         

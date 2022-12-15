@@ -1,4 +1,3 @@
-import copy
 import numpy as np
 import schnetpack as spk
 import torch
@@ -59,7 +58,6 @@ class OneStepREDQPolicy(nn.Module):
         self.actor = Actor(backbone, backbone_args, generate_action_type, out_embedding_size,
                            action_scale_scheduler, limit_actions, summation_order, cutoff_type, use_activation)
         self.critic = Critic(backbone, backbone_args, n_nets, m_nets)
-        self.critic_target = copy.deepcopy(self.critic)
 
     def act(self, state_dict):
         action, log_prob = self.actor(state_dict)

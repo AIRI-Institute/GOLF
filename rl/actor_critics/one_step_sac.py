@@ -1,4 +1,3 @@
-import copy
 import schnetpack as spk
 import torch.nn as nn
 
@@ -45,7 +44,6 @@ class OneStepSACPolicy(nn.Module):
         self.actor = Actor(backbone, backbone_args, generate_action_type, out_embedding_size,
                            action_scale_scheduler, limit_actions, summation_order, cutoff_type, use_activation)
         self.critic = Critic(backbone, backbone_args)
-        self.critic_target = copy.deepcopy(self.critic)
 
     def act(self, state_dict):
         action, log_prob = self.actor(state_dict)

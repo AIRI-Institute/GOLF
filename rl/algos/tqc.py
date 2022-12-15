@@ -53,6 +53,8 @@ class TQC(object):
 		metrics['alpha'] = alpha.item()
 
 		# --- Compute critic target ---
+		# First select Q functions
+		indices = self.critic_target.select_critics()
 		if not greedy:
 			with torch.no_grad():
 				# get policy action
@@ -67,6 +69,8 @@ class TQC(object):
 			target = reward
 		
 		# --- Critic loss ---
+		# Set current Q functions to be the same as in target critic
+		self.critic.set_critics(indices)
 		cur_z = self.critic(state, action)
 		critic_loss = quantile_huber_loss_f(cur_z, target)
 		metrics['critic_loss'] = critic_loss.item()
