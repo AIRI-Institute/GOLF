@@ -19,6 +19,8 @@ class TQC(object):
 		batch_size=256,
 		actor_clip_value=None,
 		critic_clip_value=None,
+		use_one_cycle_lr=False,
+		total_steps=0
 	):
 		self.actor = policy.actor
 		self.critic = policy.critic
@@ -28,6 +30,12 @@ class TQC(object):
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
 		self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)
+		self.use_one_cycle_lr = use_one_cycle_lr
+		if use_one_cycle_lr:
+			self.actor_lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.actor_optimizer, max_lr=25 * actor_lr,
+																		  final_div_factor=1e+3, total_steps=total_steps)
+			self.critic_lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.critic_optimizer, max_lr=25 * critic_lr,
+																	 	  final_div_factor=1e+3, total_steps=total_steps)
 
 		self.discount = discount
 		self.tau = tau
@@ -82,6 +90,8 @@ class TQC(object):
 		if self.critic_clip_value is not None:
 			torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.critic_clip_value)
 		self.critic_optimizer.step()
+		if self.use_one_cycle_lr:
+			self.critic_lr_scheduler.step()
 
 		# --- Policy loss ---
 		new_action, log_pi = self.actor(state)
@@ -97,6 +107,8 @@ class TQC(object):
 			if self.actor_clip_value is not None:
 				torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_clip_value)
 			self.actor_optimizer.step()
+			if self.use_one_cycle_lr:
+				self.actor_lr_scheduler.step()
 
 			# --- Alpha loss ---
 			target_entropy = self.per_atom_target_entropy * state['_atom_mask'].sum(-1)

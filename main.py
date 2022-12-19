@@ -143,6 +143,8 @@ def main(args, experiment_folder):
         batch_size=args.batch_size,
         actor_clip_value=args.actor_clip_value,
         critic_clip_value=args.critic_clip_value,
+        use_one_cycle_lr=args.use_one_cycle_lr,
+        total_steps=args.max_timesteps,
         # PPO arguments
         clip_param=args.clip_param,
         ppo_epoch=args.ppo_epoch,

@@ -300,6 +300,12 @@ def get_args():
         default=None,
         help="Clipping value for critic gradients")
     parser.add_argument(
+        "--use_one_cycle_lr",
+        default=False,
+        choices=[True, False],
+        metavar='True|False', type=str2bool,
+        help="Use OneCycleLR scheduler")
+    parser.add_argument(
         "--alpha_lr",
         default=3e-4,
         type=float,
