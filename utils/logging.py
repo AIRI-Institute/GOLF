@@ -6,9 +6,10 @@ from collections import deque
 
 class Logger:
     def __init__(self, experiment_folder, config):
-        if os.path.exists(experiment_folder):
+        if os.path.exists(experiment_folder) and config.load_model is None:
             raise Exception('Experiment folder exists, apparent seed conflict!')
-        os.makedirs(experiment_folder)
+        if config.load_model is None:
+            os.makedirs(experiment_folder)
         self.metrics_file = experiment_folder / "metrics.json"
         self.energies_file = experiment_folder / "energies.json"
         self.metrics_file.touch()

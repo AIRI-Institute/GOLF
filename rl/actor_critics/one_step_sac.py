@@ -39,7 +39,7 @@ class Critic(nn.Module):
 
 class OneStepSACPolicy(nn.Module):
     def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale_scheduler, 
-                 cutoff_type, use_activation, n_nets, n_quantiles, limit_actions, summation_order):
+                 cutoff_type, use_activation, limit_actions, summation_order):
         super().__init__()
         self.actor = Actor(backbone, backbone_args, generate_action_type, out_embedding_size,
                            action_scale_scheduler, limit_actions, summation_order, cutoff_type, use_activation)
