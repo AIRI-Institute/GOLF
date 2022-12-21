@@ -321,8 +321,7 @@ if __name__ == "__main__":
 
     start_time = datetime.datetime.strftime(datetime.datetime.now(), '%Y_%m_%d_%H_%M_%S')
     if args.load_model is not None:
-        exp_folder = Path(args.load_model.split('/')[-2])
-        print(exp_folder)
+        exp_folder = log_dir / args.load_model.split('/')[-2]
     else:
         exp_folder = log_dir / f'{args.exp_name}_{start_time}_{args.seed}'
 

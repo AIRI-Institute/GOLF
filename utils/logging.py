@@ -6,13 +6,25 @@ from collections import deque
 
 class Logger:
     def __init__(self, experiment_folder, config):
+        # If training is restarted log to the same directory
         if os.path.exists(experiment_folder) and config.load_model is None:
             raise Exception('Experiment folder exists, apparent seed conflict!')
         if config.load_model is None:
             os.makedirs(experiment_folder)
+
+        # If training is restarted truncate metrics file
+        # to the last checkpoint
         self.metrics_file = experiment_folder / "metrics.json"
-        self.energies_file = experiment_folder / "energies.json"
-        self.metrics_file.touch()
+        if config.load_model is not None:
+            with open(self.metrics_file) as f:
+                lines = f.readlines()
+            checkpoint_iter = int(config.load_model.split('/')[-1].split('_')[-1]) // 1000
+            N = len(lines) - checkpoint_iter
+            with open(self.metrics_file, "w") as f:
+                f.writelines(lines[:-N])
+        else:
+            self.metrics_file.touch()
+
         with open(experiment_folder / 'config.json', 'w') as config_file:
             json.dump(config.__dict__, config_file)
 
