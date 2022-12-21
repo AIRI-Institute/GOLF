@@ -320,6 +320,10 @@ if __name__ == "__main__":
     #args.git_sha = get_current_gitsha()
 
     start_time = datetime.datetime.strftime(datetime.datetime.now(), '%Y_%m_%d_%H_%M_%S')
-    exp_folder = log_dir / f'{args.exp_name}_{start_time}_{args.seed}'
+    if args.load_model is not None:
+        exp_folder = args.load_model.split('/')[-2]
+        print(exp_folder)
+    else:
+        exp_folder = log_dir / f'{args.exp_name}_{start_time}_{args.seed}'
 
     main(args, exp_folder)
