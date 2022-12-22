@@ -25,9 +25,9 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps):
         t += 1
     return delta_energy, info['final_energy'][0], info['final_rl_energy'][0], t
 
-def rdkit_minimize_until_convergence(env, fixed_atoms, smiles):
+def rdkit_minimize_until_convergence(env, fixed_atoms, smiles, M=None):
     M_init = 1000
-    env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
+    env.set_initial_positions(fixed_atoms, smiles, energy_list=[None], M=M)
     initial_energy = env.initial_energy['rdkit'][0]
     not_converged, final_energy = env.minimize_rdkit(idx=0, M=M_init)
     while not_converged:
@@ -95,7 +95,7 @@ def eval_policy_rdkit(actor, env, max_timestamps, eval_episodes=10,
         result['eval/episode_len'] += eval_episode_len
 
         # Compute minimal energy of the molecule
-        initial_energy, final_energy = rdkit_minimize_until_convergence(env, fixed_atoms, smiles)
+        initial_energy, final_energy = rdkit_minimize_until_convergence(env, fixed_atoms, smiles, M=0)
         pct = (initial_energy - eval_final_energy) / (initial_energy - final_energy)
         result['eval/pct_of_minimized_energy'] += pct
         if pct > 1.0 or pct < -100:

@@ -240,7 +240,7 @@ class RewardWrapper(gym.Wrapper):
     
         return obs
 
-    def set_initial_positions(self, atoms_list, smiles_list, energy_list):
+    def set_initial_positions(self, atoms_list, smiles_list, energy_list, M=None):
         super().reset()
 
         # Set molecules and get observation
@@ -261,7 +261,7 @@ class RewardWrapper(gym.Wrapper):
             else:
                 raise ValueError("Unknown molecule type {}".format(str(self.env.atoms[idx].symbols)))
             self.update_coordinates['rdkit'](self.molecule['rdkit'][idx], self.env.atoms[idx].get_positions())
-            _, self.initial_energy['rdkit'][idx] = self.minimize_rdkit(idx)
+            _, self.initial_energy['rdkit'][idx] = self.minimize_rdkit(idx, M)
 
             # Calculate initial dft energy
             if self.dft:
