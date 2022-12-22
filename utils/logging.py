@@ -16,14 +16,14 @@ class Logger:
         # to the last checkpoint
         self.metrics_file = experiment_folder / "metrics.json"
         if config.load_model is not None:
-            with open(self.metrics_file) as f:
+            with open(self.metrics_file, "rb") as f:
                 lines = f.readlines()
-            checkpoint_iter = int(config.load_model.split('/')[-1].split('_')[-1]) // 1000
+            true_eval_freq = config.n_parallel * (config.eval_freq // config.n_parallel)
+            checkpoint_iter = int(config.load_model.split('/')[-1].split('_')[-1]) // true_eval_freq
             N = len(lines) - checkpoint_iter
-            with open(self.metrics_file, "w") as f:
+            with open(self.metrics_file, "wb") as f:
                 f.writelines(lines[:-N])
-        else:
-            self.metrics_file.touch()
+        self.metrics_file.touch()
 
         with open(experiment_folder / 'config.json', 'w') as config_file:
             json.dump(config.__dict__, config_file)
