@@ -22,11 +22,12 @@ def get_nbh_mask(atoms_mask):
 
 
 class SpringAndMassAction(nn.Module):
-    def __init__(self, out_embedding_size, limit_actions, cutoff_type, 
+    def __init__(self, out_embedding_size, limit_actions, action_scale, cutoff_type,
                  cutoff_radius, summation_order, activation):
         super().__init__()
         self.out_embedding_size = out_embedding_size
         self.limit_actions = limit_actions
+        self.action_scale = action_scale
         self.cutoff_type = cutoff_type
         self.cutoff_network = get_cutoff_by_string(cutoff_type)(cutoff_radius)
 
@@ -48,7 +49,7 @@ class SpringAndMassAction(nn.Module):
         self.activation_k = nn.ReLU()
         self.linear_k = nn.Linear(out_embedding_size, out_embedding_size)
 
-    def forward(self, kx, positions, atoms_mask, action_scale, eval_actions=None):
+    def forward(self, kx, positions, atoms_mask, eval_actions=None):
         # Mask kx
         kx *= atoms_mask[..., None]
 
@@ -109,7 +110,8 @@ class SpringAndMassAction(nn.Module):
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
             # Sample actions and calculate log prob
-            self.scaled_normal = Normal(actions_mean * action_scale, actions_std * action_scale)
+            self.scaled_normal = Normal(actions_mean * self.action_scale,
+                                        actions_std * self.action_scale)
             # In case of PPO
             if eval_actions is None:
                 actions = self.scaled_normal.rsample() # think about rsample/sample
@@ -119,7 +121,7 @@ class SpringAndMassAction(nn.Module):
             log_prob *= atoms_mask[..., None]
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
         else:
-            actions = action_scale * actions_mean
+            actions = self.action_scale * actions_mean
             log_prob = None
         actions *= atoms_mask[..., None]
 
@@ -127,11 +129,12 @@ class SpringAndMassAction(nn.Module):
 
 
 class DistanceChangeAction(nn.Module):
-    def __init__(self, out_embedding_size, limit_actions, cutoff_type,
+    def __init__(self, out_embedding_size, limit_actions, action_scale, cutoff_type,
                  cutoff_radius, summation_order, activation):
         super().__init__()
         self.out_embedding_size = out_embedding_size
         self.limit_actions = limit_actions
+        self.action_scale = action_scale
         self.cutoff_type = cutoff_type
         self.cutoff_network = get_cutoff_by_string(cutoff_type)(cutoff_radius)
 
@@ -147,7 +150,7 @@ class DistanceChangeAction(nn.Module):
             self.linear_k = nn.Linear(out_embedding_size, out_embedding_size)
             self.linear_v = nn.Linear(out_embedding_size, out_embedding_size)
 
-    def forward(self, kv, positions, atoms_mask, action_scale, eval_actions=None):
+    def forward(self, kv, positions, atoms_mask, eval_actions=None):
         # Mask kv
         kv *= atoms_mask[..., None]
 
@@ -194,7 +197,8 @@ class DistanceChangeAction(nn.Module):
             actions_log_std = actions_log_std.clamp(*LOG_STD_MIN_MAX)
             actions_std = torch.exp(actions_log_std)
             # Sample actions and calculate log prob
-            self.scaled_normal = Normal(actions_mean * action_scale, actions_std * action_scale)
+            self.scaled_normal = Normal(actions_mean * self.action_scale,
+                                        actions_std * self.action_scale)
             # In case of PPO
             if eval_actions is None:
                 actions = self.scaled_normal.rsample() # think about rsample/sample
@@ -204,7 +208,7 @@ class DistanceChangeAction(nn.Module):
             log_prob *= atoms_mask[..., None]
             log_prob = log_prob.sum(dim=(1, 2)).unsqueeze(-1)
         else:
-            actions = action_scale * actions_mean
+            actions = self.action_scale * actions_mean
             log_prob = None
         actions *= atoms_mask[..., None]
 

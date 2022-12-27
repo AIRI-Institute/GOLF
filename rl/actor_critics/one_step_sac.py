@@ -38,11 +38,11 @@ class Critic(nn.Module):
         return E_state - E_next_state
 
 class OneStepSACPolicy(nn.Module):
-    def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale_scheduler, 
+    def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale, 
                  cutoff_type, use_activation, limit_actions, summation_order):
         super().__init__()
         self.actor = Actor(backbone, backbone_args, generate_action_type, out_embedding_size,
-                           action_scale_scheduler, limit_actions, summation_order, cutoff_type, use_activation)
+                           action_scale, limit_actions, summation_order, cutoff_type, use_activation)
         self.critic = Critic(backbone, backbone_args)
 
     def act(self, state_dict):

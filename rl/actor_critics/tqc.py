@@ -24,11 +24,10 @@ generate_action_block = {
 
 
 class Actor(nn.Module):
-    def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale_scheduler,
+    def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale,
                  limit_actions, summation_order, cutoff_type, use_activation):
         super(Actor, self).__init__()
-        self.action_scale_scheduler = action_scale_scheduler
-        
+        self.action_scale = action_scale
         representation = backbones[backbone](**backbone_args)
         output_modules = [
             spk.atomistic.Atomwise(
@@ -44,16 +43,15 @@ class Actor(nn.Module):
         else:
             activation = None
         self.generate_actions_block = generate_action_block[generate_action_type](
-            out_embedding_size, limit_actions, cutoff_type,
+            out_embedding_size, limit_actions, cutoff_type, action_scale,
             backbone_args['cutoff'], summation_order, activation
         )
     
     def forward(self, state_dict):
-        action_scale = self.action_scale_scheduler.get_action_scale()
         atoms_mask = state_dict['_atom_mask']
         embeddings = self.model(state_dict)['embedding']
         
-        actions, log_prob = self.generate_actions_block(embeddings, state_dict['_positions'], atoms_mask, action_scale)
+        actions, log_prob = self.generate_actions_block(embeddings, state_dict['_positions'], atoms_mask)
         return actions, log_prob
 
     def select_action(self, state_dict):
@@ -113,11 +111,11 @@ class Critic(nn.Module):
 
 
 class TQCPolicy(nn.Module):
-    def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale_scheduler, 
+    def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale, 
                  cutoff_type, use_activation, n_nets, m_nets, n_quantiles, limit_actions, summation_order):
         super().__init__()
         self.actor = Actor(backbone, backbone_args, generate_action_type, out_embedding_size,
-                           action_scale_scheduler, limit_actions, summation_order, cutoff_type, use_activation)
+                           action_scale, limit_actions, summation_order, cutoff_type, use_activation)
         self.critic = Critic(backbone, backbone_args, n_nets, m_nets, out_embedding_size, n_quantiles)
         self.critic_target = copy.deepcopy(self.critic)
 

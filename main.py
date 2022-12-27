@@ -22,7 +22,7 @@ from rl.algos.ppo import PPO
 from rl.algos.tqc import TQC
 from rl.eval import eval_policy_dft, eval_policy_rdkit
 from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
-from rl.utils import (ActionScaleScheduler, TimelimitScheduler,
+from rl.utils import (TimelimitScheduler,
                       calculate_action_norm, recollate_batch, 
                       calculate_molecule_metrics)
 from utils.arguments import get_args
@@ -72,11 +72,6 @@ def main(args, experiment_folder):
     # Initialize envs
     env, eval_env = make_envs(args)
 
-    # Initialize action_scale scheduler and timelimit scheduler
-    action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
-                                                  action_scale_end=args.action_scale_end,
-                                                  n_step_end=args.action_scale_n_step_end,
-                                                  mode=args.action_scale_mode)
     if args.increment_timelimit:
         assert args.greedy, "Timelimit may be incremented during training only in greedy mode"
     timelimit_scheduler = TimelimitScheduler(timelimit_init=args.timelimit,
@@ -111,7 +106,6 @@ def main(args, experiment_folder):
         backbone_args=backbone_args,
         generate_action_type=args.generate_action_type,
         out_embedding_size=args.out_embedding_size,
-        action_scale_scheduler=action_scale_scheduler,
         cutoff_type=args.cutoff_type,
         summation_order=args.summation_order,
         use_activation=args.use_activation,
@@ -119,6 +113,7 @@ def main(args, experiment_folder):
         m_nets=args.m_nets,
         n_quantiles=args.n_quantiles,
         limit_actions=args.limit_actions,
+        action_scale=args.action_scale,
     ).to(DEVICE)
 
     # Initialize cutoff network for logging purposes
@@ -179,7 +174,6 @@ def main(args, experiment_folder):
         else:
             update_condition = (t + 1) >= args.batch_size // args.n_parallel and (t + 1) % args.update_frequency == 0
             update_actor_condition = (t + 1) > args.pretrain_critic // args.n_parallel
-        action_scale_scheduler.update(t)
         
         # Update timelimit
         timelimit_scheduler.update(t)
@@ -239,7 +233,6 @@ def main(args, experiment_folder):
             step_metrics = dict()
 
         step_metrics['Timestamp'] = str(datetime.datetime.now())
-        step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
         step_metrics['Timelimit'] = current_timelimit
         step_metrics['Action_norm'] = calculate_action_norm(actions, state['_atom_mask']).item()
         

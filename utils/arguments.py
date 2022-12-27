@@ -124,25 +124,10 @@ def get_args():
 
     # Action scale args.
     parser.add_argument(
-        "--action_scale_init",
+        "--action_scale",
         default=0.01,
         type=float,
-        help="Initial value of action_scale")
-    parser.add_argument(
-        "--action_scale_end",
-        default=0.05,
-        type=float,
-        help="Final value of action_scale")
-    parser.add_argument(
-        "--action_scale_n_step_end",
-        default=int(8e5),
-        type=int,
-        help="Step at which the final value of action_scale is reached")
-    parser.add_argument(
-        "--action_scale_mode",
-        choices=["constant", "discrete", "continuous"],
-        default="constant",
-        help="Mode of action scale scheduler")
+        help="Multiply actions by action_scale.")
     parser.add_argument(
         "--target_entropy_action_scale",
         default=0.01,
