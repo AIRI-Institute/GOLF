@@ -40,7 +40,7 @@ class PPOBase(nn.Module):
             activation = snn.activations.shifted_softplus
         else:
             activation = None
-        self.generate_actions_block = generate_action_block[generate_action_type](
+        self.generate_action_block = generate_action_block[generate_action_type](
             out_embedding_size, limit_actions, action_scale, cutoff_type,
             backbone_args['cutoff'], summation_order, activation
         )
@@ -59,7 +59,7 @@ class PPOBase(nn.Module):
 
         # Get actions
         atoms_emb = self.linear_emb_to_atoms_emb(self.activation(embedding_for_actor))
-        actions, log_prob = self.generate_actions_block(atoms_emb, state_dict['_positions'], atoms_mask, eval_actions)
+        actions, log_prob = self.generate_action_block(atoms_emb, state_dict['_positions'], atoms_mask, eval_actions)
 
         # Get values
         value = self.linear_emb_to_V(self.activation(embedding_for_critic))
