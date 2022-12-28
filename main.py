@@ -12,12 +12,8 @@ from schnetpack.nn import get_cutoff_by_string
 
 from env.make_envs import make_envs
 from rl import DEVICE
-from rl.actor_critics.one_step_redq import OneStepREDQPolicy
-from rl.actor_critics.one_step_sac import OneStepSACPolicy
 from rl.actor_critics.ppo import PPOPolicy
 from rl.actor_critics.tqc import TQCPolicy
-from rl.algos.one_step_redq import OneStepREDQ
-from rl.algos.one_step_sac import OneStepSAC
 from rl.algos.ppo import PPO
 from rl.algos.tqc import TQC
 from rl.eval import eval_policy_dft, eval_policy_rdkit
@@ -32,23 +28,19 @@ from utils.utils import ignore_extra_args
 policies = {
     "PPO": ignore_extra_args(PPOPolicy),
     "TQC": ignore_extra_args(TQCPolicy),
-    "OneStepSAC": ignore_extra_args(OneStepSACPolicy),
-    "OneStepREDQ": ignore_extra_args(OneStepREDQPolicy)
+    "SAC": ignore_extra_args(TQCPolicy)
 }
 
 trainers = {
     "PPO": ignore_extra_args(PPO),
     "TQC": ignore_extra_args(TQC),
-    "OneStepSAC": ignore_extra_args(OneStepSAC),
-    "OneStepREDQ": ignore_extra_args(OneStepREDQ)
+    "SAC": ignore_extra_args(TQC),
 }
 
 replay_buffers = {
     "PPO": ignore_extra_args(ReplayBufferPPO),
     "TQC": ignore_extra_args(ReplayBufferTQC),
-    # Same replay buffer type as in TQC
-    "OneStepSAC": ignore_extra_args(ReplayBufferTQC),
-    "OneStepREDQ": ignore_extra_args(ReplayBufferTQC)
+    "SAC": ignore_extra_args(ReplayBufferTQC),
 }
 
 eval_function = {
@@ -63,10 +55,6 @@ def main(args, experiment_folder):
     # Initialize logger
     logger = Logger(experiment_folder, args)
     
-    # OneStepSAC is specifically designed for greedy optimization
-    # For non-greedy optimization use TQC or PPO
-    if args.algorithm in ["OneStepSAC", "OneStepREDQ"]:
-        assert args.greedy, "OneStepSAC and OneStepREDQ are designed for greedy optimization only."
     use_ppo = args.algorithm == 'PPO'
 
     # Initialize envs
@@ -78,7 +66,6 @@ def main(args, experiment_folder):
                                              step=args.timelimit_step,
                                              interval=args.timelimit_interval,
                                              constant=not args.increment_timelimit)
-    
     
     # Initialize replay buffer
     if use_ppo:
@@ -105,6 +92,7 @@ def main(args, experiment_folder):
         backbone=args.backbone,
         backbone_args=backbone_args,
         generate_action_type=args.generate_action_type,
+        critic_type=args.algorithm,
         out_embedding_size=args.out_embedding_size,
         cutoff_type=args.cutoff_type,
         summation_order=args.summation_order,
@@ -119,7 +107,7 @@ def main(args, experiment_folder):
     # Initialize cutoff network for logging purposes
     cutoff_network = get_cutoff_by_string(args.cutoff_type)(args.cutoff).to(DEVICE)
 
-    top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
+    top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.m_nets
     
     # Target entropy must differ for molecules of different sizes.
     # To achieve this we fix per-atom entropy instead of the entropy of the molecule.
@@ -127,6 +115,7 @@ def main(args, experiment_folder):
     trainer = trainers[args.algorithm](
         policy=policy,
         # TQC arguments
+        critic_type=args.algorithm,
         discount=args.discount,
         tau=args.tau,
         log_alpha=np.log([args.initial_alpha]).item(),
@@ -189,7 +178,7 @@ def main(args, experiment_folder):
             if args.algorithm == "TQC":
                 # Mean over nets and quantiles
                 values = values.mean(axis=(1, 2))
-            elif args.algorithm == "OneStepREDQ":
+            elif args.algorithm == "SAC":
                 values = values.mean(axis=1)
             elif use_ppo:
                 # Remove extra dimension to store correctly

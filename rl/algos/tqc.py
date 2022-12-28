@@ -1,7 +1,15 @@
 import torch
 
+from torch.nn.functional import mse_loss
+
 from rl import DEVICE
 from rl.utils import calculate_gradient_norm, quantile_huber_loss_f
+
+
+critic_losses = {
+	"TQC": quantile_huber_loss_f,
+	"SAC": mse_loss,
+}
 
 
 class TQC(object):
@@ -16,12 +24,14 @@ class TQC(object):
 		alpha_lr,
 		top_quantiles_to_drop,
 		per_atom_target_entropy,
+		critic_type="TQC",
 		batch_size=256,
 		actor_clip_value=None,
 		critic_clip_value=None,
 		use_one_cycle_lr=False,
 		total_steps=0
 	):
+		self.critic_type = critic_type
 		self.actor = policy.actor
 		self.critic = policy.critic
 		self.critic_target = policy.critic_target
@@ -45,7 +55,8 @@ class TQC(object):
 		self.actor_clip_value = actor_clip_value
 		self.critic_clip_value = critic_clip_value
 
-		self.quantiles_total = self.critic.n_quantiles * self.critic.n_nets
+		if self.critic_type == "TQC":
+			self.quantiles_total = self.critic.n_quantiles * self.critic.n_nets
 
 		self.total_it = 0
 
@@ -65,22 +76,32 @@ class TQC(object):
 		indices = self.critic_target.select_critics()
 		if not greedy:
 			with torch.no_grad():
-				# get policy action
-				new_next_action, next_log_pi = self.actor(next_state)
-				# compute and cut quantiles at the next state
-				next_z = self.critic_target(next_state, new_next_action)
-				sorted_z, _ = torch.sort(next_z.reshape(self.batch_size, -1))
-				self.add_next_z_metrics(metrics, sorted_z)
-				sorted_z_part = sorted_z[:, :self.quantiles_total-self.top_quantiles_to_drop]
-				target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
+					# Get fresh policy action
+					new_next_action, next_log_pi = self.actor(next_state)
+					# Get critic prediction for the next_state
+					next_Q = self.critic_target(next_state, new_next_action)
+					if self.critic_type == "TQC":
+						# Sort all quantiles
+						next_Q, _ = torch.sort(next_Q.reshape(self.batch_size, -1))
+						self.add_next_z_metrics(metrics, next_Q)
+						# Cut top quantiles
+						next_Q = next_Q[:, :self.quantiles_total - self.top_quantiles_to_drop]
+					elif self.critic_type == "SAC":
+						# Take minimum of Q functions
+						next_Q, _ = torch.min(next_Q, dim=1)
+					target = reward + not_done * self.discount * (next_Q - alpha * next_log_pi)
 		else:
 			target = reward
+		
+		if self.critic_type == "SAC":
+			target = target.expand((-1, self.critic.m_nets)).unsqueeze(2)
 		
 		# --- Critic loss ---
 		# Set current Q functions to be the same as in target critic
 		self.critic.set_critics(indices)
-		cur_z = self.critic(state, action)
-		critic_loss = quantile_huber_loss_f(cur_z, target)
+		cur_Q = self.critic(state, action)
+		print(cur_Q.shape, target.shape)
+		critic_loss = critic_losses[self.critic_type](cur_Q, target)
 		metrics['critic_loss'] = critic_loss.item()
 
 		# --- Update critic --- 
@@ -96,7 +117,15 @@ class TQC(object):
 		# --- Policy loss ---
 		new_action, log_pi = self.actor(state)
 		metrics['actor_entropy'] = - log_pi.mean().item()
-		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
+		
+		# Set dimensions to take mean along
+		if self.critic_type == "TQC":
+			dims = (1, 2)
+		elif self.critic_type == "SAC":
+			dims = (1, )
+
+		# Calculate actor loss
+		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=dims)).mean()
 		metrics['actor_loss'] = actor_loss.item()
 
 		# --- Update actor ---
