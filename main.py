@@ -127,7 +127,7 @@ def main(args, experiment_folder):
         batch_size=args.batch_size,
         actor_clip_value=args.actor_clip_value,
         critic_clip_value=args.critic_clip_value,
-        use_one_cycle_lr=args.use_one_cycle_lr,
+        lr_scheduler=args.lr_scheduler,
         total_steps=args.max_timesteps,
         # PPO arguments
         clip_param=args.clip_param,
@@ -253,7 +253,7 @@ def main(args, experiment_folder):
             state = recollate_batch(state, envs_to_reset, reset_states)
 
         # Print update time
-        # print(time.perf_counter() - start)
+        print(time.perf_counter() - start)
 
         # Evaluate episode
         if (t + 1) % (args.eval_freq // args.n_parallel) == 0:

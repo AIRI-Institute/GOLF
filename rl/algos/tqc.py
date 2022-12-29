@@ -3,7 +3,7 @@ import torch
 from torch.nn.functional import mse_loss
 
 from rl import DEVICE
-from rl.utils import calculate_gradient_norm, quantile_huber_loss_f
+from rl.utils import calculate_gradient_norm, quantile_huber_loss_f, get_lr_scheduler
 
 
 critic_losses = {
@@ -28,7 +28,7 @@ class TQC(object):
 		batch_size=256,
 		actor_clip_value=None,
 		critic_clip_value=None,
-		use_one_cycle_lr=False,
+		lr_scheduler=None,
 		total_steps=0
 	):
 		self.critic_type = critic_type
@@ -40,12 +40,16 @@ class TQC(object):
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
 		self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)
-		self.use_one_cycle_lr = use_one_cycle_lr
-		if use_one_cycle_lr:
-			self.actor_lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.actor_optimizer, max_lr=25 * actor_lr,
-																		  final_div_factor=1e+3, total_steps=total_steps)
-			self.critic_lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.critic_optimizer, max_lr=25 * critic_lr,
-																	 	  final_div_factor=1e+3, total_steps=total_steps)
+		self.use_lr_scheduler = lr_scheduler is not None
+		if self.use_lr_scheduler:
+			lr_kwargs = {
+				"gamma": 0.5,
+				"initial_lr": actor_lr,
+				"total_steps": total_steps,
+				"final_div_factor": 1e+3,
+			}
+			self.actor_lr_scheduler = get_lr_scheduler(lr_scheduler, self.actor_optimizer, **lr_kwargs)
+			self.critic_lr_scheduler = get_lr_scheduler(lr_scheduler, self.critic_optimizer, **lr_kwargs)
 
 		self.discount = discount
 		self.tau = tau
@@ -110,7 +114,7 @@ class TQC(object):
 		if self.critic_clip_value is not None:
 			torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.critic_clip_value)
 		self.critic_optimizer.step()
-		if self.use_one_cycle_lr:
+		if self.use_lr_scheduler:
 			self.critic_lr_scheduler.step()
 
 		# --- Policy loss ---
@@ -135,7 +139,7 @@ class TQC(object):
 			if self.actor_clip_value is not None:
 				torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_clip_value)
 			self.actor_optimizer.step()
-			if self.use_one_cycle_lr:
+			if self.use_lr_scheduler:
 				self.actor_lr_scheduler.step()
 
 			# --- Alpha loss ---

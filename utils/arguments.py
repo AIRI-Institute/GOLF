@@ -10,6 +10,11 @@ def str2bool(s):
     else:
         return s
 
+def none_or_str(value):
+    if value == 'None':
+        return None
+    return value
+
 def get_args():
     parser = argparse.ArgumentParser()
     # Algorthm
@@ -285,11 +290,11 @@ def get_args():
         default=None,
         help="Clipping value for critic gradients")
     parser.add_argument(
-        "--use_one_cycle_lr",
-        default=False,
-        choices=[True, False],
-        metavar='True|False', type=str2bool,
-        help="Use OneCycleLR scheduler")
+        "--lr_scheduler",
+        default=None,
+        type=none_or_str,
+        choices=[None, "OneCycleLR", "StepLR"],
+        help="LR scheduler")
     parser.add_argument(
         "--alpha_lr",
         default=3e-4,

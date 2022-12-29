@@ -27,6 +27,23 @@ class TimelimitScheduler():
         return self.tl
 
 
+def get_lr_scheduler(scheduler_type, optimizer, **kwargs):
+    if scheduler_type == "OneCycleLR":
+        return torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=25 * kwargs['initial_lr'],
+            final_div_factor=kwargs['final_div_factor'],
+            total_steps=kwargs['total_steps']
+        )
+    elif scheduler_type == "StepLR":
+        return torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=kwargs['total_steps'] // 3,
+            gamma=kwargs['gamma']
+        )
+    else:
+        raise ValueError("Unknown LR scheduler type: {}".format(scheduler_type))
+
 def quantile_huber_loss_f(quantiles, samples):
     pairwise_delta = samples[:, None, None, :] - quantiles[:, :, :, None]  # batch x nets x quantiles x samples
     abs_pairwise_delta = torch.abs(pairwise_delta)
