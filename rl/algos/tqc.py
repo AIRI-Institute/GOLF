@@ -100,7 +100,6 @@ class TQC(object):
 		# Set current Q functions to be the same as in target critic
 		self.critic.set_critics(indices)
 		cur_Q = self.critic(state, action)
-		print(cur_Q.shape, target.shape)
 		critic_loss = critic_losses[self.critic_type](cur_Q, target)
 		metrics['critic_loss'] = critic_loss.item()
 
