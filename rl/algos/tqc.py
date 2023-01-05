@@ -43,7 +43,7 @@ class TQC(object):
 		self.use_lr_scheduler = lr_scheduler is not None
 		if self.use_lr_scheduler:
 			lr_kwargs = {
-				"gamma": 0.5,
+				"gamma": 0.1,
 				"total_steps": total_steps,
 				"final_div_factor": 1e+3,
 			}
@@ -51,9 +51,6 @@ class TQC(object):
 			self.actor_lr_scheduler = get_lr_scheduler(lr_scheduler, self.actor_optimizer, **lr_kwargs)
 			lr_kwargs['initial_lr'] = critic_lr
 			self.critic_lr_scheduler = get_lr_scheduler(lr_scheduler, self.critic_optimizer, **lr_kwargs)
-			# print(lr_kwargs)
-			# print(self.actor_lr_scheduler)
-			# print(self.critic_lr_scheduler)
 
 		self.discount = discount
 		self.tau = tau
@@ -156,8 +153,6 @@ class TQC(object):
 		if self.use_lr_scheduler:
 			self.actor_lr_scheduler.step()
 			self.critic_lr_scheduler.step()
-			#print("Actor LR: {}".format(self.actor_lr_scheduler.get_lr()))
-			#print("Critic LR: {}".format(self.critic_lr_scheduler.get_lr()))
 
 		# --- Update target net ---
 		for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
