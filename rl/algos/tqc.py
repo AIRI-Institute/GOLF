@@ -44,12 +44,16 @@ class TQC(object):
 		if self.use_lr_scheduler:
 			lr_kwargs = {
 				"gamma": 0.5,
-				"initial_lr": actor_lr,
 				"total_steps": total_steps,
 				"final_div_factor": 1e+3,
 			}
+			lr_kwargs['initial_lr'] = actor_lr
 			self.actor_lr_scheduler = get_lr_scheduler(lr_scheduler, self.actor_optimizer, **lr_kwargs)
+			lr_kwargs['initial_lr'] = critic_lr
 			self.critic_lr_scheduler = get_lr_scheduler(lr_scheduler, self.critic_optimizer, **lr_kwargs)
+			# print(lr_kwargs)
+			# print(self.actor_lr_scheduler)
+			# print(self.critic_lr_scheduler)
 
 		self.discount = discount
 		self.tau = tau
@@ -114,8 +118,6 @@ class TQC(object):
 		if self.critic_clip_value is not None:
 			torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.critic_clip_value)
 		self.critic_optimizer.step()
-		if self.use_lr_scheduler:
-			self.critic_lr_scheduler.step()
 
 		# --- Policy loss ---
 		new_action, log_pi = self.actor(state)
@@ -139,8 +141,6 @@ class TQC(object):
 			if self.actor_clip_value is not None:
 				torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_clip_value)
 			self.actor_optimizer.step()
-			if self.use_lr_scheduler:
-				self.actor_lr_scheduler.step()
 
 			# --- Alpha loss ---
 			target_entropy = self.per_atom_target_entropy * state['_atom_mask'].sum(-1)
@@ -152,6 +152,12 @@ class TQC(object):
 			self.alpha_optimizer.step()
 		else:
 			metrics['actor_grad_norm'] = 0.0
+		
+		if self.use_lr_scheduler:
+			self.actor_lr_scheduler.step()
+			self.critic_lr_scheduler.step()
+			#print("Actor LR: {}".format(self.actor_lr_scheduler.get_lr()))
+			#print("Critic LR: {}".format(self.critic_lr_scheduler.get_lr()))
 
 		# --- Update target net ---
 		for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
