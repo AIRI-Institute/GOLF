@@ -40,6 +40,7 @@ class TQC(object):
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
 		self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)
+
 		self.use_lr_scheduler = lr_scheduler is not None
 		if self.use_lr_scheduler:
 			lr_kwargs = {
@@ -101,11 +102,17 @@ class TQC(object):
 		if self.critic_type == "SAC":
 			target = target.expand((-1, self.critic.m_nets)).unsqueeze(2)
 		
+
 		# --- Critic loss ---
 		# Set current Q functions to be the same as in target critic
 		self.critic.set_critics(indices)
 		cur_Q = self.critic(state, action)
 		critic_loss = critic_losses[self.critic_type](cur_Q, target)
+
+		# If loss has inf value, its grad will be Nan which will cause an error.
+		# As a dirty fix we suggest to just skip such training steps.
+		if torch.isinf(critic_loss):
+			return metrics
 		metrics['critic_loss'] = critic_loss.item()
 
 		# --- Update critic --- 
@@ -128,6 +135,10 @@ class TQC(object):
 
 		# Calculate actor loss
 		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=dims)).mean()
+		# If loss has inf value, its grad will be Nan which will cause an error.
+		# As a dirty fix we suggest to just skip such training steps.
+		if torch.isinf(actor_loss):
+			return metrics
 		metrics['actor_loss'] = actor_loss.item()
 
 		# --- Update actor ---
