@@ -112,6 +112,7 @@ class TQC(object):
 		# If loss has inf value, its grad will be Nan which will cause an error.
 		# As a dirty fix we suggest to just skip such training steps.
 		if torch.isinf(critic_loss):
+			print("Inf in critic loss")
 			return metrics
 		metrics['critic_loss'] = critic_loss.item()
 
@@ -138,6 +139,7 @@ class TQC(object):
 		# If loss has inf value, its grad will be Nan which will cause an error.
 		# As a dirty fix we suggest to just skip such training steps.
 		if torch.isinf(actor_loss):
+			print("Inf in actor loss")
 			return metrics
 		metrics['actor_loss'] = actor_loss.item()
 
@@ -153,6 +155,11 @@ class TQC(object):
 			# --- Alpha loss ---
 			target_entropy = self.per_atom_target_entropy * state['_atom_mask'].sum(-1)
 			alpha_loss = -self.log_alpha * (log_pi + target_entropy).detach().mean()
+			# If loss has inf value, its grad will be Nan which will cause an error.
+			# As a dirty fix we suggest to just skip such training steps.
+			if torch.isinf(alpha_loss):
+				print("Inf in alpha loss")
+				return metrics
 
 			# --- Update alpha ---
 			self.alpha_optimizer.zero_grad()
