@@ -75,16 +75,16 @@ class TQC(object):
 		metrics = dict()
 
 		# For PaiNN debugging
-		recent_tensors = {}
+		# recent_tensors = {}
 
 		state, action, next_state, reward, not_done = replay_buffer.sample(self.batch_size)
 		
 		# For PaiNN debugging
-		recent_tensors['state'] = state
-		recent_tensors['action'] = action
-		recent_tensors['next_state'] = next_state
-		recent_tensors['reward'] = reward
-		recent_tensors['not_done'] = not_done
+		# recent_tensors['state'] = state
+		# recent_tensors['action'] = action
+		# recent_tensors['next_state'] = next_state
+		# recent_tensors['reward'] = reward
+		# recent_tensors['not_done'] = not_done
 
 		alpha = torch.exp(self.log_alpha)
 		metrics['alpha'] = alpha.item()
@@ -100,9 +100,9 @@ class TQC(object):
 					next_Q = self.critic_target(next_state, new_next_action)
 					
 					# For PaiNN debugging
-					recent_tensors['new_next_action'] = new_next_action
-					recent_tensors['next_log_pi'] = next_log_pi
-					recent_tensors['next_Q'] = next_Q
+					# recent_tensors['new_next_action'] = new_next_action
+					# recent_tensors['next_log_pi'] = next_log_pi
+					# recent_tensors['next_Q'] = next_Q
 					if self.critic_type == "TQC":
 						# Sort all quantiles
 						next_Q, _ = torch.sort(next_Q.reshape(self.batch_size, -1))
@@ -120,7 +120,7 @@ class TQC(object):
 			target = target.expand((-1, self.critic.m_nets)).unsqueeze(2)
 		
 		# For PaiNN debugging
-		recent_tensors['target'] = target
+		# recent_tensors['target'] = target
 
 		# --- Critic loss ---
 		# Set current Q functions to be the same as in target critic
@@ -128,7 +128,7 @@ class TQC(object):
 		cur_Q = self.critic(state, action)
 		critic_loss = critic_losses[self.critic_type](cur_Q, target)
 
-		recent_tensors['critic_loss'] = critic_loss
+		# recent_tensors['critic_loss'] = critic_loss
 
 		# If loss has inf value, its grad will be Nan which will cause an error.
 		# As a dirty fix we suggest to just skip such training steps.
@@ -150,8 +150,8 @@ class TQC(object):
 		metrics['actor_entropy'] = - log_pi.mean().item()
 
 		# For PaiNN debugging
-		recent_tensors['new_action'] = new_action
-		recent_tensors['log_pi'] = log_pi
+		# recent_tensors['new_action'] = new_action
+		# recent_tensors['log_pi'] = log_pi
 		
 		# Set dimensions to take mean along
 		if self.critic_type == "TQC":
@@ -171,8 +171,8 @@ class TQC(object):
 		metrics['actor_loss'] = actor_loss.item()
 
 		# For PaiNN debugging
-		recent_tensors['critic_out'] = critic_out
-		recent_tensors['entropy'] = entropy
+		# recent_tensors['critic_out'] = critic_out
+		# recent_tensors['entropy'] = entropy
 
 		# --- Update actor ---
 		if update_actor:
@@ -192,7 +192,7 @@ class TQC(object):
 				print("Inf in alpha loss")
 				return metrics
 			# For PaiNN debugging
-			recent_tensors['alpha_raw_loss'] = -self.log_alpha * (log_pi + target_entropy).detach()
+			# recent_tensors['alpha_raw_loss'] = -self.log_alpha * (log_pi + target_entropy).detach()
 			
 
 			# --- Update alpha ---
@@ -210,7 +210,7 @@ class TQC(object):
 		for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
 			target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 		self.total_it += 1
-		return metrics, recent_tensors
+		return metrics #, recent_tensors
 
 	def save(self, filename):
 		filename = str(filename)
