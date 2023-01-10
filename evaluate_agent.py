@@ -131,18 +131,13 @@ def main(exp_folder, args, config):
    
     _, eval_env = make_envs(config)
     # Initialize action_scale scheduler
-    action_scale_scheduler = ActionScaleScheduler(action_scale_init=config.action_scale_init,
-                                                  action_scale_end=config.action_scale_init,
-                                                  n_step_end=0,
-                                                  mode="constant")
-    action_scale_scheduler.update(0)
+
     backbone_args = {
         'n_interactions': config.n_interactions,
         'cutoff': config.cutoff,
         'n_gaussians': config.n_rbf,
         'n_rbf':  config.n_rbf,
         'use_cosine_between_vectors': config.use_cosine_between_vectors,
-        'summation_order': config.summation_order
     }
 
     actor = Actor(
@@ -150,7 +145,7 @@ def main(exp_folder, args, config):
         backbone_args=backbone_args,
         generate_action_type=config.generate_action_type,
         out_embedding_size=config.out_embedding_size,
-        action_scale_scheduler=action_scale_scheduler,
+        action_scale=config.action_scale,
         cutoff_type=config.cutoff_type,
         use_activation=config.use_activation,
         limit_actions=config.limit_actions,
