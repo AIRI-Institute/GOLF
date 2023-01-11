@@ -173,14 +173,6 @@ def main(args, experiment_folder):
         
         # Select next action
         with torch.no_grad():
-            # For PaiNN debug
-            # try: 
-            #     policy_out = policy.act(state)
-            # except ValueError as e:
-            #     print("NANS!")
-            #     raise(e)
-            # current_state_name = f'{experiment_folder}/current_agent_state'
-            # trainer.save(current_state_name)
             policy_out = policy.act(state)
             values, actions, log_probs = [x.cpu().numpy() for x in policy_out]
             if args.algorithm == "TQC":
@@ -226,9 +218,6 @@ def main(args, experiment_folder):
                 # Update TQC several times
                 for _ in range(args.n_parallel):
                     step_metrics = trainer.update(replay_buffer, update_actor_condition, args.greedy)
-                    # step_metrics, recent_tensors = trainer.update(replay_buffer, update_actor_condition, args.greedy)
-                    # with open(f"{experiment_folder}/recent_tensors.pickle", "wb") as f:
-                    #     pickle.dump(recent_tensors, f)
         else:
             step_metrics = dict()
 
