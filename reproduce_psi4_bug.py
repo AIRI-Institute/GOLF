@@ -1,7 +1,7 @@
 import argparse
 
 from multiprocessing import Manager, Pool
-from ase.db import connect
+from ase import Atoms
 
 import psi4
 from psi4 import SCFConvergenceError
@@ -96,10 +96,9 @@ def calculate_dft_energy_queue(queue, n_threads, M):
 
 def main(num_molecules, num_threads):
     queue = []
-    with connect("env/data/train_4k_mff.db") as conn:
-        for i, idx in enumerate(range(2343, 2343 + 5 * num_molecules, 5)):
-            atoms = conn.get(idx).toatoms()
-            queue.append((atoms, len(atoms.get_atomic_numbers()), i))
+    co = Atoms('CO', positions=[(0, 0, 0), (0, 0, 1.1)])
+    # Number of atoms = 2
+    queue = [[co, 2, i] for i in range(num_molecules)]
     result = calculate_dft_energy_queue(queue, n_threads=num_threads, M=0)
     print(result)
 
