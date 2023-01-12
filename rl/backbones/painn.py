@@ -177,15 +177,9 @@ class PaiNN(nn.Module):
 
             # Divide by norms if needed
             if self.use_cosine_between_vectors:
-                Vn = torch.norm(vectors_V, dim=2).masked_fill_(~atom_mask[..., None].bool(), 1.0)
-                Un = torch.norm(vectors_U, dim=2).masked_fill_(~atom_mask[..., None].bool(), 1.0)
-                # If an atom has no neighbors in the cutoff radius the
-                # corresponding row in Vn * Un will consist of zeros leading to Nans.
-                # As a dirty fix just fill it with 1.0
-                UnVn = Vn * Un
-                zero_indices = torch.where(UnVn == 0)
-                UnVn[zero_indices] = 1.0
-                scalar_VU /= UnVn
+                Vn = torch.norm(vectors_V, dim=2)
+                Un = torch.norm(vectors_U, dim=2)
+                scalar_VU /= Vn * Un + 1e-8
             
             dsv = dsv * scalar_VU
 
