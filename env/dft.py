@@ -11,7 +11,7 @@ psi4.set_options({
     "CACHELEVEL": 0,
 })
 psi4.set_memory("8 GB")
-#psi4.core.set_output_file("/dev/null")
+# psi4.core.set_output_file("/dev/null")
 
 HEADER = "units ang \n nocom \n noreorient \n"
 FUNCTIONAL_STRING = "wb97x-d/def2-svp"
@@ -77,10 +77,13 @@ def get_dft_energy(mol):
         # Set energy to some threshold if SOSCF does not converge 
         # Multiply by 627.5 to go from Hartree to kcal/mol
         print("DFT optimization did not converge!")
-        return -260.0 * 627.5
+        return -10000.0 * 627.5
     psi4.core.clean()
     return energy * 627.5
 
+
+def update_ase_atoms_positions(atoms, positions):
+    atoms.set_positions(positions)
 
 def update_psi4_geometry(molecule, positions):
     psi4matrix = psi4.core.Matrix.from_array(positions / psi_bohr2angstroms)
@@ -118,7 +121,8 @@ def calculate_dft_energy_queue(queue, n_threads, M):
 
 def calculate_dft_energy_item(queue, M):
     # Get molecule from the queue
-    molecule, _, idx = queue.get()
+    ase_atoms, _, idx = queue.get()
+    molecule = atoms2psi4mol(ase_atoms)
 
     # Perform DFT minimization
     not_converged = True
@@ -135,6 +139,7 @@ def calculate_dft_energy_item(queue, M):
         psi4.core.clean()
     else:
         # Calculate DFT energy
-        energy = get_dft_energy(molecule[idx])
+        energy = get_dft_energy(molecule)
+    print(energy)
     
     return (idx, not_converged, energy)
