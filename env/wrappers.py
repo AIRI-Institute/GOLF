@@ -9,7 +9,7 @@ from rdkit.Chem import AllChem, MolFromSmiles, Conformer, AddHs
 from .moldynamics_env import MolecularDynamics
 from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates
 from .dft import atoms2psi4mol, get_dft_energy,\
-     update_psi4_geometry, calculate_dft_energy_queue
+     update_ase_atoms_positions, calculate_dft_energy_queue
 
 RDKIT_ENERGY_THRESH = 500
 
@@ -47,7 +47,7 @@ class RewardWrapper(gym.Wrapper):
 
         self.update_coordinates = {
             'rdkit': set_coordinates,
-            'dft': update_psi4_geometry
+            'dft': update_ase_atoms_positions
         }
         self.get_energy = {
             'rdkit': get_rdkit_energy,
@@ -183,8 +183,8 @@ class RewardWrapper(gym.Wrapper):
                 # Log final RL energy of the molecule
                 if self.M > 0:
                     if self.dft:
-                        self.update_coordinates['dft'](self.molecule['dft'][idx], self.env.atoms[idx].get_positions())
-                        stats_done['final_rl_energy'][idx] = self.get_energy['dft'](self.molecule['dft'][idx])
+                        # To save computational resources just return 0.0
+                        stats_done['final_rl_energy'][idx] = 0.0
                     else:
                         self.update_coordinates['rdkit'](self.molecule['rdkit'][idx], self.env.atoms[idx].get_positions())
                         stats_done['final_rl_energy'][idx] = self.get_energy['rdkit'](self.molecule['rdkit'][idx])
@@ -223,7 +223,9 @@ class RewardWrapper(gym.Wrapper):
             if self.dft:
                 queue = []
                 self.threshold_exceeded[idx] = 0
-                self.molecule['dft'][idx] = atoms2psi4mol(self.env.atoms[idx])
+                # psi4.core.Molecule object cannot be stored in the MP Queue.
+                # Instead store ase.Atoms and transform into psi4 format later.
+                self.molecule['dft'][idx] = self.env.atoms[idx].copy()
                 if self.env.energy[idx] is not None and self.M == 0:
                     self.initial_energy['dft'][idx] = self.env.energy[idx]
                 else:
@@ -267,7 +269,9 @@ class RewardWrapper(gym.Wrapper):
             if self.dft:
                 queue = []
                 self.threshold_exceeded[idx] = 0
-                self.molecule['dft'][idx] = atoms2psi4mol(self.env.atoms[idx])
+                # psi4.core.Molecule object cannot be stored in the MP Queue.
+                # Instead store ase.Atoms and transform into psi4 format later.
+                self.molecule['dft'][idx] = self.env.atoms[idx].copy()
                 if energy is not None and self.M == 0:
                     self.initial_energy['dft'][idx] = energy
                 else:

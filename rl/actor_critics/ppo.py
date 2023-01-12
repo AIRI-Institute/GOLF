@@ -19,11 +19,10 @@ generate_action_block = {
 
 
 class PPOBase(nn.Module):
-    def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale_scheduler,
+    def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size, action_scale,
                  limit_actions, summation_order, cutoff_type, use_activation):
         super(PPOBase, self).__init__()
-        self.action_scale_scheduler = action_scale_scheduler
-
+        self.action_scale = action_scale
         representation = backbones[backbone](**backbone_args)
         output_modules = [
             spk.atomistic.Atomwise(
@@ -41,13 +40,12 @@ class PPOBase(nn.Module):
             activation = snn.activations.shifted_softplus
         else:
             activation = None
-        self.generate_actions_block = generate_action_block[generate_action_type](
-            out_embedding_size, limit_actions, cutoff_type,
+        self.generate_action_block = generate_action_block[generate_action_type](
+            out_embedding_size, limit_actions, action_scale, cutoff_type,
             backbone_args['cutoff'], summation_order, activation
         )
     
     def forward(self, state_dict, eval_actions=None):
-        action_scale = self.action_scale_scheduler.get_action_scale()
         atoms_mask = state_dict['_atom_mask']
         
         # Get molecule embeddings
@@ -61,7 +59,7 @@ class PPOBase(nn.Module):
 
         # Get actions
         atoms_emb = self.linear_emb_to_atoms_emb(self.activation(embedding_for_actor))
-        actions, log_prob = self.generate_actions_block(atoms_emb, state_dict['_positions'], atoms_mask, action_scale, eval_actions)
+        actions, log_prob = self.generate_action_block(atoms_emb, state_dict['_positions'], atoms_mask, eval_actions)
 
         # Get values
         value = self.linear_emb_to_V(self.activation(embedding_for_critic))
@@ -74,10 +72,10 @@ class PPOBase(nn.Module):
 
 class PPOPolicy(nn.Module):
     def __init__(self, backbone, backbone_args, generate_action_type, out_embedding_size,
-                 action_scale_scheduler, limit_actions, summation_order, cutoff_type, use_activation):
+                 action_scale, limit_actions, summation_order, cutoff_type, use_activation):
         super().__init__()
         self.base = PPOBase(backbone, backbone_args, generate_action_type, out_embedding_size,
-                            action_scale_scheduler, limit_actions, summation_order, cutoff_type, use_activation)
+                            action_scale, limit_actions, summation_order, cutoff_type, use_activation)
 
     def act(self, state_dict):
         value, action, log_prob = self.base(state_dict)

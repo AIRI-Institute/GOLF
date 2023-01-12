@@ -10,13 +10,18 @@ def str2bool(s):
     else:
         return s
 
+def none_or_str(value):
+    if value == 'None':
+        return None
+    return value
+
 def get_args():
     parser = argparse.ArgumentParser()
     # Algorthm
     parser.add_argument(
         "--algorithm",
         default='TQC',
-        choices=['TQC', 'PPO', 'OneStepSAC', 'OneStepREDQ'])
+        choices=['TQC', 'PPO', 'SAC'])
 
     # Env args
     parser.add_argument(
@@ -124,25 +129,10 @@ def get_args():
 
     # Action scale args.
     parser.add_argument(
-        "--action_scale_init",
+        "--action_scale",
         default=0.01,
         type=float,
-        help="Initial value of action_scale")
-    parser.add_argument(
-        "--action_scale_end",
-        default=0.05,
-        type=float,
-        help="Final value of action_scale")
-    parser.add_argument(
-        "--action_scale_n_step_end",
-        default=int(8e5),
-        type=int,
-        help="Step at which the final value of action_scale is reached")
-    parser.add_argument(
-        "--action_scale_mode",
-        choices=["constant", "discrete", "continuous"],
-        default="constant",
-        help="Mode of action scale scheduler")
+        help="Multiply actions by action_scale.")
     parser.add_argument(
         "--target_entropy_action_scale",
         default=0.01,
@@ -300,11 +290,11 @@ def get_args():
         default=None,
         help="Clipping value for critic gradients")
     parser.add_argument(
-        "--use_one_cycle_lr",
-        default=False,
-        choices=[True, False],
-        metavar='True|False', type=str2bool,
-        help="Use OneCycleLR scheduler")
+        "--lr_scheduler",
+        default=None,
+        type=none_or_str,
+        choices=[None, "OneCycleLR", "StepLR"],
+        help="LR scheduler")
     parser.add_argument(
         "--alpha_lr",
         default=3e-4,

@@ -12,17 +12,13 @@ from schnetpack.nn import get_cutoff_by_string
 
 from env.make_envs import make_envs
 from rl import DEVICE
-from rl.actor_critics.one_step_redq import OneStepREDQPolicy
-from rl.actor_critics.one_step_sac import OneStepSACPolicy
 from rl.actor_critics.ppo import PPOPolicy
 from rl.actor_critics.tqc import TQCPolicy
-from rl.algos.one_step_redq import OneStepREDQ
-from rl.algos.one_step_sac import OneStepSAC
 from rl.algos.ppo import PPO
 from rl.algos.tqc import TQC
 from rl.eval import eval_policy_dft, eval_policy_rdkit
 from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
-from rl.utils import (ActionScaleScheduler, TimelimitScheduler,
+from rl.utils import (TimelimitScheduler,
                       calculate_action_norm, recollate_batch, 
                       calculate_molecule_metrics)
 from utils.arguments import get_args
@@ -32,23 +28,19 @@ from utils.utils import ignore_extra_args
 policies = {
     "PPO": ignore_extra_args(PPOPolicy),
     "TQC": ignore_extra_args(TQCPolicy),
-    "OneStepSAC": ignore_extra_args(OneStepSACPolicy),
-    "OneStepREDQ": ignore_extra_args(OneStepREDQPolicy)
+    "SAC": ignore_extra_args(TQCPolicy)
 }
 
 trainers = {
     "PPO": ignore_extra_args(PPO),
     "TQC": ignore_extra_args(TQC),
-    "OneStepSAC": ignore_extra_args(OneStepSAC),
-    "OneStepREDQ": ignore_extra_args(OneStepREDQ)
+    "SAC": ignore_extra_args(TQC),
 }
 
 replay_buffers = {
     "PPO": ignore_extra_args(ReplayBufferPPO),
     "TQC": ignore_extra_args(ReplayBufferTQC),
-    # Same replay buffer type as in TQC
-    "OneStepSAC": ignore_extra_args(ReplayBufferTQC),
-    "OneStepREDQ": ignore_extra_args(ReplayBufferTQC)
+    "SAC": ignore_extra_args(ReplayBufferTQC),
 }
 
 eval_function = {
@@ -63,27 +55,17 @@ def main(args, experiment_folder):
     # Initialize logger
     logger = Logger(experiment_folder, args)
     
-    # OneStepSAC is specifically designed for greedy optimization
-    # For non-greedy optimization use TQC or PPO
-    if args.algorithm in ["OneStepSAC", "OneStepREDQ"]:
-        assert args.greedy, "OneStepSAC and OneStepREDQ are designed for greedy optimization only."
     use_ppo = args.algorithm == 'PPO'
 
     # Initialize envs
     env, eval_env = make_envs(args)
 
-    # Initialize action_scale scheduler and timelimit scheduler
-    action_scale_scheduler = ActionScaleScheduler(action_scale_init=args.action_scale_init, 
-                                                  action_scale_end=args.action_scale_end,
-                                                  n_step_end=args.action_scale_n_step_end,
-                                                  mode=args.action_scale_mode)
     if args.increment_timelimit:
         assert args.greedy, "Timelimit may be incremented during training only in greedy mode"
     timelimit_scheduler = TimelimitScheduler(timelimit_init=args.timelimit,
                                              step=args.timelimit_step,
                                              interval=args.timelimit_interval,
                                              constant=not args.increment_timelimit)
-    
     
     # Initialize replay buffer
     if use_ppo:
@@ -110,8 +92,8 @@ def main(args, experiment_folder):
         backbone=args.backbone,
         backbone_args=backbone_args,
         generate_action_type=args.generate_action_type,
+        critic_type=args.algorithm,
         out_embedding_size=args.out_embedding_size,
-        action_scale_scheduler=action_scale_scheduler,
         cutoff_type=args.cutoff_type,
         summation_order=args.summation_order,
         use_activation=args.use_activation,
@@ -119,12 +101,13 @@ def main(args, experiment_folder):
         m_nets=args.m_nets,
         n_quantiles=args.n_quantiles,
         limit_actions=args.limit_actions,
+        action_scale=args.action_scale,
     ).to(DEVICE)
 
     # Initialize cutoff network for logging purposes
     cutoff_network = get_cutoff_by_string(args.cutoff_type)(args.cutoff).to(DEVICE)
 
-    top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.n_nets
+    top_quantiles_to_drop = args.top_quantiles_to_drop_per_net * args.m_nets
     
     # Target entropy must differ for molecules of different sizes.
     # To achieve this we fix per-atom entropy instead of the entropy of the molecule.
@@ -132,6 +115,7 @@ def main(args, experiment_folder):
     trainer = trainers[args.algorithm](
         policy=policy,
         # TQC arguments
+        critic_type=args.algorithm,
         discount=args.discount,
         tau=args.tau,
         log_alpha=np.log([args.initial_alpha]).item(),
@@ -143,7 +127,7 @@ def main(args, experiment_folder):
         batch_size=args.batch_size,
         actor_clip_value=args.actor_clip_value,
         critic_clip_value=args.critic_clip_value,
-        use_one_cycle_lr=args.use_one_cycle_lr,
+        lr_scheduler=args.lr_scheduler,
         total_steps=args.max_timesteps,
         # PPO arguments
         clip_param=args.clip_param,
@@ -179,7 +163,6 @@ def main(args, experiment_folder):
         else:
             update_condition = (t + 1) >= args.batch_size // args.n_parallel and (t + 1) % args.update_frequency == 0
             update_actor_condition = (t + 1) > args.pretrain_critic // args.n_parallel
-        action_scale_scheduler.update(t)
         
         # Update timelimit
         timelimit_scheduler.update(t)
@@ -195,7 +178,7 @@ def main(args, experiment_folder):
             if args.algorithm == "TQC":
                 # Mean over nets and quantiles
                 values = values.mean(axis=(1, 2))
-            elif args.algorithm == "OneStepREDQ":
+            elif args.algorithm == "SAC":
                 values = values.mean(axis=1)
             elif use_ppo:
                 # Remove extra dimension to store correctly
@@ -239,7 +222,6 @@ def main(args, experiment_folder):
             step_metrics = dict()
 
         step_metrics['Timestamp'] = str(datetime.datetime.now())
-        step_metrics['Action_scale'] = action_scale_scheduler.get_action_scale()
         step_metrics['Timelimit'] = current_timelimit
         step_metrics['Action_norm'] = calculate_action_norm(actions, state['_atom_mask']).item()
         
@@ -271,7 +253,7 @@ def main(args, experiment_folder):
             state = recollate_batch(state, envs_to_reset, reset_states)
 
         # Print update time
-        print(time.perf_counter() - start)
+        # print(time.perf_counter() - start)
 
         # Evaluate episode
         if (t + 1) % (args.eval_freq // args.n_parallel) == 0:

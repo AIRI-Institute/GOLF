@@ -10,33 +10,6 @@ from rl import DEVICE
 from rl.replay_buffer import UNWANTED_KEYS
 
 
-class ActionScaleScheduler():
-    def __init__(self,  action_scale_init, action_scale_end, n_step_end, mode="discrete"):
-        self.as_init = action_scale_init
-        self.as_end = action_scale_end
-        self.n_step_end = n_step_end
-
-        assert mode in ["constant", "discrete", "continuous"], "Unknown ActionScaleSheduler mode!"
-        self.mode  = mode
-        # For discrete mode
-        if mode == "discrete":
-            n_updates = (self.as_end - self.as_init) / 0.01
-            self.update_interval = self.n_step_end / n_updates
-
-    def update(self, n_step):
-        if self.mode == "constant":
-            current_action_scale = self.as_init
-        elif self.mode == "discrete":
-            current_action_scale = self.as_init + floor(n_step / self.update_interval) * 0.01
-        else:
-            p = max((self.n_step_end - n_step) / self.n_step_end, 0)
-            current_action_scale = p * (self.as_init - self.as_end) + self.as_end
-        self.current_action_scale = current_action_scale
-
-    def get_action_scale(self):
-        return self.current_action_scale
-
-
 class TimelimitScheduler():
     def __init__(self,  timelimit_init=1, step=10, interval=100000, constant=True):
         self.init_tl = timelimit_init
@@ -53,6 +26,23 @@ class TimelimitScheduler():
     def get_timelimit(self):
         return self.tl
 
+
+def get_lr_scheduler(scheduler_type, optimizer, **kwargs):
+    if scheduler_type == "OneCycleLR":
+        return torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=25 * kwargs['initial_lr'],
+            final_div_factor=kwargs['final_div_factor'],
+            total_steps=kwargs['total_steps']
+        )
+    elif scheduler_type == "StepLR":
+        return torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=kwargs['total_steps'] // 3,
+            gamma=kwargs['gamma']
+        )
+    else:
+        raise ValueError("Unknown LR scheduler type: {}".format(scheduler_type))
 
 def quantile_huber_loss_f(quantiles, samples):
     pairwise_delta = samples[:, None, None, :] - quantiles[:, :, :, None]  # batch x nets x quantiles x samples

@@ -1,7 +1,15 @@
 import torch
 
+from torch.nn.functional import mse_loss
+
 from rl import DEVICE
-from rl.utils import calculate_gradient_norm, quantile_huber_loss_f
+from rl.utils import calculate_gradient_norm, quantile_huber_loss_f, get_lr_scheduler
+
+
+critic_losses = {
+	"TQC": quantile_huber_loss_f,
+	"SAC": mse_loss,
+}
 
 
 class TQC(object):
@@ -16,12 +24,14 @@ class TQC(object):
 		alpha_lr,
 		top_quantiles_to_drop,
 		per_atom_target_entropy,
+		critic_type="TQC",
 		batch_size=256,
 		actor_clip_value=None,
 		critic_clip_value=None,
-		use_one_cycle_lr=False,
+		lr_scheduler=None,
 		total_steps=0
 	):
+		self.critic_type = critic_type
 		self.actor = policy.actor
 		self.critic = policy.critic
 		self.critic_target = policy.critic_target
@@ -30,12 +40,18 @@ class TQC(object):
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
 		self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)
-		self.use_one_cycle_lr = use_one_cycle_lr
-		if use_one_cycle_lr:
-			self.actor_lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.actor_optimizer, max_lr=25 * actor_lr,
-																		  final_div_factor=1e+3, total_steps=total_steps)
-			self.critic_lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.critic_optimizer, max_lr=25 * critic_lr,
-																	 	  final_div_factor=1e+3, total_steps=total_steps)
+
+		self.use_lr_scheduler = lr_scheduler is not None
+		if self.use_lr_scheduler:
+			lr_kwargs = {
+				"gamma": 0.1,
+				"total_steps": total_steps,
+				"final_div_factor": 1e+3,
+			}
+			lr_kwargs['initial_lr'] = actor_lr
+			self.actor_lr_scheduler = get_lr_scheduler(lr_scheduler, self.actor_optimizer, **lr_kwargs)
+			lr_kwargs['initial_lr'] = critic_lr
+			self.critic_lr_scheduler = get_lr_scheduler(lr_scheduler, self.critic_optimizer, **lr_kwargs)
 
 		self.discount = discount
 		self.tau = tau
@@ -45,7 +61,8 @@ class TQC(object):
 		self.actor_clip_value = actor_clip_value
 		self.critic_clip_value = critic_clip_value
 
-		self.quantiles_total = self.critic.n_quantiles * self.critic.n_nets
+		if self.critic_type == "TQC":
+			self.quantiles_total = self.critic.n_quantiles * self.critic.n_nets
 
 		self.total_it = 0
 
@@ -65,22 +82,37 @@ class TQC(object):
 		indices = self.critic_target.select_critics()
 		if not greedy:
 			with torch.no_grad():
-				# get policy action
-				new_next_action, next_log_pi = self.actor(next_state)
-				# compute and cut quantiles at the next state
-				next_z = self.critic_target(next_state, new_next_action)
-				sorted_z, _ = torch.sort(next_z.reshape(self.batch_size, -1))
-				self.add_next_z_metrics(metrics, sorted_z)
-				sorted_z_part = sorted_z[:, :self.quantiles_total-self.top_quantiles_to_drop]
-				target = reward + not_done * self.discount * (sorted_z_part - alpha * next_log_pi)
+					# Get fresh policy action
+					new_next_action, next_log_pi = self.actor(next_state)
+					# Get critic prediction for the next_state
+					next_Q = self.critic_target(next_state, new_next_action)
+					if self.critic_type == "TQC":
+						# Sort all quantiles
+						next_Q, _ = torch.sort(next_Q.reshape(self.batch_size, -1))
+						self.add_next_z_metrics(metrics, next_Q)
+						# Cut top quantiles
+						next_Q = next_Q[:, :self.quantiles_total - self.top_quantiles_to_drop]
+					elif self.critic_type == "SAC":
+						# Take minimum of Q functions
+						next_Q, _ = torch.min(next_Q, dim=1)
+					target = reward + not_done * self.discount * (next_Q - alpha * next_log_pi)
 		else:
 			target = reward
 		
+		if self.critic_type == "SAC":
+			target = target.expand((-1, self.critic.m_nets)).unsqueeze(2)
+
 		# --- Critic loss ---
 		# Set current Q functions to be the same as in target critic
 		self.critic.set_critics(indices)
-		cur_z = self.critic(state, action)
-		critic_loss = quantile_huber_loss_f(cur_z, target)
+		cur_Q = self.critic(state, action)
+		critic_loss = critic_losses[self.critic_type](cur_Q, target)
+
+		# If loss has inf value, its grad will be Nan which will cause an error.
+		# As a dirty fix we suggest to just skip such training steps.
+		if torch.isinf(critic_loss):
+			print("Inf in critic loss")
+			return metrics
 		metrics['critic_loss'] = critic_loss.item()
 
 		# --- Update critic --- 
@@ -90,13 +122,26 @@ class TQC(object):
 		if self.critic_clip_value is not None:
 			torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.critic_clip_value)
 		self.critic_optimizer.step()
-		if self.use_one_cycle_lr:
-			self.critic_lr_scheduler.step()
 
 		# --- Policy loss ---
 		new_action, log_pi = self.actor(state)
 		metrics['actor_entropy'] = - log_pi.mean().item()
-		actor_loss = (alpha * log_pi.squeeze() - self.critic(state, new_action).mean(dim=(1, 2))).mean()
+		
+		# Set dimensions to take mean along
+		if self.critic_type == "TQC":
+			dims = (1, 2)
+		elif self.critic_type == "SAC":
+			dims = (1, )
+
+		# Calculate actor loss
+		critic_out = self.critic(state, new_action).mean(dim=dims)
+		entropy = alpha * log_pi.squeeze()
+		actor_loss = (entropy - critic_out).mean()
+		# If loss has inf value, its grad will be Nan which will cause an error.
+		# As a dirty fix we suggest to just skip such training steps.
+		if torch.isinf(actor_loss):
+			print("Inf in actor loss")
+			return metrics
 		metrics['actor_loss'] = actor_loss.item()
 
 		# --- Update actor ---
@@ -107,8 +152,6 @@ class TQC(object):
 			if self.actor_clip_value is not None:
 				torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_clip_value)
 			self.actor_optimizer.step()
-			if self.use_one_cycle_lr:
-				self.actor_lr_scheduler.step()
 
 			# --- Alpha loss ---
 			target_entropy = self.per_atom_target_entropy * state['_atom_mask'].sum(-1)
@@ -120,6 +163,10 @@ class TQC(object):
 			self.alpha_optimizer.step()
 		else:
 			metrics['actor_grad_norm'] = 0.0
+		
+		if self.use_lr_scheduler:
+			self.actor_lr_scheduler.step()
+			self.critic_lr_scheduler.step()
 
 		# --- Update target net ---
 		for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
