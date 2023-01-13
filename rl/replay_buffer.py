@@ -143,6 +143,38 @@ class ReplayBufferTQC(object):
         return (state_batch, action_batch, next_state_batch, reward, not_done)
 
 
+class ReplayBufferGD(object):
+    def __init__(self, device, max_size=int(1e6)):
+        self.device = device
+        self.max_size = max_size
+        self.ptr = 0
+        self.size = 0
+
+        self.states = [None] * self.max_size
+        self.energy = torch.empty((max_size, 1), dtype=torch.float32)
+
+    def add(self, states, actions, next_state, energies, dones):
+        energies = torch.tensor(energies, dtype=torch.float32)
+
+        num_atoms = states['_atom_mask'].sum(-1).long()
+        states_list = [{key: value[i, :num_atoms[i]].cpu() for key, value in states.items() if key not in UNWANTED_KEYS}
+                       for i in range(len(num_atoms))]
+
+        # Update replay buffer
+        for i in range(len(num_atoms)):
+            self.states[self.ptr] = states_list[i]
+            self.energy[self.ptr] = energies[i]
+            self.ptr = (self.ptr + 1) % self.max_size
+            self.size = min(self.size + 1, self.max_size)
+
+    def sample(self, batch_size):
+        ind = np.random.choice(self.size, batch_size, replace=False)
+        states = [self.states[i] for i in ind]
+        state_batch = {key: value.to(self.device) for key, value in _collate_aseatoms(states).items()}
+        energy = self.energy[ind].to(self.device)
+        return state_batch, energy
+
+
 def _collate_actions(actions):
     max_size = max([action.shape[0] for action in actions])
     actions_batch = torch.zeros(len(actions), max_size, actions[0].shape[1])

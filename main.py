@@ -12,12 +12,14 @@ from schnetpack.nn import get_cutoff_by_string
 
 from env.make_envs import make_envs
 from rl import DEVICE
+from rl.actor_critics.gd import GDPolicy
 from rl.actor_critics.ppo import PPOPolicy
 from rl.actor_critics.tqc import TQCPolicy
+from rl.algos.gd import GD
 from rl.algos.ppo import PPO
 from rl.algos.tqc import TQC
 from rl.eval import eval_policy_dft, eval_policy_rdkit
-from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC
+from rl.replay_buffer import ReplayBufferPPO, ReplayBufferTQC, ReplayBufferGD
 from rl.utils import (TimelimitScheduler,
                       calculate_action_norm, recollate_batch, 
                       calculate_molecule_metrics)
@@ -28,19 +30,22 @@ from utils.utils import ignore_extra_args
 policies = {
     "PPO": ignore_extra_args(PPOPolicy),
     "TQC": ignore_extra_args(TQCPolicy),
-    "SAC": ignore_extra_args(TQCPolicy)
+    "SAC": ignore_extra_args(TQCPolicy),
+    "GD": ignore_extra_args(GDPolicy),
 }
 
 trainers = {
     "PPO": ignore_extra_args(PPO),
     "TQC": ignore_extra_args(TQC),
     "SAC": ignore_extra_args(TQC),
+    "GD": ignore_extra_args(GD),
 }
 
 replay_buffers = {
     "PPO": ignore_extra_args(ReplayBufferPPO),
     "TQC": ignore_extra_args(ReplayBufferTQC),
     "SAC": ignore_extra_args(ReplayBufferTQC),
+    "GD": ignore_extra_args(ReplayBufferGD),
 }
 
 eval_function = {
@@ -56,6 +61,7 @@ def main(args, experiment_folder):
     logger = Logger(experiment_folder, args)
     
     use_ppo = args.algorithm == 'PPO'
+    use_gd = args.algorithm == 'GD'
 
     # Initialize envs
     env, eval_env = make_envs(args)
@@ -102,6 +108,7 @@ def main(args, experiment_folder):
         n_quantiles=args.n_quantiles,
         limit_actions=args.limit_actions,
         action_scale=args.action_scale,
+        action_norm_limit=args.action_norm_limit,
     ).to(DEVICE)
 
     # Initialize cutoff network for logging purposes
@@ -141,6 +148,10 @@ def main(args, experiment_folder):
     )
 
     state = env.reset()
+    if use_gd:
+        current_energy = np.array(env.initial_energy[args.reward], dtype=np.float32)
+        replay_buffer.add(state, None, None, current_energy, None)
+
     episode_returns = np.zeros(args.n_parallel)
     episode_Q = np.zeros(args.n_parallel)
 
@@ -172,18 +183,22 @@ def main(args, experiment_folder):
         env.unwrapped.update_timelimit(current_timelimit)
         
         # Select next action
-        with torch.no_grad():
-            policy_out = policy.act(state)
-            values, actions, log_probs = [x.cpu().numpy() for x in policy_out]
-            if args.algorithm == "TQC":
-                # Mean over nets and quantiles
-                values = values.mean(axis=(1, 2))
-            elif args.algorithm == "SAC":
-                values = values.mean(axis=1)
-            elif use_ppo:
-                # Remove extra dimension to store correctly
-                values = values.squeeze(-1)
-                log_probs = log_probs.squeeze(-1)
+        if use_gd:
+            actions = policy.act(state)['action'].cpu().numpy()
+            values = np.zeros(actions.shape[0], dtype=np.float32)
+        else:
+            with torch.no_grad():
+                policy_out = policy.act(state)
+                values, actions, log_probs = [x.cpu().numpy() for x in policy_out]
+                if args.algorithm == "TQC":
+                    # Mean over nets and quantiles
+                    values = values.mean(axis=(1, 2))
+                elif args.algorithm == "SAC":
+                    values = values.mean(axis=1)
+                elif use_ppo:
+                    # Remove extra dimension to store correctly
+                    values = values.squeeze(-1)
+                    log_probs = log_probs.squeeze(-1)
 
         next_state, rewards, dones, info = env.step(actions)
         # Done on every step or at the end of the episode
@@ -195,6 +210,9 @@ def main(args, experiment_folder):
         # if PPO then add log_prob, value and next value to RB
         if use_ppo:
             transition.extend([ep_ends, log_probs, values])
+        elif use_gd:
+            current_energy = np.array(env.initial_energy[args.reward], dtype=np.float32)
+            transition[3] = current_energy
         replay_buffer.add(*transition)
 
         # Estimate average number of atoms inside cutoff radius
@@ -251,6 +269,9 @@ def main(args, experiment_folder):
         if len(envs_to_reset) > 0:
             reset_states = env.reset(indices=envs_to_reset)
             state = recollate_batch(state, envs_to_reset, reset_states)
+            if use_gd:
+                energies = np.array([env.initial_energy[args.reward][idx] for idx in envs_to_reset], dtype=np.float32)
+                replay_buffer.add(reset_states, None, None, energies, None)
 
         # Print update time
         # print(time.perf_counter() - start)
@@ -258,6 +279,7 @@ def main(args, experiment_folder):
         # Evaluate episode
         if (t + 1) % (args.eval_freq // args.n_parallel) == 0:
             step_metrics['Total_timesteps'] = (t + 1) * args.n_parallel
+            step_metrics['FPS'] = args.n_parallel / (time.perf_counter() - start)
             step_metrics.update(
                 eval_function[args.reward](
                     actor=policy,

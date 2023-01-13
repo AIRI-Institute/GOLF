@@ -17,8 +17,7 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps):
     state = env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
     state = {k:v.to(DEVICE) for k, v in state.items()}
     while not done[0] and t < max_timestamps:
-        with torch.no_grad():
-            action = actor.select_action(state)
+        action = actor.select_action(state)
         state, reward, done, info = env.step(action)
         state = {k:v.to(DEVICE) for k, v in state.items()}
         delta_energy += reward[0]

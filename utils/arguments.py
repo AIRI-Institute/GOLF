@@ -21,7 +21,7 @@ def get_args():
     parser.add_argument(
         "--algorithm",
         default='TQC',
-        choices=['TQC', 'PPO', 'SAC'])
+        choices=['TQC', 'PPO', 'SAC', 'GD'])
 
     # Env args
     parser.add_argument(
@@ -337,6 +337,13 @@ def get_args():
         default=True,
         type=bool,
         help="Whether to use clipped value loss")
+
+    # GD args
+    parser.add_argument(
+        "--action_norm_limit",
+        default=0.05,
+        type=float,
+        help="Limit max action norm")
     
     # Other args
     parser.add_argument(
@@ -391,6 +398,11 @@ def get_args():
         "--log_dir",
         default='.',
         help="Directory where runs are saved")
+    parser.add_argument(
+        "--run_id",
+        default='run-0',
+        type=str,
+        help="Run name in wandb project")
     args = parser.parse_args()
 
     return args

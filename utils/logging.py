@@ -1,8 +1,17 @@
 import json
+import sys
+import warnings
+
 import numpy as np
 import os
 
 from collections import deque
+
+try:
+    import wandb
+except ImportError:
+    pass
+
 
 class Logger:
     def __init__(self, experiment_folder, config):
@@ -38,6 +47,12 @@ class Logger:
         self.exploration_threshold_exceeded_pct = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_number = 0
 
+        self.use_wandb = 'wandb' in sys.modules and os.environ.get('WANDB_API_KEY')
+        if self.use_wandb:
+            wandb.init(project=config.exp_name, save_code=True, name=config.run_id)
+        else:
+            warnings.warn('Could not configure wandb access.')
+
     def log(self, metrics):
         metrics['Exploration episodes number'] = self.exploration_episode_number
         for name, d in zip(
@@ -61,6 +76,9 @@ class Logger:
         with open(self.metrics_file, 'a') as out_metrics:
             json.dump(metrics, out_metrics)
             out_metrics.write('\n')
+
+        if self.use_wandb:
+            wandb.log(metrics)
 
     def update_evaluation_statistics(self,
                                      episode_length,
