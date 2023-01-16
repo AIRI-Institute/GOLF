@@ -38,9 +38,12 @@ class Actor(nn.Module):
 
         return actions
 
-    def forward(self, state_dict):
-        atoms_mask = state_dict['_atom_mask']
+    def forward(self, state_dict, train=False):
         output = self.model(state_dict)
+        if train:
+            return output
+
+        atoms_mask = state_dict['_atom_mask']
         action = output['anti_gradient'].detach() * atoms_mask.unsqueeze(-1)
         action *= self.action_scale
         action = self._limit_action_norm(action)

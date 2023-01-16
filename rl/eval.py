@@ -28,10 +28,10 @@ def rdkit_minimize_until_convergence(env, fixed_atoms, smiles, M=None):
     M_init = 1000
     env.set_initial_positions(fixed_atoms, smiles, energy_list=[None], M=M)
     initial_energy = env.initial_energy['rdkit'][0]
-    not_converged, final_energy = env.minimize_rdkit(idx=0, M=M_init)
+    not_converged, final_energy, _ = env.minimize_rdkit(idx=0, M=M_init)
     while not_converged:
         M_init *= 2
-        not_converged, final_energy = env.minimize_rdkit(idx=0, M=M_init)
+        not_converged, final_energy, _ = env.minimize_rdkit(idx=0, M=M_init)
         if M_init > 5000:
             print("Minimization did not converge!")
             return initial_energy, final_energy

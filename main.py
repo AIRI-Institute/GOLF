@@ -150,7 +150,8 @@ def main(args, experiment_folder):
     state = env.reset()
     if use_gd:
         current_energy = np.array(env.initial_energy[args.reward], dtype=np.float32)
-        replay_buffer.add(state, None, None, current_energy, None)
+        forces = [np.array(force, dtype=np.float32) for force in env.force[args.reward]]
+        replay_buffer.add(state, None, forces, current_energy, None)
 
     episode_returns = np.zeros(args.n_parallel)
     episode_Q = np.zeros(args.n_parallel)
@@ -212,6 +213,8 @@ def main(args, experiment_folder):
             transition.extend([ep_ends, log_probs, values])
         elif use_gd:
             current_energy = np.array(env.initial_energy[args.reward], dtype=np.float32)
+            forces = [np.array(force, dtype=np.float32) for force in env.force[args.reward]]
+            transition[2] = forces
             transition[3] = current_energy
         replay_buffer.add(*transition)
 
@@ -271,7 +274,8 @@ def main(args, experiment_folder):
             state = recollate_batch(state, envs_to_reset, reset_states)
             if use_gd:
                 energies = np.array([env.initial_energy[args.reward][idx] for idx in envs_to_reset], dtype=np.float32)
-                replay_buffer.add(reset_states, None, None, energies, None)
+                forces = [np.array(env.force[args.reward][idx], dtype=np.float32) for idx in envs_to_reset]
+                replay_buffer.add(reset_states, None, forces, energies, None)
 
         # Print update time
         # print(time.perf_counter() - start)

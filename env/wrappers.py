@@ -7,7 +7,7 @@ from schnetpack.data.loader import _collate_aseatoms
 from rdkit.Chem import AllChem, MolFromSmiles, Conformer, AddHs
 
 from .moldynamics_env import MolecularDynamics
-from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates
+from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates, get_rdkit_force
 from .dft import atoms2psi4mol, get_dft_energy,\
      update_ase_atoms_positions, calculate_dft_energy_queue
 
@@ -53,6 +53,10 @@ class RewardWrapper(gym.Wrapper):
             'rdkit': get_rdkit_energy,
             'dft': get_dft_energy
         }
+        self.get_force = {
+            'rdkit': get_rdkit_force,
+            'dft': None,
+        }
         
         # Check parent class to name the reward correctly
         if isinstance(env, MolecularDynamics):
@@ -66,6 +70,10 @@ class RewardWrapper(gym.Wrapper):
         self.initial_energy = {
             'rdkit': [None] * self.n_parallel,
             'dft': [None] * self.n_parallel
+        }
+        self.force = {
+            'rdkit': [None] * self.n_parallel,
+            'dft': [None] * self.n_parallel,
         }
         self.molecule = {
             'rdkit': [None] * self.n_parallel,
@@ -116,7 +124,7 @@ class RewardWrapper(gym.Wrapper):
             
             # Calculate current rdkit reward for every trajectory
             if self.minimize_on_every_step or info['env_done'][idx]:
-                not_converged[idx], final_energy[idx] = self.minimize_rdkit(idx)
+                not_converged[idx], final_energy[idx], self.force['rdkit'][idx] = self.minimize_rdkit(idx)
                 rdkit_rewards[idx] = self.initial_energy['rdkit'][idx] - final_energy[idx]
 
         # DFT rewards
@@ -217,7 +225,7 @@ class RewardWrapper(gym.Wrapper):
             else:
                 raise ValueError("Unknown molecule type {}".format(str(self.env.atoms[idx].symbols)))
             self.update_coordinates['rdkit'](self.molecule['rdkit'][idx], self.env.atoms[idx].get_positions())
-            _, self.initial_energy['rdkit'][idx] = self.minimize_rdkit(idx)
+            _, self.initial_energy['rdkit'][idx], self.force['rdkit'][idx] = self.minimize_rdkit(idx)
 
             # Calculate initial dft energy
             if self.dft:
@@ -263,7 +271,7 @@ class RewardWrapper(gym.Wrapper):
             else:
                 raise ValueError("Unknown molecule type {}".format(str(self.env.atoms[idx].symbols)))
             self.update_coordinates['rdkit'](self.molecule['rdkit'][idx], self.env.atoms[idx].get_positions())
-            _, self.initial_energy['rdkit'][idx] = self.minimize_rdkit(idx, M)
+            _, self.initial_energy['rdkit'][idx], self.force['rdkit'][idx] = self.minimize_rdkit(idx, M)
 
             # Calculate initial dft energy
             if self.dft:
@@ -304,8 +312,9 @@ class RewardWrapper(gym.Wrapper):
         ff.Initialize()
         not_converged = ff.Minimize(maxIts=n_its)
         energy = self.get_energy['rdkit'](self.molecule['rdkit'][idx])
+        force = self.get_force['rdkit'](self.molecule['rdkit'][idx])
        
-        return not_converged, energy
+        return not_converged, energy, force
 
     def get_atoms_num(self):
         return self.env.get_atoms_num()

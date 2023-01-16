@@ -43,10 +43,10 @@ def rdkit_minimize_until_convergence(env, fixed_atoms, smiles):
     M_init = 1000
     env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
     initial_energy = env.initial_energy['rdkit'][0]
-    not_converged, final_energy = env.minimize_rdkit(idx=0, M=M_init)
+    not_converged, final_energy, _ = env.minimize_rdkit(idx=0, M=M_init)
     while not_converged:
         M_init *= 2
-        not_converged, final_energy = env.minimize_rdkit(idx=0, M=M_init)
+        not_converged, final_energy, _ = env.minimize_rdkit(idx=0, M=M_init)
         if M_init > 5000:
             print("Minimization did not converge!")
             return initial_energy, final_energy
@@ -61,9 +61,9 @@ def rdkit_minimize_until_convergence_binary_search(env, fixed_atoms, smiles):
     while left <= right:
         mid = (left + right) // 2
         env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
-        not_converged_l, final_energy_left = env.minimize_rdkit(M=mid, idx=0)
+        not_converged_l, final_energy_left, _ = env.minimize_rdkit(M=mid, idx=0)
         env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
-        not_converged_r, _ = env.minimize_rdkit(M=mid + 1, idx=0)
+        not_converged_r, _, _ = env.minimize_rdkit(M=mid + 1, idx=0)
         if not_converged_l and not_converged_r:
             left = mid + 1
         elif not not_converged_l and not not_converged_r:

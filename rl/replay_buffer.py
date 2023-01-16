@@ -152,8 +152,9 @@ class ReplayBufferGD(object):
 
         self.states = [None] * self.max_size
         self.energy = torch.empty((max_size, 1), dtype=torch.float32)
+        self.forces = [None] * self.max_size
 
-    def add(self, states, actions, next_state, energies, dones):
+    def add(self, states, actions, forces, energies, dones):
         energies = torch.tensor(energies, dtype=torch.float32)
 
         num_atoms = states['_atom_mask'].sum(-1).long()
@@ -164,15 +165,17 @@ class ReplayBufferGD(object):
         for i in range(len(num_atoms)):
             self.states[self.ptr] = states_list[i]
             self.energy[self.ptr] = energies[i]
+            self.forces[self.ptr] = torch.from_numpy(forces[i])
             self.ptr = (self.ptr + 1) % self.max_size
             self.size = min(self.size + 1, self.max_size)
 
     def sample(self, batch_size):
         ind = np.random.choice(self.size, batch_size, replace=False)
         states = [self.states[i] for i in ind]
+        forces = _collate_actions([self.forces[i] for i in ind]).to(self.device)
         state_batch = {key: value.to(self.device) for key, value in _collate_aseatoms(states).items()}
         energy = self.energy[ind].to(self.device)
-        return state_batch, energy
+        return state_batch, forces, energy
 
 
 def _collate_actions(actions):

@@ -344,6 +344,16 @@ def get_args():
         default=0.05,
         type=float,
         help="Limit max action norm")
+    parser.add_argument(
+        "--energy_loss_coef",
+        default=0.01,
+        type=float
+    )
+    parser.add_argument(
+        "--force_loss_coef",
+        default=1.,
+        type=float
+    )
     
     # Other args
     parser.add_argument(
