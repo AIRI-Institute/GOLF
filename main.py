@@ -144,7 +144,10 @@ def main(args, experiment_folder):
         entropy_coef=args.entropy_coef,
         lr=args.actor_lr,
         max_grad_norm=args.actor_clip_value,
-        use_clipped_value_loss=args.use_clipped_value_loss
+        use_clipped_value_loss=args.use_clipped_value_loss,
+        # GD arguments
+        energy_loss_coef=args.energy_loss_coef,
+        force_loss_coef=args.force_loss_coef,
     )
 
     state = env.reset()
