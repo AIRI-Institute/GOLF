@@ -4,18 +4,24 @@ import torch.nn as nn
 import schnetpack as spk
 from torch.linalg import vector_norm
 
+from rl.backbones.painn import PaiNN
 from utils.utils import ignore_extra_args
 
 EPS = 1e-8
 
+backbones = {
+    "schnet": ignore_extra_args(spk.SchNet),
+    "painn": ignore_extra_args(PaiNN)
+}
+
 
 class Actor(nn.Module):
-    def __init__(self, backbone_args, action_scale, action_norm_limit=None):
+    def __init__(self, backbone, backbone_args, action_scale, action_norm_limit=None):
         super(Actor, self).__init__()
         self.action_norm_limit = action_norm_limit
         self.action_scale = action_scale
 
-        representation = ignore_extra_args(spk.SchNet)(**backbone_args)
+        representation = backbones[backbone](**backbone_args)
         output_modules = [
             spk.atomistic.Atomwise(
                 n_in=representation.n_atom_basis,
@@ -56,9 +62,9 @@ class Actor(nn.Module):
 
 
 class GDPolicy(nn.Module):
-    def __init__(self, backbone_args, action_scale, action_norm_limit=None):
+    def __init__(self, backbone, backbone_args, action_scale, action_norm_limit=None):
         super().__init__()
-        self.actor = Actor(backbone_args, action_scale, action_norm_limit)
+        self.actor = Actor(backbone, backbone_args, action_scale, action_norm_limit)
 
     def act(self, state_dict):
         output = self.actor(state_dict)
