@@ -1,13 +1,33 @@
 import torch
 from torch.nn.functional import mse_loss
 
-from rl.utils import calculate_gradient_norm
+from rl.utils import calculate_gradient_norm, get_lr_scheduler
 
 
 class GD(object):
-    def __init__(self, policy, actor_lr, batch_size=256, actor_clip_value=None, energy_loss_coef=0.01, force_loss_coef=1.):
+    def __init__(
+        self,
+        policy,
+        actor_lr,
+        batch_size=256,
+        actor_clip_value=None,
+        lr_scheduler=None,
+        energy_loss_coef=0.01,
+        force_loss_coef=0.99,
+        total_steps=0
+    ):
         self.actor = policy.actor
         self.optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.use_lr_scheduler = lr_scheduler is not None
+        if self.use_lr_scheduler:
+            lr_kwargs = {
+                "gamma": 0.1,
+                "total_steps": total_steps,
+                "final_div_factor": 1e+3,
+            }
+            lr_kwargs['initial_lr'] = actor_lr
+            self.actor_lr_scheduler = get_lr_scheduler(lr_scheduler, self.optimizer, **lr_kwargs)
+        
         self.batch_size = batch_size
         self.actor_clip_value = actor_clip_value
         self.energy_loss_coef = energy_loss_coef
