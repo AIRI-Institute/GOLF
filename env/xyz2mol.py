@@ -707,7 +707,7 @@ def get_rdkit_energy(mol, confId=0):
 def get_rdkit_force(mol, confId=0):
     ff = AllChem.MMFFGetMoleculeForceField(mol, AllChem.MMFFGetMoleculeProperties(mol), confId=confId)
     ff.Initialize()
-    return np.asarray(ff.CalcGrad(), dtype=np.float32).reshape((len(mol.GetAtoms()), 3))
+    return -np.asarray(ff.CalcGrad(), dtype=np.float32).reshape((len(mol.GetAtoms()), 3))
 
 
 def set_coordinates(mol, coordinates):
