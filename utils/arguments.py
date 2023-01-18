@@ -185,12 +185,12 @@ def get_args():
     parser.add_argument(
         "--generate_action_type",
         choices=["delta_x", "spring_and_mass"],
-        required=True,
+        default="delta_x",
         help="Type of action generation block to use")
     parser.add_argument(
         "--cutoff_type",
         choices=["hard", "cosine"],
-        required=True,
+        default="cosine",
         help="Type of cutoff to use in action generation block")
     parser.add_argument(
         "--use_activation",
