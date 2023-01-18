@@ -156,14 +156,9 @@ class ReplayBufferGD(object):
 
     def add(self, states, actions, forces, energies, dones):
         energies = torch.tensor(energies, dtype=torch.float32)
-
-        num_atoms = states['_atom_mask'].sum(-1).long()
-        states_list = [{key: value[i, :num_atoms[i]].cpu() for key, value in states.items() if key not in UNWANTED_KEYS}
-                       for i in range(len(num_atoms))]
-
         # Update replay buffer
-        for i in range(len(num_atoms)):
-            self.states[self.ptr] = states_list[i]
+        for i in range(len(energies)):
+            self.states[self.ptr] = {k:v[i].cpu() for k, v in states.items() if k not in UNWANTED_KEYS}
             self.energy[self.ptr] = energies[i]
             self.forces[self.ptr] = torch.from_numpy(forces[i])
             self.ptr = (self.ptr + 1) % self.max_size
