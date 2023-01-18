@@ -24,7 +24,7 @@ class GD(object):
 
         energy_loss = mse_loss(predicted_energy, energy)
         force_loss = torch.mean(
-            mse_loss(anti_gradient, force, reduction='none').sum(dim=(1, 2)) / state['_atom_mask'].sum(-1)
+            mse_loss(anti_gradient, force, reduction='none').sum(dim=(1, 2)) / (3 * state['_atom_mask'].sum(-1))
         )
         loss = self.force_loss_coef * force_loss + self.energy_loss_coef * energy_loss
         metrics['loss'] = loss.item()

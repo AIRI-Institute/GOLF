@@ -71,7 +71,7 @@ class TQC(object):
 			total_quantiles_to_keep = t * self.critic.n_nets
 			metrics[f'Target_Q/Q_value_t={t}'] = next_z[:, :total_quantiles_to_keep].mean().__float__()
 
-	def update(self, replay_buffer, update_actor, greedy):
+	def update(self, replay_buffer, pretrain_flag, greedy):
 		metrics = dict()
 		state, action, next_state, reward, not_done = replay_buffer.sample(self.batch_size)
 		alpha = torch.exp(self.log_alpha)
@@ -145,7 +145,7 @@ class TQC(object):
 		metrics['actor_loss'] = actor_loss.item()
 
 		# --- Update actor ---
-		if update_actor:
+		if not pretrain_flag:
 			self.actor_optimizer.zero_grad()
 			actor_loss.backward()
 			metrics['actor_grad_norm'] = calculate_gradient_norm(self.actor).item()

@@ -177,7 +177,7 @@ def main(args, experiment_folder):
             update_condition = (((t + 1) * args.n_parallel) % args.update_frequency) == 0
         else:
             update_condition = (t + 1) >= args.batch_size // args.n_parallel and (t + 1) % args.update_frequency == 0
-            update_actor_condition = (t + 1) > args.pretrain_critic // args.n_parallel
+            pretrain_flag = (t + 1) <= args.pretrain_critic // args.n_parallel
         
         # Update timelimit
         timelimit_scheduler.update(t)
@@ -241,7 +241,7 @@ def main(args, experiment_folder):
             else:
                 # Update TQC several times
                 for _ in range(args.n_parallel):
-                    step_metrics = trainer.update(replay_buffer, update_actor_condition, args.greedy)
+                    step_metrics = trainer.update(replay_buffer, pretrain_flag, args.greedy)
         else:
             step_metrics = dict()
 
