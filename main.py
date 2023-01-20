@@ -148,6 +148,7 @@ def main(args, experiment_folder):
         # GD arguments
         energy_loss_coef=args.energy_loss_coef,
         force_loss_coef=args.force_loss_coef,
+        group_by_n_atoms=args.group_by_n_atoms,
     )
 
     state = env.reset()
