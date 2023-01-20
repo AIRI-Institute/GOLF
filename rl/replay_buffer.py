@@ -167,14 +167,18 @@ class ReplayBufferGD(object):
     def sample(self, batch_size):
         ind = np.random.choice(self.size, batch_size, replace=False)
         states = [self.states[i] for i in ind]
-        forces = _collate_actions([self.forces[i] for i in ind]).to(self.device)
         state_batch = {key: value.to(self.device) for key, value in _collate_aseatoms(states).items()}
+        forces = _collate_actions(
+            [self.forces[i] for i in ind],
+            max_size=state_batch['_positions'].size(1)
+        ).to(self.device)
         energy = self.energy[ind].to(self.device)
         return state_batch, forces, energy
 
 
-def _collate_actions(actions):
-    max_size = max([action.shape[0] for action in actions])
+def _collate_actions(actions, max_size=None):
+    if max_size is None:
+        max_size = max([action.shape[0] for action in actions])
     actions_batch = torch.zeros(len(actions), max_size, actions[0].shape[1])
     for i, action in enumerate(actions):
         actions_batch[i, slice(0, action.shape[0])] = action
