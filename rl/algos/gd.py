@@ -72,7 +72,7 @@ class GD(object):
                 anti_gradient = output['anti_gradient']
 
                 energy_loss = mse_loss(predicted_energy, group_energy)
-                force_loss = mse_loss(anti_gradient, group_force) / 3
+                force_loss = mse_loss(anti_gradient, group_force)
                 energy_losses.append(energy_loss)
                 force_losses.append(force_loss)
                 group_size.append(len(group))
