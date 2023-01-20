@@ -1,6 +1,10 @@
+import collections
+
 import torch
 from torch.nn.functional import mse_loss
 
+from rl import DEVICE
+from rl.utils import calculate_gradient_norm
 from rl.utils import calculate_gradient_norm, get_lr_scheduler
 
 
@@ -14,7 +18,8 @@ class GD(object):
         lr_scheduler=None,
         energy_loss_coef=0.01,
         force_loss_coef=0.99,
-        total_steps=0
+        total_steps=0,
+        group_by_n_atoms=False
     ):
         self.actor = policy.actor
         self.optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
@@ -27,26 +32,74 @@ class GD(object):
             }
             lr_kwargs['initial_lr'] = actor_lr
             self.actor_lr_scheduler = get_lr_scheduler(lr_scheduler, self.optimizer, **lr_kwargs)
-        
+
         self.batch_size = batch_size
         self.actor_clip_value = actor_clip_value
         self.energy_loss_coef = energy_loss_coef
         self.force_loss_coef = force_loss_coef
+        self.group_by_n_atoms = group_by_n_atoms
         self.total_it = 0
 
     def update(self, replay_buffer, *args):
         metrics = dict()
         state, force, energy = replay_buffer.sample(self.batch_size)
 
-        output = self.actor(state, train=True)
-        predicted_energy = output['energy']
-        anti_gradient = output['anti_gradient']
+        if self.group_by_n_atoms:
+            n_atoms_array = state['_atom_mask'].sum(-1).to(torch.int32).cpu().numpy()
+            groups = collections.defaultdict(list)
+            for idx, n_atoms in enumerate(n_atoms_array):
+                groups[n_atoms].append(idx)
 
-        energy_loss = mse_loss(predicted_energy, energy)
-        force_loss = torch.mean(
-            mse_loss(anti_gradient, force, reduction='none').sum(dim=(1, 2)) / (3 * state['_atom_mask'].sum(-1))
-        )
+            energy_losses = []
+            force_losses = []
+            group_size = []
+            for n_atoms, group in groups.items():
+                group = torch.tensor(group, dtype=torch.int64, device=DEVICE)
+                group_state = {}
+                for key, value in state.items():
+                    if key == 'cell':
+                        group_state[key] = value[group].clone()
+                    elif key in ('_atomic_numbers', '_positions', '_atom_mask'):
+                        group_state[key] = value[group][:, :n_atoms].clone()
+                    else:
+                        group_state[key] = value[group][:, :n_atoms, :n_atoms - 1].clone()
+
+                group_force = force[group][:, :n_atoms]
+                group_energy = energy[group]
+
+                output = self.actor(group_state, train=True)
+                predicted_energy = output['energy']
+                anti_gradient = output['anti_gradient']
+
+                energy_loss = mse_loss(predicted_energy, group_energy)
+                force_loss = mse_loss(anti_gradient, group_force) / 3
+                energy_losses.append(energy_loss)
+                force_losses.append(force_loss)
+                group_size.append(len(group))
+
+            energy_losses = torch.stack(energy_losses)
+            force_losses = torch.stack(force_losses)
+            group_size = torch.tensor(group_size, device=DEVICE)
+
+            energy_loss = torch.sum(energy_losses * group_size) / group_size.sum()
+            force_loss = torch.sum(force_losses * group_size) / group_size.sum()
+            metrics['n_batch_groups'] = len(groups)
+        else:
+            output = self.actor(state, train=True)
+            predicted_energy = output['energy']
+            anti_gradient = output['anti_gradient']
+
+            energy_loss = mse_loss(predicted_energy, energy)
+            force_loss = torch.mean(
+                mse_loss(anti_gradient, force, reduction='none').sum(dim=(1, 2)) / (3 * state['_atom_mask'].sum(-1))
+            )
+            metrics['n_batch_groups'] = 1
+
         loss = self.force_loss_coef * force_loss + self.energy_loss_coef * energy_loss
+        if not torch.all(torch.isfinite(loss)):
+            print(f'Non finite values in GD loss')
+            return metrics
+
         metrics['loss'] = loss.item()
         metrics['energy_loss'] = energy_loss.item()
         metrics['force_loss'] = force_loss.item()

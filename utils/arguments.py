@@ -354,6 +354,13 @@ def get_args():
         default=1.,
         type=float
     )
+    parser.add_argument(
+        "--group_by_n_atoms",
+        default=False,
+        choices=[True, False],
+        metavar='True|False', type=str2bool,
+        help="Partition batch into groups by molecule size"
+    )
     
     # Other args
     parser.add_argument(
