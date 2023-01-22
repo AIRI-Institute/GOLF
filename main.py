@@ -218,6 +218,7 @@ def main(args, experiment_folder):
         elif use_gd:
             current_energy = np.array(env.initial_energy[args.reward], dtype=np.float32)
             forces = [np.array(force, dtype=np.float32) for force in env.force[args.reward]]
+            transition[0] = next_state
             transition[2] = forces
             transition[3] = current_energy
         replay_buffer.add(*transition)
