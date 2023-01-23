@@ -1,9 +1,7 @@
 import argparse
 import datetime
 import json
-import numpy as np
-import os
-import random
+import pickle
 import torch
 
 from collections import defaultdict
@@ -12,8 +10,7 @@ from tqdm import tqdm
 
 from env.make_envs import make_envs
 from rl import DEVICE
-from rl.actor_critics.tqc import Actor
-from rl.utils import ActionScaleScheduler
+from rl.actor_critics.gd import Actor
 from rl.eval import run_policy, rdkit_minimize_until_convergence
 from utils.arguments import str2bool
 
@@ -22,115 +19,101 @@ class Config():
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
+def rdkit_minimize(env, fixed_atoms, smiles, max_its):
+    env.set_initial_positions(fixed_atoms, smiles, energy_list=[None], M=0)
+    not_converged, final_energy, _ = env.minimize_rdkit(idx=0, M=max_its)
+    return final_energy, not_converged
 
-def run_policy(env, actor, fixed_atoms, smiles, max_timestamps):
-    done = np.array([False])
-    delta_energy = 0
-    t = 0
-    state = env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
-    state = {k:v.to(DEVICE) for k, v in state.items()}
-    while not done[0] and t < max_timestamps:
-        with torch.no_grad():
-            action = actor.select_action(state)
-        state, reward, done, info = env.step(action)
-        state = {k:v.to(DEVICE) for k, v in state.items()}
-        if not done[0]:
-            delta_energy += reward[0]
-        t += 1
-    return delta_energy, info['final_energy'][0], info['final_rl_energy'][0], t
+def eval_agent(env, actor, n_confs, evaluate_rdkit, evaluate_rl):
+    convergence_results = defaultdict(list)
+    result = defaultdict(lambda: defaultdict(lambda: []))
 
-def rdkit_minimize_until_convergence(env, fixed_atoms, smiles):
-    M_init = 1000
-    env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
-    initial_energy = env.initial_energy['rdkit'][0]
-    not_converged, final_energy, _ = env.minimize_rdkit(idx=0, M=M_init)
-    while not_converged:
-        M_init *= 2
-        not_converged, final_energy, _ = env.minimize_rdkit(idx=0, M=M_init)
-        if M_init > 5000:
-            print("Minimization did not converge!")
-            return initial_energy, final_energy
-    return initial_energy, final_energy
+    max_iter = 1000
+    max_timestamps = env.unwrapped.TL
+    if n_confs == -1:
+        n_confs = env.unwrapped.get_db_length()
 
-def rdkit_minimize_until_convergence_binary_search(env, fixed_atoms, smiles):
-    # Binary search :/
-    # A more efficient way requires messing with c++ code in rdkit
-    left = 0
-    right = 150
-    mid = 0
-    while left <= right:
-        mid = (left + right) // 2
-        env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
-        not_converged_l, final_energy_left, _ = env.minimize_rdkit(M=mid, idx=0)
-        env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
-        not_converged_r, _, _ = env.minimize_rdkit(M=mid + 1, idx=0)
-        if not_converged_l and not_converged_r:
-            left = mid + 1
-        elif not not_converged_l and not not_converged_r:
-            right = mid - 1
-        else:
-            return mid + 1, final_energy_left
-    return left, final_energy_left
-
-def eval_agent(env, actor, n_confs, N, verbose):
-    result = defaultdict(lambda: 0.0)
     for _ in tqdm(range(n_confs)):
         # Sample molecule from the test set
         env.reset()
+        
+        # Get initial energy
+        initial_energy = env.initial_energy['rdkit'][0]
         if hasattr(env.unwrapped, 'smiles'):
             smiles = env.unwrapped.smiles.copy()
         else:
             smiles = [None]
         fixed_atoms = env.unwrapped.atoms.copy()
 
-        # Optimize molecule with RL
-        _, eval_final_energy, _, eval_episode_len =\
-            run_policy(env, actor, fixed_atoms, smiles, N)
-
-        # Save result of RL optimization
-        after_rl_atoms = env.unwrapped.atoms.copy()
-
         # Optimize with rdkit until convergence
-        initial_energy, final_energy =\
-            rdkit_minimize_until_convergence(env, fixed_atoms, smiles)
-
-        # Get number of iterations untils convergence
-        rdkit_num_iter, final_energy_rdkit =\
-             rdkit_minimize_until_convergence_binary_search(env, fixed_atoms, smiles)
-        rl_num_iter, final_energy_rl_rdkit =\
-             rdkit_minimize_until_convergence_binary_search(env, after_rl_atoms, smiles)
-
-        # Save results
-        result['pct_final_energy_rl_better_rdkit'] += int(final_energy_rdkit < final_energy_rl_rdkit)
-        if final_energy_rdkit < final_energy_rl_rdkit:
-            result['rl_better_rdkit'] += final_energy_rl_rdkit - final_energy_rdkit
-        else:
-            result['rl_worse_rdkit'] += final_energy_rdkit - final_energy_rl_rdkit
-        result['episode_len'] += eval_episode_len
-        result['rdkit_num_iter'] += rdkit_num_iter
-        result['rl_num_iter'] += rl_num_iter
-        if initial_energy - final_energy < 1e-5:
+        _, final_rdkit_energy =\
+            rdkit_minimize_until_convergence(env, fixed_atoms, smiles, M=0)
+        total_delta_rdkit = initial_energy - final_rdkit_energy
+        if total_delta_rdkit < 0 or total_delta_rdkit < 1e-5:
+            print("Rdkit optimization failure")
             continue
-        result['pct_of_minimized'] += (initial_energy - eval_final_energy) / (initial_energy - final_energy)
 
-    result = {k: v / n_confs for k, v in result.items()}
-    result['rl_better_rdkit'] *= (1 / result['pct_final_energy_rl_better_rdkit'])
-    result['rl_worse_rdkit'] *= (1 / (1 - result['pct_final_energy_rl_better_rdkit']))
+        # Optimize with rdkit until convergence after RL
+        if evaluate_rl:
+             # Optimize molecule with RL and save resulting conformation
+            _ = run_policy(env, actor, fixed_atoms, smiles, max_timestamps)
+            after_rl_atoms = env.unwrapped.atoms.copy()
+            _, final_rdkit_after_rl_energy = \
+                rdkit_minimize_until_convergence(env, after_rl_atoms, smiles, M=0)
+            total_delta_rdkit_after_rl = initial_energy - final_rdkit_after_rl_energy
+            if total_delta_rdkit_after_rl < 0 or total_delta_rdkit_after_rl < 1e-5:
+                print("Rdkit optimization failure")
+                continue
+        
+        rdkit_converged_flag = False
+        rdkit_after_rl_converged_flag = False
+        for n_its in range(1, 1000):
+            # If rdkit optimization converged add 1.0 and set
+            # rdkit_converged_flag to True to stop further computations
+            if not rdkit_converged_flag and evaluate_rdkit: 
+                final_energy_rdkit, nc = rdkit_minimize(env, fixed_atoms, smiles, n_its)
+                result[f'{n_its}']['rdkit'].append((initial_energy - final_energy_rdkit) / total_delta_rdkit)
+                if not nc:
+                    #print("rdkit", nc, n_its)
+                    rdkit_converged_flag = True
+                    convergence_results['rdkit'].append(n_its)
+                    for i in range(n_its + 1, max_iter + 1):
+                        result[f'{i}']['rdkit'].append(1.0)
+                
+            # If rdkit optimization converged add 1.0 and set
+            # rdkit_after_rl_converged_flag to True to stop further computations
+            if not rdkit_after_rl_converged_flag and evaluate_rl:
+                final_energy_rdkit_after_rl, nc_after_rl = rdkit_minimize(env, after_rl_atoms, smiles, n_its)
+                result[f'{n_its}']['rdkit_after_rl'].append((initial_energy - final_energy_rdkit_after_rl) / total_delta_rdkit_after_rl)
+                result[f'{n_its}']['rdkit_after_rl_rel'].append((initial_energy - final_energy_rdkit_after_rl) / total_delta_rdkit)
+                if not nc_after_rl:
+                    rdkit_after_rl_converged_flag = True
+                    convergence_results['rdkit_after_rl'].append(n_its)
+                    for i in range(n_its + 1, max_iter + 1):
+                        result[f'{i}']['rdkit_after_rl'].append(1.0)
+                        result[f'{i}']['rdkit_after_rl_rel'].append((initial_energy - final_energy_rdkit_after_rl) / total_delta_rdkit)
+                
+            # If both rdkit and rdkit after rl converged break
+            if (rdkit_converged_flag or not evaluate_rdkit) and\
+               (rdkit_after_rl_converged_flag or not evaluate_rl):
+                break
     
-    if verbose:
-        print(result)
-    return result
+    real_max_iter = max([max(v) for v in convergence_results.values()])
+    result = {k:v for k, v in result.items() if int(k) <= real_max_iter}
+    return result, convergence_results
         
 
-def main(exp_folder, args, config):
+def main(checkpoint_path, args, config):
 
     # Update config
-    if args.M != -1:
-        config.M = args.M
-    config.done_when_not_improved = args.done_when_not_improved
+    config.done_when_not_improved = True
+    config.timelimit = 100
+    if args.conf_number == -1:
+        config.sample_initial_conformation = False
+    else:
+        config.sample_initial_conformation = True
    
     _, eval_env = make_envs(config)
-    # Initialize action_scale scheduler
 
     backbone_args = {
         'n_interactions': config.n_interactions,
@@ -143,57 +126,57 @@ def main(exp_folder, args, config):
     actor = Actor(
         backbone=config.backbone,
         backbone_args=backbone_args,
-        generate_action_type=config.generate_action_type,
-        out_embedding_size=config.out_embedding_size,
         action_scale=config.action_scale,
-        cutoff_type=config.cutoff_type,
-        use_activation=config.use_activation,
-        limit_actions=config.limit_actions,
-        summation_order=config.summation_order
+        action_norm_limit=config.action_norm_limit,
     )
-    actor.load_state_dict(torch.load(args.agent_path, map_location=torch.device('cpu')))
+    agent_path = checkpoint_path / args.agent_path
+    actor.load_state_dict(torch.load(agent_path, map_location=torch.device(DEVICE)))
+    actor.to(DEVICE)
     actor.eval()
 
-    result = eval_agent(eval_env, actor, args.conf_number, args.N, args.verbose)
+    result, convergence_results = eval_agent(eval_env, actor, args.conf_number, args.evaluate_rdkit, args.evaluate_rl)
+    
+    # Convert defaultdict into normal dict to pickle it
+    normal_dict = {}
+    for k, v in result.items():
+        normal_dict[k] = {}
+        for k2, v2 in v.items():
+            normal_dict[k][k2] = v2
 
     # Save the result
-    result['config'] = args.__dict__
-    output_file = exp_folder / "output.json"
-    with open(output_file, 'w') as fp:
-        json.dump(result, fp, sort_keys=True, indent=4)
+    result_file_name = checkpoint_path / "result.pickle"
+    convergence_results_file_name = checkpoint_path / "convergence_results.pickle"
+    with open(result_file_name, 'wb') as f:
+        pickle.dump(normal_dict, f)
+    with open(convergence_results_file_name, 'wb') as f:
+        pickle.dump(convergence_results, f)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config_path", type=str, required=True)
+    parser.add_argument("--checkpoint_path", type=str, required=True)
     parser.add_argument("--agent_path", type=str, required=True)
-    parser.add_argument("--exp_name", required=True, type=str, help="Name of the experiment")
-    parser.add_argument("--log_dir", default="evaluation_output", type=str, help="Which directory to store outputs to")
     parser.add_argument("--conf_number", default=int(1e5), type=int, help="Number of conformations to evaluate on")
-    parser.add_argument("--N", default=10, type=int, help="Run RL policy for maximum of N steps")
-    parser.add_argument("--M", default=-1, type=int, help="Run rdkit minimization for M steps after RL.\
-                                                           Set to -1 to use value from config")
-    parser.add_argument("--done_when_not_improved", default=False, choices=[True, False], \
-                        metavar='True|False', type=str2bool, help="Done on negative reward")
-    parser.add_argument("--verbose", default=False, choices=[True, False], \
-                        metavar='True|False', type=str2bool, help="Print results")
+    parser.add_argument("--evaluate_rdkit", default=False, choices=[True, False],
+                         metavar='True|False', type=str2bool, help="Evaluate initial state with rdkit")
+    parser.add_argument("--evaluate_rl", default=False, choices=[True, False],
+                         metavar='True|False', type=str2bool, help="Evaluate after-RL state with rdkit")
     args = parser.parse_args()
 
-    log_dir = Path(args.log_dir)
     start_time = datetime.datetime.strftime(datetime.datetime.now(), '%Y_%m_%d_%H_%M_%S')
-    exp_folder = log_dir / f'{args.exp_name}_{start_time}_{random.randint(0, 1000000)}'
-    if os.path.exists(exp_folder):
-            raise Exception('Experiment folder exists, apparent seed conflict!')
-    os.makedirs(exp_folder)
-
+    checkpoint_path = Path(args.checkpoint_path)
+    config_path = checkpoint_path / "config.json"
     # Read config and turn it into a class object with properties
-    with open(args.config_path, "rb") as f:
+    with open(config_path, "rb") as f:
         config = json.load(f)
+
+    assert args.evaluate_rdkit or args.evaluate_rl , "Nothing to evaluate!"
 
     # TMP
     config['db_path'] = '/'.join(config['db_path'].split('/')[-3:])
     config['eval_db_path'] = '/'.join(config['eval_db_path'].split('/')[-3:])
-    config['molecules_xyz_prefix'] = "/Users/artem/Desktop/work/MARL/MolDynamics/env/molecules_xyz"
+    config['molecules_xyz_prefix'] = "env/molecules_xyz"
 
     config = Config(**config)
     
-    main(exp_folder, args, config)
+    main(checkpoint_path, args, config)
