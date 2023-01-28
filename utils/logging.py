@@ -83,7 +83,6 @@ class Logger:
     def update_evaluation_statistics(self,
                                      episode_length,
                                      episode_return,
-                                     episode_mean_Q,
                                      episode_final_energy,
                                      episode_final_rl_energy,
                                      threshold_exceeded_pct,
@@ -91,7 +90,6 @@ class Logger:
         self.exploration_episode_number += 1
         self.exploration_episode_lengths.append(episode_length)
         self.exploration_episode_returns.append(episode_return)
-        self.exploration_episode_mean_Q.append(episode_mean_Q)
         self.exploration_episode_final_energy.append(episode_final_energy)
         self.exploration_episode_final_rl_energy.append(episode_final_rl_energy)
         self.exploration_threshold_exceeded_pct.append(threshold_exceeded_pct)

@@ -9,7 +9,7 @@ from sqlite3 import DatabaseError
 from schnetpack.data.atoms import AtomsConverter
 from schnetpack.data.loader import _collate_aseatoms
 
-from rl import DEVICE
+from AL import DEVICE
 
 
 np.seterr(all="ignore")
@@ -30,7 +30,6 @@ class MolecularDynamics(gym.Env):
                  converter,
                  n_parallel=1,
                  timelimit=10,
-                 done_on_timelimit=False,
                  sample_initial_conformations=True,
                  num_initial_conformations=50000,
                 ):
@@ -38,11 +37,9 @@ class MolecularDynamics(gym.Env):
         self.converter = converter
         self.n_parallel=n_parallel
         self.TL = timelimit
-        self.done_on_timelimit = done_on_timelimit
         self.sample_initial_conformations = sample_initial_conformations
         
         self.db_len = self.get_db_length()
-        self.env_done = True
         self.atoms = None
         self.mean_energy = 0.
         self.std_energy = 1.
@@ -57,7 +54,6 @@ class MolecularDynamics(gym.Env):
         self.smiles = [None] * self.n_parallel
         self.energy = [None] * self.n_parallel
         self.env_steps = [None] * self.n_parallel
-        self.env_done = [None] * self.n_parallel
 
         self.total_num_bad_pairs_before = 0
         self.total_num_bad_pairs_after = 0
@@ -69,9 +65,7 @@ class MolecularDynamics(gym.Env):
         obs = []
         rewards = [None] * self.n_parallel
         dones = [None] * self.n_parallel
-        info = {
-            'env_done': [None] * self.n_parallel,
-        }
+        info = {}
 
         for idx, (number_atoms, action) in enumerate(zip(numbers_atoms, actions)):
             # Unpad action
@@ -82,17 +76,12 @@ class MolecularDynamics(gym.Env):
             self.total_num_bad_pairs_before += num_bad_pairs_before
             self.total_num_bad_pairs_after += num_bad_pairs_after
 
+            # Terminate the episode if TL is reached
             self.env_steps[idx] += 1
-            self.env_done[idx] = self.env_steps[idx] >= self.TL
+            dones[idx] = self.env_steps[idx] >= self.TL
 
             # Convert atoms to obs
             obs.append(self.converter(self.atoms[idx]))
-            
-            if self.done_on_timelimit:
-                dones[idx] = self.env_done[idx]
-            else:
-                dones[idx] = False
-            info['env_done'][idx] = self.env_done[idx]
         
         # Add info about bad pairs
         info['total_bad_pairs_before_process'] = self.total_num_bad_pairs_before
@@ -104,7 +93,7 @@ class MolecularDynamics(gym.Env):
 
         return obs, rewards, dones, info
 
-    def reset(self, indices=None):
+    def reset(self, indices=None, increment_conf_idx=True):
         # If indices is not provided reset all molecules
         if indices is None:
             indices = np.arange(self.n_parallel)
@@ -115,7 +104,8 @@ class MolecularDynamics(gym.Env):
         else:
             start_conf_idx = self.conformation_idx % len(self.initial_molecule_conformations)
             db_indices = np.arange(start_conf_idx, start_conf_idx + len(indices))
-            self.conformation_idx += len(indices)
+            if increment_conf_idx:
+                self.conformation_idx += len(indices)
 
         rows = [self.initial_molecule_conformations[db_idx] for db_idx in db_indices]
 
@@ -129,9 +119,8 @@ class MolecularDynamics(gym.Env):
                 self.smiles[idx] = row.smiles
                 self.energy[idx] = row.data['energy']
 
-            # Reset env_steps and done
+            # Reset env_steps
             self.env_steps[idx] = 0
-            self.env_done[idx] = False
 
             # Convert atoms to obs
             obs.append(self.converter(self.atoms[idx]))
@@ -209,7 +198,7 @@ class MolecularDynamics(gym.Env):
             positions[j] -= 0.5 * coef * dir_ij[j, i]
         new_atoms.set_positions(positions)
 
-        # Check if out assumption does not hold
+        # Check if assumption does not hold
         bad_indices_after, _, _ = self.get_bad_pairs_indices(positions)
 
         return new_atoms, len(bad_indices_before), len(bad_indices_after)

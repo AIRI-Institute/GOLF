@@ -32,18 +32,18 @@ class RewardWrapper(gym.Wrapper):
                  dft=False,
                  n_threads=1,
                  minimize_on_every_step=False,
-                 greedy=False,
                  molecules_xyz_prefix='',
                  M=10,
-                 done_when_not_improved=False):
+                 terminate_on_negative_reward=False, 
+                 max_num_negative_rewards=1):
         # Set arguments
         self.dft = dft
         self.n_threads = n_threads
         self.M = M
         self.minimize_on_every_step = minimize_on_every_step
-        self.greedy = greedy
         self.molecules_xyz_prefix = molecules_xyz_prefix
-        self.done_when_not_improved=done_when_not_improved
+        self.terminate_on_negative_reward=terminate_on_negative_reward
+        self.max_num_negative_rewards = max_num_negative_rewards
 
         self.update_coordinates = {
             'rdkit': set_coordinates,
@@ -80,6 +80,7 @@ class RewardWrapper(gym.Wrapper):
             'dft': [None] * self.n_parallel
         }
         self.threshold_exceeded = [0.0 for _ in range(self.n_parallel)]
+        self.negative_rewards_counter = [0 for _ in range(self.n_parallel)]
         self.molecules = {}
         self.parse_molecules()
 
@@ -123,7 +124,7 @@ class RewardWrapper(gym.Wrapper):
                 self.update_coordinates['dft'](self.molecule['dft'][idx], self.env.atoms[idx].get_positions())
             
             # Calculate current rdkit reward for every trajectory
-            if self.minimize_on_every_step or info['env_done'][idx]:
+            if self.minimize_on_every_step or dones[idx]:
                 not_converged[idx], final_energy[idx], self.force['rdkit'][idx] = self.minimize_rdkit(idx)
                 rdkit_rewards[idx] = self.initial_energy['rdkit'][idx] - final_energy[idx]
 
@@ -131,7 +132,7 @@ class RewardWrapper(gym.Wrapper):
         if self.dft:
             queue = []
             for idx in range(self.n_parallel):
-                if self.minimize_on_every_step or info['env_done'][idx]:
+                if self.minimize_on_every_step or dones[idx]:
                     # Rdkit reward lower than RDKIT_DELTA_THRESH indicates highly improbable 
                     # conformations which are likely to cause an error in DFT calculation and/or
                     # significantly slow them down. To mitigate this we propose to replace DFT reward 
@@ -169,13 +170,18 @@ class RewardWrapper(gym.Wrapper):
                 if self.dft:
                     self.initial_energy['dft'][idx] -= rewards[idx]
 
-            # If energy has not improved and done_when_not_improved=True set done to True 
-            if self.done_when_not_improved and rewards[idx] < 0:
-                dones[idx] = True
+            # When agent encountered 'max_num_negative_rewards'
+            # terminate the episode
+            if self.terminate_on_negative_reward:
+                if rewards[idx] < 0:
+                    self.negative_rewards_counter[idx] += 1
+                if self.negative_rewards_counter[idx] >= self.max_num_negative_rewards:
+                    dones[idx] = True
+                print(self.negative_rewards_counter[idx], dones[idx])
 
             # If TL is reached or done=True log final energy
-            if dones[idx] or info['env_done'][idx] or self.greedy:
-                # Increment number of finished trajectories3
+            if dones[idx]:
+                # Increment number of finished trajectories
                 
                 # Log final energy of the molecule
                 stats_done['final_energy'][idx] = final_energy[idx]
@@ -212,7 +218,11 @@ class RewardWrapper(gym.Wrapper):
         # Get sizes of molecules
         atoms_num = self.env.get_atoms_num()
 
+
         for idx in indices:
+            # Reset negative rewards counter
+            self.negative_rewards_counter[idx] = 0
+            
             # Calculate initial rdkit energy
             if self.env.smiles[idx] is not None:
                 # Initialize molecule from Smiles
@@ -251,13 +261,16 @@ class RewardWrapper(gym.Wrapper):
         return obs
 
     def set_initial_positions(self, atoms_list, smiles_list, energy_list, M=None):
-        super().reset()
+        super().reset(increment_conf_idx=False)
 
         # Set molecules and get observation
         obs_list = []
         for idx, (atoms, smiles, energy) in enumerate(zip(atoms_list, smiles_list, energy_list)):
             self.env.atoms[idx] = atoms.copy()
             obs_list.append(self.env.converter(self.env.atoms[idx]))
+
+            # Reset negative rewards counter
+            self.negative_rewards_counter[idx] = 0
 
             # Calculate initial rdkit energy
             if smiles is not None:

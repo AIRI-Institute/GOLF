@@ -17,11 +17,6 @@ def none_or_str(value):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    # Algorthm
-    parser.add_argument(
-        "--algorithm",
-        default='TQC',
-        choices=['TQC', 'PPO', 'SAC', 'GD'])
 
     # Env args
     parser.add_argument(
@@ -51,7 +46,7 @@ def get_args():
         help="Number of initial molecule conformations to sample from the database. \
               If equals to '-1' sample all conformations from the database.")
     parser.add_argument(
-        "--sample_initial_conformation",
+        "--sample_initial_conformations",
         default=False,
         choices=[True, False],
         metavar='True|False',
@@ -65,43 +60,17 @@ def get_args():
         type=int,
         help="Timelimit for MD env")
     parser.add_argument(
-        "--increment_timelimit",
-        default=False,
-        choices=[True, False],
-        metavar='True|False',
-        type=str2bool,
-        help="Whether to increment timelimit during training")
-    parser.add_argument(
-        "--timelimit_step",
-        default=10,
-        type=int,
-        help="By which number to increment timelimit")
-    parser.add_argument(
-        "--timelimit_interval",
-        default=150000,
-        type=int,
-        help="How often to increment timelimit")
-    parser.add_argument(
-        "--greedy",
-        default=False,
-        choices=[True, False],
-        metavar='True|False',
-        type=str2bool,
-        help="Returns done on every step independent of the timelimit")
-    parser.add_argument(
-        "--done_on_timelimit",
-        default=False,
-        choices=[True, False],
-        metavar='True|False',
-        type=str2bool,
-        help="Env returns done when timelimit is reached")
-    parser.add_argument(
-        "--done_when_not_improved",
+        "--terminate_on_negative_reward",
         default=True,
         choices=[True, False],
         metavar='True|False',
         type=str2bool,
-        help="Return done if energy has not improved")
+        help="Terminate the episode when enough negative rewards are encountered")
+    parser.add_argument(
+        "--max_num_negative_rewards",
+        default=1,
+        type=int,
+        help="Max number of negative rewards to terminate the episode")
 
     # Reward args
     parser.add_argument(
@@ -127,25 +96,12 @@ def get_args():
         default="",
         help="Path to env/ folder. For cluster compatability")
 
-    # Action scale args.
-    parser.add_argument(
-        "--action_scale",
-        default=0.01,
-        type=float,
-        help="Multiply actions by action_scale.")
-    parser.add_argument(
-        "--target_entropy_action_scale",
-        default=0.01,
-        type=float,
-        help="Controls target entropy of the distribution")
-
     # Backbone args
     parser.add_argument(
         "--backbone",
         choices=["schnet", "painn"],
         required=True,
-        help="Type of backbone to use for actor and critic"
-    )
+        help="Type of backbone to use for actor and critic")
     parser.add_argument(
         "--n_interactions",
         default=3,
@@ -169,59 +125,59 @@ def get_args():
         type=str2bool,
         help="Use cosine of vectors instead of scalar product in PaiNN")
 
-    # Policy args
+    # AL args
     parser.add_argument(
-        "--out_embedding_size",
-        default=128,
+        "--action_scale",
+        default=0.01,
+        type=float,
+        help="Multiply actions by action_scale.")
+    parser.add_argument(
+        "--batch_size",
+        default=256,
         type=int,
-        help="Output embedding size for policy")
+        help="Batch size for both actor and critic")
     parser.add_argument(
-        "--limit_actions",
+        "--lr",
+        default=3e-4,
+        type=float,
+        help="Actor learning rate")
+    parser.add_argument(
+        "--clip_value",
+        default=None,
+        help="Clipping value for actor gradients")
+    parser.add_argument(
+        "--lr_scheduler",
+        default=None,
+        type=none_or_str,
+        choices=[None, "OneCycleLR", "StepLR"],
+        help="LR scheduler")
+    parser.add_argument(
+        "--action_norm_limit",
+        default=0.05,
+        type=float,
+        help="Limit max action norm")
+    parser.add_argument(
+        "--energy_loss_coef",
+        default=0.01,
+        type=float)
+    parser.add_argument(
+        "--force_loss_coef",
+        default=1.,
+        type=float)
+    parser.add_argument(
+        "--group_by_n_atoms",
         default=False,
         choices=[True, False],
-        metavar='True|False',
-        type=str2bool,
-        help="Whether to limit action norms with tanh")
+        metavar='True|False', type=str2bool,
+        help="Partition batch into groups by molecule size.\
+              For PaiNN + schnetpack=1.0.0")
     parser.add_argument(
-        "--generate_action_type",
-        choices=["delta_x", "spring_and_mass"],
-        default="delta_x",
-        help="Type of action generation block to use")
-    parser.add_argument(
-        "--cutoff_type",
-        choices=["hard", "cosine"],
-        default="cosine",
-        help="Type of cutoff to use in action generation block")
-    parser.add_argument(
-        "--use_activation",
+        "--store_only_initial_conformations",
         default=False,
         choices=[True, False],
-        metavar='True|False',
-        type=str2bool,
-        help="If True additionally process atom embeddings before generating action")
-    parser.add_argument(
-        "--summation_order",
-        default="to",
-        choices=["to", "from"],
-        help="If 'to' then action is calculated by summing all vectors coming to atom.\
-              If 'from' then action is calculated by summing all vectors coming from atom")
-    parser.add_argument(
-        "--n_quantiles",
-        default=25,
-        type=int,
-        help="Number of quantiles in each net in critic")
-    parser.add_argument(
-        "--n_nets",
-        default=5,
-        type=int,
-        help="Total number of nets in critic")
-    parser.add_argument(
-        '--m_nets',
-        default=2,
-        type=int,
-        help="Number of nets randomly sampled for update on each step"
-    )
-
+        metavar='True|False', type=str2bool,
+        help="For baseline experiments.")
+    
     # Eval args
     parser.add_argument(
         "--eval_freq",
@@ -245,123 +201,6 @@ def get_args():
         metavar='True|False', type=str2bool,
         help="Evaluate at multiple timesteps")
 
-    # TQC args
-    parser.add_argument(
-        "--pretrain_critic",
-        default=0,
-        type=int,
-        help="Number of steps to pretrain critic on random actions")
-    parser.add_argument(
-        "--top_quantiles_to_drop_per_net",
-        default=2,
-        type=int,
-        help="Number of quantiles to drop per net in target")
-    parser.add_argument(
-        "--batch_size",
-        default=256,
-        type=int,
-        help="Batch size for both actor and critic")
-    parser.add_argument(
-        "--discount",
-        default=0.99,
-        type=float,
-        help="Discount factor")
-    parser.add_argument(
-        "--tau",
-        default=0.005,
-        type=float,
-        help="Target network update rate")
-    parser.add_argument(
-        "--actor_lr",
-        default=3e-4,
-        type=float,
-        help="Actor learning rate")
-    parser.add_argument(
-        "--actor_clip_value",
-        default=None,
-        help="Clipping value for actor gradients")
-    parser.add_argument(
-        "--critic_lr",
-        default=3e-4,
-        type=float,
-        help="Critic learning rate")
-    parser.add_argument(
-        "--critic_clip_value",
-        default=None,
-        help="Clipping value for critic gradients")
-    parser.add_argument(
-        "--lr_scheduler",
-        default=None,
-        type=none_or_str,
-        choices=[None, "OneCycleLR", "StepLR"],
-        help="LR scheduler")
-    parser.add_argument(
-        "--alpha_lr",
-        default=3e-4,
-        type=float,
-        help="Alpha learning rate")
-    parser.add_argument(
-        "--initial_alpha",
-        default=1.0,
-        type=float,
-        help="Initial value for alpha")
-
-    # PPO args
-    parser.add_argument(
-        "--clip_param",
-        default=0.2,
-        type=float,
-        help="PPO clip value")
-    parser.add_argument(
-        "--ppo_epoch",
-        default=4,
-        type=int,
-        help="Number of epochs for PPO update")
-    parser.add_argument(
-        "--num_mini_batch",
-        default=16,
-        type=int,
-        help="Number of minibatches per ppo_epoch")
-    parser.add_argument(
-        "--value_loss_coef",
-        default=0.5,
-        type=float, 
-        help="Weight for value loss")
-    parser.add_argument(
-        "--entropy_coef",
-        default=0.01,
-        type=float,
-        help="Entropy coefficient")
-    parser.add_argument(
-        "--use_clipped_value_loss",
-        default=True,
-        type=bool,
-        help="Whether to use clipped value loss")
-
-    # GD args
-    parser.add_argument(
-        "--action_norm_limit",
-        default=0.05,
-        type=float,
-        help="Limit max action norm")
-    parser.add_argument(
-        "--energy_loss_coef",
-        default=0.01,
-        type=float
-    )
-    parser.add_argument(
-        "--force_loss_coef",
-        default=1.,
-        type=float
-    )
-    parser.add_argument(
-        "--group_by_n_atoms",
-        default=False,
-        choices=[True, False],
-        metavar='True|False', type=str2bool,
-        help="Partition batch into groups by molecule size"
-    )
-    
     # Other args
     parser.add_argument(
         "--exp_name",
@@ -373,11 +212,6 @@ def get_args():
         default=int(1e5),
         type=int,
         help="Size of replay buffer")
-    parser.add_argument(
-        "--update_frequency",
-        default=1,
-        type=int,
-        help="How often agent is updated")
     parser.add_argument(
         "--max_timesteps",
         default=1e6,

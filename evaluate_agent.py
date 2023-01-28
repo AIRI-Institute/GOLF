@@ -9,9 +9,9 @@ from pathlib import Path
 from tqdm import tqdm
 
 from env.make_envs import make_envs
-from rl import DEVICE
-from rl.actor_critics.gd import Actor
-from rl.eval import run_policy, rdkit_minimize_until_convergence
+from AL import DEVICE
+from AL.AL_actor import Actor
+from AL.eval import run_policy, rdkit_minimize_until_convergence
 from utils.arguments import str2bool
 
 
