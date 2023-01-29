@@ -177,7 +177,6 @@ class RewardWrapper(gym.Wrapper):
                     self.negative_rewards_counter[idx] += 1
                 if self.negative_rewards_counter[idx] >= self.max_num_negative_rewards:
                     dones[idx] = True
-                print(self.negative_rewards_counter[idx], dones[idx])
 
             # If TL is reached or done=True log final energy
             if dones[idx]:

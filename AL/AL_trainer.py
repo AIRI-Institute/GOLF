@@ -117,7 +117,7 @@ class AL(object):
 
         # Update lr
         if self.use_lr_scheduler:
-            self.actor_lr_scheduler.step()
+            self.lr_scheduler.step()
 
         self.total_it += 1
         return metrics
