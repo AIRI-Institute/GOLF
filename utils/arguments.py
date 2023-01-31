@@ -200,6 +200,12 @@ def get_args():
         choices=[True, False],
         metavar='True|False', type=str2bool,
         help="Evaluate at multiple timesteps")
+    parser.add_argument(
+        "--terminate_on_convergence",
+        default=False,
+        choices=[True, False],
+        metavar='True|False', type=str2bool,
+        help="Terminate evaluation episode based on predicted energy")
 
     # Other args
     parser.add_argument(

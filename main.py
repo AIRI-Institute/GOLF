@@ -163,7 +163,8 @@ def main(args, experiment_folder):
                     env=eval_env,
                     eval_episodes=args.n_eval_runs,
                     n_explore_runs=args.n_explore_runs,
-                    evaluate_multiple_timesteps=args.evaluate_multiple_timesteps
+                    evaluate_multiple_timesteps=args.evaluate_multiple_timesteps,
+                    terminate_on_convergence=args.terminate_on_convergence,
                 )
             )
             logger.log(step_metrics)

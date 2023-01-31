@@ -57,8 +57,10 @@ class Actor(nn.Module):
         return {'action': action, 'energy': output['energy']}
 
     def select_action(self, state_dict):
-        action = self.forward(state_dict)['action']
-        return action.cpu().numpy()
+        output = self.forward(state_dict)
+        action = output['action'].cpu().numpy()
+        energy = output['energy'].detach().cpu().numpy()
+        return action, energy
 
 
 class ALPolicy(nn.Module):

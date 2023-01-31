@@ -177,32 +177,28 @@ class RewardWrapper(gym.Wrapper):
                     self.negative_rewards_counter[idx] += 1
                 if self.negative_rewards_counter[idx] >= self.max_num_negative_rewards:
                     dones[idx] = True
+            
+            # Log final energy of the molecule
+            stats_done['final_energy'][idx] = final_energy[idx]
+            stats_done['not_converged'][idx] = not_converged[idx]
+            
+            # Log percentage of times in which treshold was  exceeded
+            if self.dft:
+                threshold_exceeded_pct[idx] = self.threshold_exceeded[idx] / env_steps[idx]
+            else:
+                threshold_exceeded_pct[idx] = 0
+            stats_done['threshold_exceeded_pct'][idx] = threshold_exceeded_pct[idx]
 
-            # If TL is reached or done=True log final energy
-            if dones[idx]:
-                # Increment number of finished trajectories
-                
-                # Log final energy of the molecule
-                stats_done['final_energy'][idx] = final_energy[idx]
-                stats_done['not_converged'][idx] = not_converged[idx]
-                
-                # Log percentage of times in which treshold was  exceeded
+            # Log final RL energy of the molecule
+            if self.M > 0:
                 if self.dft:
-                    threshold_exceeded_pct[idx] = self.threshold_exceeded[idx] / env_steps[idx]
+                    # To save computational resources just return 0.0
+                    stats_done['final_rl_energy'][idx] = 0.0
                 else:
-                    threshold_exceeded_pct[idx] = 0
-                stats_done['threshold_exceeded_pct'][idx] = threshold_exceeded_pct[idx]
-
-                # Log final RL energy of the molecule
-                if self.M > 0:
-                    if self.dft:
-                        # To save computational resources just return 0.0
-                        stats_done['final_rl_energy'][idx] = 0.0
-                    else:
-                        self.update_coordinates['rdkit'](self.molecule['rdkit'][idx], self.env.atoms[idx].get_positions())
-                        stats_done['final_rl_energy'][idx] = self.get_energy['rdkit'](self.molecule['rdkit'][idx])
-                else:
-                    stats_done['final_rl_energy'][idx] = final_energy[idx]
+                    self.update_coordinates['rdkit'](self.molecule['rdkit'][idx], self.env.atoms[idx].get_positions())
+                    stats_done['final_rl_energy'][idx] = self.get_energy['rdkit'](self.molecule['rdkit'][idx])
+            else:
+                stats_done['final_rl_energy'][idx] = final_energy[idx]
         
         # Compute mean of stats over finished trajectories and update info
         info = dict(info, **stats_done)
