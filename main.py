@@ -184,6 +184,7 @@ def main(args, experiment_folder):
                 pickle.dump(replay_buffer, outF)
 
         if (t + 1) % (args.light_checkpoint_freq // args.n_parallel) == 0 and args.save_checkpoints:
+            save_t = (t + 1) * args.n_parallel
             trainer_save_name = f'{experiment_folder}/light_cp_iter_{save_t}'
             trainer.light_save(trainer_save_name)
 
