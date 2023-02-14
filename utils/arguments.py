@@ -10,10 +10,12 @@ def str2bool(s):
     else:
         return s
 
+
 def none_or_str(value):
     if value == 'None':
         return None
     return value
+
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -118,12 +120,11 @@ def get_args():
         type=int,
         help="Number of Gaussians for Schnet in actor/critic")
     parser.add_argument(
-        '--use_cosine_between_vectors',
-        default=True,
-        choices=[True, False],
-        metavar='True|False',
-        type=str2bool,
-        help="Use cosine of vectors instead of scalar product in PaiNN")
+        "--n_atom_basis",
+        default=128,
+        type=int,
+        help="Number of features to describe atomic environments inside backbone"
+    )
 
     # AL args
     parser.add_argument(
@@ -165,19 +166,12 @@ def get_args():
         default=1.,
         type=float)
     parser.add_argument(
-        "--group_by_n_atoms",
-        default=False,
-        choices=[True, False],
-        metavar='True|False', type=str2bool,
-        help="Partition batch into groups by molecule size.\
-              For PaiNN + schnetpack=1.0.0")
-    parser.add_argument(
         "--store_only_initial_conformations",
         default=False,
         choices=[True, False],
         metavar='True|False', type=str2bool,
         help="For baseline experiments.")
-    
+
     # Eval args
     parser.add_argument(
         "--eval_freq",

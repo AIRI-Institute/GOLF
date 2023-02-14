@@ -2,16 +2,17 @@ import gym
 import numpy as np
 import os
 from collections import defaultdict
-from schnetpack.data.loader import _collate_aseatoms
+from schnetpack.data.loader import _atoms_collate_fn
 
 from rdkit.Chem import AllChem, MolFromSmiles, Conformer, AddHs
 
 from .moldynamics_env import MolecularDynamics
 from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates, get_rdkit_force
-from .dft import atoms2psi4mol, get_dft_energy,\
-     update_ase_atoms_positions, calculate_dft_energy_queue
+from .dft import atoms2psi4mol, get_dft_energy, \
+    update_ase_atoms_positions, calculate_dft_energy_queue
 
 RDKIT_ENERGY_THRESH = 500
+
 
 class RewardWrapper(gym.Wrapper):
     molecules_xyz = {
@@ -34,7 +35,7 @@ class RewardWrapper(gym.Wrapper):
                  minimize_on_every_step=False,
                  molecules_xyz_prefix='',
                  M=10,
-                 terminate_on_negative_reward=False, 
+                 terminate_on_negative_reward=False,
                  max_num_negative_rewards=1):
         # Set arguments
         self.dft = dft
@@ -42,7 +43,7 @@ class RewardWrapper(gym.Wrapper):
         self.M = M
         self.minimize_on_every_step = minimize_on_every_step
         self.molecules_xyz_prefix = molecules_xyz_prefix
-        self.terminate_on_negative_reward=terminate_on_negative_reward
+        self.terminate_on_negative_reward = terminate_on_negative_reward
         self.max_num_negative_rewards = max_num_negative_rewards
 
         self.update_coordinates = {
@@ -57,14 +58,14 @@ class RewardWrapper(gym.Wrapper):
             'rdkit': get_rdkit_force,
             'dft': None,
         }
-        
+
         # Check parent class to name the reward correctly
         if isinstance(env, MolecularDynamics):
             self.reward_name = 'env_reward'
         else:
             self.reward_name = 'unknown_reward'
         super().__init__(env)
-        
+
         # Initialize dictionaries
         self.n_parallel = self.env.n_parallel
         self.initial_energy = {
@@ -85,7 +86,7 @@ class RewardWrapper(gym.Wrapper):
         self.parse_molecules()
 
     def parse_molecules(self):
-        # Parse rdkit molecules 
+        # Parse rdkit molecules
         self.molecules['rdkit'] = {}
         for formula, path in RewardWrapper.molecules_xyz.items():
             molecule = parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
@@ -95,15 +96,15 @@ class RewardWrapper(gym.Wrapper):
             except AttributeError:
                 raise ValueError("Provided molucule was not parsed correctly")
             self.molecules['rdkit'][formula] = molecule
-    
+
     def step(self, actions):
         obs, env_rewards, dones, info = super().step(actions)
-        
+
         # Put rewards from the environment into info
         info = dict(info, **{self.reward_name: env_rewards})
 
         # Get sizes of molecules
-        atoms_num = self.env.get_atoms_num()
+        atoms_num = self.get_atoms_num()
         env_steps = self.get_env_step()
 
         # Initialize reward arrays
@@ -122,7 +123,7 @@ class RewardWrapper(gym.Wrapper):
             self.update_coordinates['rdkit'](self.molecule['rdkit'][idx], self.env.atoms[idx].get_positions())
             if self.dft:
                 self.update_coordinates['dft'](self.molecule['dft'][idx], self.env.atoms[idx].get_positions())
-            
+
             # Calculate current rdkit reward for every trajectory
             if self.minimize_on_every_step or dones[idx]:
                 not_converged[idx], final_energy[idx], self.force['rdkit'][idx] = self.minimize_rdkit(idx)
@@ -133,19 +134,19 @@ class RewardWrapper(gym.Wrapper):
             queue = []
             for idx in range(self.n_parallel):
                 if self.minimize_on_every_step or dones[idx]:
-                    # Rdkit reward lower than RDKIT_DELTA_THRESH indicates highly improbable 
+                    # Rdkit reward lower than RDKIT_DELTA_THRESH indicates highly improbable
                     # conformations which are likely to cause an error in DFT calculation and/or
-                    # significantly slow them down. To mitigate this we propose to replace DFT reward 
-                    # in such states with rdkit reward. Note that rdkit reward is strongly 
+                    # significantly slow them down. To mitigate this we propose to replace DFT reward
+                    # in such states with rdkit reward. Note that rdkit reward is strongly
                     # correlated with DFT reward and should not intefere with the training.
                     if final_energy[idx] < RDKIT_ENERGY_THRESH:
                         queue.append((self.molecule['dft'][idx], atoms_num[idx], idx))
                     else:
                         self.threshold_exceeded[idx] += 1
                         rewards[idx] = rdkit_rewards[idx]
-            
+
             # Sort queue according to the molecule size
-            queue = sorted(queue, key=lambda x:x[1], reverse=True)
+            queue = sorted(queue, key=lambda x: x[1], reverse=True)
             # TODO think about M=None, etc.
             result = calculate_dft_energy_queue(queue, n_threads=self.n_threads, M=self.M)
             for idx, _, energy in result:
@@ -177,11 +178,11 @@ class RewardWrapper(gym.Wrapper):
                     self.negative_rewards_counter[idx] += 1
                 if self.negative_rewards_counter[idx] >= self.max_num_negative_rewards:
                     dones[idx] = True
-            
+
             # Log final energy of the molecule
             stats_done['final_energy'][idx] = final_energy[idx]
             stats_done['not_converged'][idx] = not_converged[idx]
-            
+
             # Log percentage of times in which treshold was  exceeded
             if self.dft:
                 threshold_exceeded_pct[idx] = self.threshold_exceeded[idx] / env_steps[idx]
@@ -199,25 +200,24 @@ class RewardWrapper(gym.Wrapper):
                     stats_done['final_rl_energy'][idx] = self.get_energy['rdkit'](self.molecule['rdkit'][idx])
             else:
                 stats_done['final_rl_energy'][idx] = final_energy[idx]
-        
+
         # Compute mean of stats over finished trajectories and update info
         info = dict(info, **stats_done)
 
         return obs, rewards, np.stack(dones), info
-    
+
     def reset(self, indices=None):
         obs = self.env.reset(indices=indices)
         if indices is None:
             indices = np.arange(self.n_parallel)
 
         # Get sizes of molecules
-        atoms_num = self.env.get_atoms_num()
-
+        atoms_num = self.get_atoms_num()
 
         for idx in indices:
             # Reset negative rewards counter
             self.negative_rewards_counter[idx] = 0
-            
+
             # Calculate initial rdkit energy
             if self.env.smiles[idx] is not None:
                 # Initialize molecule from Smiles
@@ -243,16 +243,16 @@ class RewardWrapper(gym.Wrapper):
                     self.initial_energy['dft'][idx] = self.env.energy[idx]
                 else:
                     queue.append((self.molecule['dft'][idx], atoms_num[idx], idx))
-        
-        # Calculate initial dft energy if it is not provided 
+
+        # Calculate initial dft energy if it is not provided
         if self.dft and len(queue) > 0:
             # Sort queue according to the molecule size
-            queue = sorted(queue, key=lambda x:x[1], reverse=True)
+            queue = sorted(queue, key=lambda x: x[1], reverse=True)
             # TODO think about M=None, etc.
             result = calculate_dft_energy_queue(queue, n_threads=self.n_threads, M=self.M)
             for idx, _, energy in result:
                 self.initial_energy['dft'][idx] = energy
-    
+
         return obs
 
     def set_initial_positions(self, atoms_list, smiles_list, energy_list, M=None):
@@ -292,19 +292,17 @@ class RewardWrapper(gym.Wrapper):
                     self.initial_energy['dft'][idx] = energy
                 else:
                     queue.append((self.molecule['dft'][idx], len(atoms.get_atomic_numbers()), idx))
-        
-        # Calculate initial dft energy if it is not provided 
+
+        # Calculate initial dft energy if it is not provided
         if self.dft and len(queue) > 0:
             # Sort queue according to the molecule size
-            queue = sorted(queue, key=lambda x:x[1], reverse=True)
+            queue = sorted(queue, key=lambda x: x[1], reverse=True)
             # TODO think about M=None, etc.
             result = calculate_dft_energy_queue(queue, n_threads=self.n_threads, M=self.M)
             for idx, _, energy in result:
                 self.initial_energy['dft'][idx] = energy
 
-
-        obs = _collate_aseatoms(obs_list)
-        obs = {k:v.squeeze(1) for k, v in obs.items()}
+        obs = _atoms_collate_fn(obs_list)
         return obs
 
     def minimize_rdkit(self, idx, M=None):
@@ -316,16 +314,17 @@ class RewardWrapper(gym.Wrapper):
 
         # Perform rdkit minimization
         ff = AllChem.MMFFGetMoleculeForceField(self.molecule['rdkit'][idx],
-                AllChem.MMFFGetMoleculeProperties(self.molecule['rdkit'][idx]), confId=0)
+                                               AllChem.MMFFGetMoleculeProperties(self.molecule['rdkit'][idx]), confId=0)
         ff.Initialize()
         not_converged = ff.Minimize(maxIts=n_its)
         energy = self.get_energy['rdkit'](self.molecule['rdkit'][idx])
         force = self.get_force['rdkit'](self.molecule['rdkit'][idx])
-       
+
         return not_converged, energy, force
 
     def get_atoms_num(self):
-        return self.env.get_atoms_num()
+        cumsum_atoms_num = np.asarray(self.get_atoms_num_cumsum())
+        return (cumsum_atoms_num[1:] - cumsum_atoms_num[:-1]).tolist()
 
     def get_env_step(self):
         return self.env.get_env_step()

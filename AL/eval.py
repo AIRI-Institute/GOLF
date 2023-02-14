@@ -80,13 +80,13 @@ def eval_policy_dft(actor, env, eval_episodes=10):
             state = recollate_batch(state, envs_to_reset, reset_states)
     actor.train()
     result = {k: np.array(v).mean() for k, v in result.items()}
-    return 
+    return result
 
 
 def eval_policy_rdkit(actor, env, eval_episodes=10, n_explore_runs=5,
                       evaluate_multiple_timesteps=True, terminate_on_convergence=False):
     assert env.n_parallel == 1, "Eval env is supposed to have n_parallel=1."
-    
+
 
     max_timestamps = env.unwrapped.TL
     result = defaultdict(lambda: 0.0)
@@ -142,6 +142,6 @@ def eval_policy_rdkit(actor, env, eval_episodes=10, n_explore_runs=5,
             result['explore/final_energy'] += explore_final_energy
             result['explore/final_rl_energy'] += explore_final_rl_energy
             result['explore/episode_len'] += explore_episode_len
-        
+
     result = {k: v / eval_episodes for k, v in result.items()}
     return result

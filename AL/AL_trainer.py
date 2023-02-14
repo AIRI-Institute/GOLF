@@ -1,11 +1,11 @@
-import collections
+import math
 
 import torch
+from schnetpack import properties
 from torch.nn.functional import mse_loss
 
 from AL import DEVICE
-from AL.utils import calculate_gradient_norm
-from AL.utils import calculate_gradient_norm, get_lr_scheduler
+from AL.utils import calculate_gradient_norm, get_lr_scheduler, get_atoms_indices_range
 
 
 class AL(object):
@@ -19,7 +19,6 @@ class AL(object):
         energy_loss_coef=0.01,
         force_loss_coef=0.99,
         total_steps=0,
-        group_by_n_atoms=False
     ):
         self.actor = policy.actor
         self.optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr)
@@ -37,68 +36,27 @@ class AL(object):
         self.clip_value = clip_value
         self.energy_loss_coef = energy_loss_coef
         self.force_loss_coef = force_loss_coef
-        self.group_by_n_atoms = group_by_n_atoms
         self.total_it = 0
 
     def update(self, replay_buffer, *args):
         metrics = dict()
         state, force, energy = replay_buffer.sample(self.batch_size)
+        output = self.actor(state, train=True)
+        predicted_energy = output['energy']
+        predicted_force = output['anti_gradient']
 
-        if self.group_by_n_atoms:
-            n_atoms_array = state['_atom_mask'].sum(-1).to(torch.int32).cpu().numpy()
-            groups = collections.defaultdict(list)
-            for idx, n_atoms in enumerate(n_atoms_array):
-                groups[n_atoms].append(idx)
+        atoms_indices_range = get_atoms_indices_range(state)
+        n_atoms = state[properties.n_atoms]
+        n_atoms_expanded = torch.ones(size=(predicted_force.size(0),), device=DEVICE, dtype=torch.float32)
+        for i in range(atoms_indices_range.size(0) - 1):
+            n_atoms_expanded[atoms_indices_range[i]:atoms_indices_range[i + 1]] = n_atoms[i]
 
-            energy_losses = []
-            force_losses = []
-            group_size = []
-            for n_atoms, group in groups.items():
-                group = torch.tensor(group, dtype=torch.int64, device=DEVICE)
-                group_state = {}
-                for key, value in state.items():
-                    if key == 'cell':
-                        group_state[key] = value[group].clone()
-                    elif key in ('_atomic_numbers', '_positions', '_atom_mask'):
-                        group_state[key] = value[group][:, :n_atoms].clone()
-                    else:
-                        group_state[key] = value[group][:, :n_atoms, :n_atoms - 1].clone()
-
-                group_force = force[group][:, :n_atoms]
-                group_energy = energy[group]
-
-                output = self.actor(group_state, train=True)
-                predicted_energy = output['energy']
-                anti_gradient = output['anti_gradient']
-
-                energy_loss = mse_loss(predicted_energy, group_energy)
-                force_loss = mse_loss(anti_gradient, group_force)
-                energy_losses.append(energy_loss)
-                force_losses.append(force_loss)
-                group_size.append(len(group))
-
-            energy_losses = torch.stack(energy_losses)
-            force_losses = torch.stack(force_losses)
-            group_size = torch.tensor(group_size, device=DEVICE)
-
-            energy_loss = torch.sum(energy_losses * group_size) / group_size.sum()
-            force_loss = torch.sum(force_losses * group_size) / group_size.sum()
-            metrics['n_batch_groups'] = len(groups)
-        else:
-            output = self.actor(state, train=True)
-            predicted_energy = output['energy']
-            anti_gradient = output['anti_gradient']
-
-            energy_loss = mse_loss(predicted_energy, energy)
-            force_loss = torch.mean(
-                mse_loss(anti_gradient, force, reduction='none').sum(dim=(1, 2)) / (3 * state['_atom_mask'].sum(-1))
-            )
-            metrics['n_batch_groups'] = 1
+        energy_loss = mse_loss(predicted_energy, energy.squeeze(1))
+        force_loss = torch.sum(
+            mse_loss(predicted_force, force, reduction='none').mean(-1) / n_atoms_expanded
+        ) / n_atoms.size(0)
 
         loss = self.force_loss_coef * force_loss + self.energy_loss_coef * energy_loss
-        if not torch.all(torch.isfinite(loss)):
-            print(f'Non finite values in GD loss')
-            return metrics
 
         metrics['loss'] = loss.item()
         metrics['energy_loss'] = energy_loss.item()
@@ -106,13 +64,21 @@ class AL(object):
         metrics['energy_loss_contrib'] = energy_loss.item() * self.energy_loss_coef
         metrics['force_loss_contrib'] = force_loss.item() * self.force_loss_coef
 
-        # Update the actor
+        if not torch.all(torch.isfinite(loss)):
+            print(f'Non finite values in GD loss')
+            return metrics
+
         self.optimizer.zero_grad()
         loss.backward()
         if self.clip_value is not None:
             metrics['grad_norm'] = torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.clip_value).item()
         else:
             metrics['grad_norm'] = calculate_gradient_norm(self.actor).item()
+
+        if not math.isfinite(metrics['grad_norm']):
+            print('Non finite values in GD grad_norm')
+            return metrics
+
         self.optimizer.step()
 
         # Update lr

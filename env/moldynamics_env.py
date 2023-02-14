@@ -1,3 +1,5 @@
+import math
+
 import backoff
 import gym
 import numpy as np
@@ -6,14 +8,14 @@ import warnings
 
 from ase.db import connect
 from sqlite3 import DatabaseError
-from schnetpack.data.atoms import AtomsConverter
-from schnetpack.data.loader import _collate_aseatoms
+from schnetpack.data.loader import _atoms_collate_fn
+from schnetpack.interfaces import AtomsConverter
+from schnetpack.transform import ASENeighborList
 
 from AL import DEVICE
 
-
 np.seterr(all="ignore")
-warnings.filterwarnings("ignore", category=DeprecationWarning) 
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 # For backoff exceptions
@@ -22,9 +24,9 @@ def on_giveup(details):
 
 
 class MolecularDynamics(gym.Env):
-    metadata = {"render_modes":["human"], "name":"md_v0"}
+    metadata = {"render_modes": ["human"], "name": "md_v0"}
     DISTANCE_THRESH = 0.7
-    
+
     def __init__(self,
                  db_path,
                  converter,
@@ -32,13 +34,13 @@ class MolecularDynamics(gym.Env):
                  timelimit=10,
                  sample_initial_conformations=True,
                  num_initial_conformations=50000,
-                ):
+                 ):
         self.db_path = db_path
         self.converter = converter
-        self.n_parallel=n_parallel
+        self.n_parallel = n_parallel
         self.TL = timelimit
         self.sample_initial_conformations = sample_initial_conformations
-        
+
         self.db_len = self.get_db_length()
         self.atoms = None
         self.mean_energy = 0.
@@ -60,16 +62,18 @@ class MolecularDynamics(gym.Env):
 
     def step(self, actions):
         # Get number of atoms in each molecule
-        numbers_atoms = self.get_atoms_num()
+        cumsum_numbers_atoms = self.get_atoms_num_cumsum()
 
         obs = []
         rewards = [None] * self.n_parallel
         dones = [None] * self.n_parallel
         info = {}
 
-        for idx, (number_atoms, action) in enumerate(zip(numbers_atoms, actions)):
+        for idx in range(self.n_parallel):
             # Unpad action
-            self.atoms[idx].set_positions(self.atoms[idx].get_positions() + action[:number_atoms])
+            self.atoms[idx].set_positions(
+                self.atoms[idx].get_positions() + actions[cumsum_numbers_atoms[idx]:cumsum_numbers_atoms[idx + 1]]
+            )
 
             # Check if there are atoms too close to each other in the molecule
             self.atoms[idx], num_bad_pairs_before, num_bad_pairs_after = self.process_molecule(self.atoms[idx])
@@ -82,14 +86,14 @@ class MolecularDynamics(gym.Env):
 
             # Convert atoms to obs
             obs.append(self.converter(self.atoms[idx]))
-        
+
         # Add info about bad pairs
         info['total_bad_pairs_before_process'] = self.total_num_bad_pairs_before
         info['total_bad_pairs_after_process'] = self.total_num_bad_pairs_after
-        
+
         # Collate observations into a batch
-        obs = _collate_aseatoms(obs)
-        obs = {k:v.squeeze(1) for k, v in obs.items()}
+        obs = _atoms_collate_fn(obs)
+        obs = {k: v.to(DEVICE) for k, v in obs.items()}
 
         return obs, rewards, dones, info
 
@@ -126,8 +130,8 @@ class MolecularDynamics(gym.Env):
             obs.append(self.converter(self.atoms[idx]))
 
         # Collate observations into a batch
-        obs = _collate_aseatoms(obs)
-        obs = {k:v.squeeze(1) for k, v in obs.items()}
+        obs = _atoms_collate_fn(obs)
+        obs = {k: v.to(DEVICE) for k, v in obs.items()}
 
         return obs
 
@@ -146,7 +150,8 @@ class MolecularDynamics(gym.Env):
         if num_initial_conformations == -1 or num_initial_conformations == self.db_len:
             indices = np.arange(1, self.db_len + 1)
         else:
-            indices = np.random.choice(np.arange(1, self.db_len + 1), min(self.db_len, num_initial_conformations), replace=False)
+            indices = np.random.choice(np.arange(1, self.db_len + 1), min(self.db_len, num_initial_conformations),
+                                       replace=False)
         self.initial_molecule_conformations = []
         for idx in indices:
             row = self.get_molecule(int(idx))
@@ -164,8 +169,12 @@ class MolecularDynamics(gym.Env):
         with connect(self.db_path) as conn:
             return conn.get(idx)
 
-    def get_atoms_num(self):
-        return [len(atom.get_atomic_numbers()) for atom in self.atoms]
+    def get_atoms_num_cumsum(self):
+        atoms_num_cumsum = [0]
+        for atom in self.atoms:
+            atoms_num_cumsum.append(atoms_num_cumsum[-1] + len(atom.get_atomic_numbers()))
+
+        return atoms_num_cumsum
 
     def get_bad_pairs_indices(self, positions):
         dir_ij = positions[None, :, :] - positions[:, None, :]
@@ -189,8 +198,8 @@ class MolecularDynamics(gym.Env):
         bad_indices_before, dir_ij, r_ij = self.get_bad_pairs_indices(positions)
 
         # Move atoms apart. At the moment we assume
-        # that r_ij < THRESH is a rare event that affects at most 
-        # one pair of atoms so moving them apart should not cause 
+        # that r_ij < THRESH is a rare event that affects at most
+        # one pair of atoms so moving them apart should not cause
         # any other r_kl to become < THRESH.
         for (i, j) in bad_indices_before:
             coef = MolecularDynamics.DISTANCE_THRESH + 0.05 - r_ij[i, j]
@@ -209,11 +218,14 @@ class MolecularDynamics(gym.Env):
         np.random.seed(seed)
         return seed
 
+
 def env_fn(**kwargs):
     '''
     To support the AEC API, the raw_env() function just uses the from_parallel
     function to convert from a ParallelEnv to an AEC env
     '''
-    converter = AtomsConverter(device=torch.device(DEVICE))
+    converter = AtomsConverter(
+        neighbor_list=ASENeighborList(cutoff=math.inf), dtype=torch.float32, device=torch.device('cpu')
+    )
     env = MolecularDynamics(converter=converter, **kwargs)
     return env

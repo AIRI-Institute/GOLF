@@ -4,14 +4,14 @@ import torch.nn as nn
 import schnetpack as spk
 from torch.linalg import vector_norm
 
-from AL.backbones.painn import PaiNN
+from AL.utils import get_atoms_indices_range
 from utils.utils import ignore_extra_args
 
 EPS = 1e-8
 
 backbones = {
-    "schnet": ignore_extra_args(spk.SchNet),
-    "painn": ignore_extra_args(PaiNN)
+    "schnet": ignore_extra_args(spk.representation.SchNet),
+    "painn": ignore_extra_args(spk.representation.PaiNN)
 }
 
 
@@ -26,33 +26,39 @@ class Actor(nn.Module):
             spk.atomistic.Atomwise(
                 n_in=representation.n_atom_basis,
                 n_out=1,
-                property='energy',
-                negative_dr=True,
-                derivative='anti_gradient'
-            )
+                output_key='energy',
+            ),
+            spk.atomistic.Forces(energy_key='energy', force_key='anti_gradient'),
         ]
-        self.model = spk.atomistic.model.AtomisticModel(representation, output_modules)
 
-    def _limit_action_norm(self, actions):
+        self.model = spk.model.NeuralNetworkPotential(
+            representation=representation,
+            input_modules=[spk.atomistic.PairwiseDistances()],
+            output_modules=output_modules
+        )
+
+    def _limit_action_norm(self, actions, n_atoms):
         if self.action_norm_limit is None:
             return actions
 
-        max_norm = vector_norm(actions, dim=-1, keepdims=True).max(dim=1, keepdims=True).values
-        max_norm = torch.maximum(max_norm, torch.full_like(max_norm, fill_value=EPS, dtype=torch.float32))
-        coefficient = torch.minimum(self.action_norm_limit / max_norm, torch.ones_like(max_norm, dtype=torch.float32))
-        actions *= coefficient
+        coefficient = torch.ones(size=(actions.size(0), 1), dtype=torch.float32, device=actions.device)
+        for molecule_id in range(n_atoms.size(0) - 1):
+            max_norm = vector_norm(actions[n_atoms[molecule_id]:n_atoms[molecule_id + 1]], dim=-1, keepdims=True)\
+                .max(dim=1, keepdims=True).values
+            max_norm = torch.maximum(max_norm, torch.full_like(max_norm, fill_value=EPS, dtype=torch.float32))
+            coefficient[n_atoms[molecule_id]:n_atoms[molecule_id + 1]] = \
+                torch.minimum(self.action_norm_limit / max_norm, torch.ones_like(max_norm, dtype=torch.float32))
 
-        return actions
+        return actions * coefficient
 
     def forward(self, state_dict, train=False):
         output = self.model(state_dict)
         if train:
             return output
 
-        atoms_mask = state_dict['_atom_mask']
-        action = output['anti_gradient'].detach() * atoms_mask.unsqueeze(-1)
+        action = output['anti_gradient'].detach()
         action *= self.action_scale
-        action = self._limit_action_norm(action)
+        action = self._limit_action_norm(action, get_atoms_indices_range(state_dict))
 
         return {'action': action, 'energy': output['energy']}
 

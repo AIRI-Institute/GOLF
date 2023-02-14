@@ -8,19 +8,18 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from schnetpack.nn import get_cutoff_by_string
+import schnetpack
 
 from env.make_envs import make_envs
 from AL import DEVICE
 from AL.AL_actor import ALPolicy
 from AL.AL_trainer import AL
 from AL.eval import eval_policy_dft, eval_policy_rdkit
-from AL.replay_buffer import  ReplayBufferGD
-from AL.utils import calculate_action_norm, recollate_batch, calculate_molecule_metrics
+from AL.replay_buffer import ReplayBufferGD
+from AL.utils import calculate_action_norm, recollate_batch, get_cutoff_by_string
 from utils.arguments import get_args
 from utils.logging import Logger
 from utils.utils import ignore_extra_args
-
 
 eval_function = {
     "rdkit": ignore_extra_args(eval_policy_rdkit),
@@ -31,13 +30,13 @@ eval_function = {
 def main(args, experiment_folder):
     # Set env name
     args.env = args.db_path.split('/')[-1].split('.')[0]
-    
+
     # Initialize logger
     logger = Logger(experiment_folder, args)
-    
+
     # Initialize envs
     env, eval_env = make_envs(args)
-    
+
     # Initialize replay buffer
     replay_buffer = ReplayBufferGD(
         device=DEVICE,
@@ -50,10 +49,9 @@ def main(args, experiment_folder):
     # Inititalize actor and critic
     backbone_args = {
         'n_interactions': args.n_interactions,
-        'cutoff': args.cutoff,
-        'n_gaussians': args.n_rbf,
-        'n_rbf':  args.n_rbf,
-        'use_cosine_between_vectors': args.use_cosine_between_vectors
+        'n_atom_basis': args.n_atom_basis,
+        'radial_basis': schnetpack.nn.BesselRBF(n_rbf=args.n_rbf, cutoff=args.cutoff),
+        'cutoff_fn': get_cutoff_by_string('cosine')(args.cutoff),
     }
     policy = ALPolicy(
         backbone=args.backbone,
@@ -70,12 +68,11 @@ def main(args, experiment_folder):
         lr_scheduler=args.lr_scheduler,
         energy_loss_coef=args.energy_loss_coef,
         force_loss_coef=args.force_loss_coef,
-        group_by_n_atoms=args.group_by_n_atoms,
         total_steps=args.max_timesteps,
     )
 
     state = env.reset()
-    
+
     # Save initial state in replay buffer
     current_energy = np.array(env.initial_energy[args.reward], dtype=np.float32)
     forces = [np.array(force, dtype=np.float32) for force in env.force[args.reward]]
@@ -84,7 +81,7 @@ def main(args, experiment_folder):
     episode_returns = np.zeros(args.n_parallel)
 
     if args.load_model is not None:
-        start_iter = int(args.load_model.split('/')[-1].split('_')[-1]) // args.n_parallel + 1 
+        start_iter = int(args.load_model.split('/')[-1].split('_')[-1]) // args.n_parallel + 1
         trainer.load(args.load_model)
         replay_buffer = pickle.load(open(f'{args.load_model}_replay', 'rb'))
     else:
@@ -93,11 +90,10 @@ def main(args, experiment_folder):
     policy.train()
     max_timesteps = int(args.max_timesteps) // args.n_parallel
 
-
     for t in range(start_iter, max_timesteps):
         start = time.perf_counter()
         update_condition = (t + 1) >= args.batch_size // args.n_parallel and (t + 1)
-        
+
         # Select next action
         actions = policy.act(state)['action'].cpu().numpy()
 
@@ -123,13 +119,13 @@ def main(args, experiment_folder):
             step_metrics = dict()
 
         step_metrics['Timestamp'] = str(datetime.datetime.now())
-        step_metrics['Action_norm'] = calculate_action_norm(actions, state['_atom_mask']).item()
-        
+        step_metrics['Action_norm'] = calculate_action_norm(actions, env.get_atoms_num_cumsum()).item()
+
         # Calculate average number of pairs of atoms too close together
         # in env before and after processing
         step_metrics['Molecule/num_bad_pairs_before'] = info['total_bad_pairs_before_process']
         step_metrics['Molecule/num_bad_pairs_after'] = info['total_bad_pairs_after_process']
-        
+
         # Update training statistics
         for i, done in enumerate(dones):
             if done:
@@ -175,7 +171,7 @@ def main(args, experiment_folder):
             old_checkpoint_files = glob.glob(f'{experiment_folder}/full_cp_iter*')
             for cp_file in old_checkpoint_files:
                 os.remove(cp_file)
-            
+
             # Save new checkpoint
             save_t = (t + 1) * args.n_parallel
             trainer_save_name = f'{experiment_folder}/full_cp_iter_{save_t}'
@@ -195,11 +191,11 @@ if __name__ == "__main__":
     log_dir = Path(args.log_dir)
     if args.seed is None:
         args.seed = random.randint(0, 1000000)
-     # Seed everything
+    # Seed everything
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
-    #args.git_sha = get_current_gitsha()
+    # args.git_sha = get_current_gitsha()
 
     start_time = datetime.datetime.strftime(datetime.datetime.now(), '%Y_%m_%d_%H_%M_%S')
     if args.load_model is not None:
