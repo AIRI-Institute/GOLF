@@ -8,9 +8,10 @@ from AL.utils import recollate_batch
 
 
 TIMELIMITS = [1, 5, 10, 50, 100]
+CONVERGENCE_THRESHOLD = 1e-5
 
 
-def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, terminate_on_convergence):
+def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination_mode):
     teminate_episode_condition = False
     previous_energy = 0.0
     done = np.array([False])
@@ -24,16 +25,19 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, terminate_on_con
         state = {k:v.to(DEVICE) for k, v in state.items()}
         delta_energy += reward[0]
         t += 1
-        # If terminate_on_convergence is True
-        # Check if the change in predicted energy is smaller than threshold
-        if terminate_on_convergence:
+        if eval_termination_mode == "delta_energy":
+            # Either the change in energy is smaller than the threshold 
+            # or the timelimit has been reached
             if t > 1:
-                teminate_episode_condition = abs(previous_energy - energy.item()) < 1e-5
+                teminate_episode_condition = abs(previous_energy - energy.item()) < CONVERGENCE_THRESHOLD\
+                    or t >= max_timestamps
             # print("predicted: {:.5f}, real: {:.5f}, TS: {:d}".format(abs(previous_energy - energy.item()), reward[0], t))
             previous_energy = energy.item()
-        else:
+        elif eval_termination_mode == "negative_reward":
             teminate_episode_condition = done[0]
-        teminate_episode_condition = teminate_episode_condition or t >= max_timestamps
+        elif eval_termination_mode == "fixed_length":
+            teminate_episode_condition = t >= max_timestamps
+
     return delta_energy, info['final_energy'][0], info['final_rl_energy'][0], t
 
 def rdkit_minimize_until_convergence(env, fixed_atoms, smiles, M=None):
@@ -83,8 +87,8 @@ def eval_policy_dft(actor, env, eval_episodes=10):
     return result
 
 
-def eval_policy_rdkit(actor, env, eval_episodes=10, n_explore_runs=5,
-                      evaluate_multiple_timesteps=True, terminate_on_convergence=False):
+def eval_policy_rdkit(actor, env, eval_episodes=10, evaluate_multiple_timesteps=True,
+                      eval_termination_mode=False):
     assert env.n_parallel == 1, "Eval env is supposed to have n_parallel=1."
 
 
@@ -101,7 +105,7 @@ def eval_policy_rdkit(actor, env, eval_episodes=10, n_explore_runs=5,
         # Evaluate policy in eval mode
         actor.eval()
         eval_delta_energy, eval_final_energy, eval_final_rl_energy, eval_episode_len = \
-            run_policy(env, actor, fixed_atoms, smiles, max_timestamps, terminate_on_convergence)
+            run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination_mode)
         result['eval/delta_energy'] += eval_delta_energy
         result['eval/final_energy'] += eval_final_energy
         result['eval/final_rl_energy'] += eval_final_rl_energy
@@ -121,7 +125,7 @@ def eval_policy_rdkit(actor, env, eval_episodes=10, n_explore_runs=5,
                 # Set env's TL to current timelimit
                 env.update_timelimit(timelimit)
                 delta_energy_at, final_energy_at, _, _ = \
-                    run_policy(env, actor, fixed_atoms, smiles, max_timestamps, terminate_on_convergence)
+                    run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination_mode)
                 result[f'eval/delta_energy_at_{timelimit}'] += delta_energy_at
 
                 # If reward is given by rdkit we know the optimal energy for the conformation.
@@ -129,19 +133,9 @@ def eval_policy_rdkit(actor, env, eval_episodes=10, n_explore_runs=5,
                     (initial_energy - final_energy_at)  / (initial_energy - final_energy)
             # Set env's TL to original value
             env.update_timelimit(max_timestamps)
-
-        # Evaluate policy in explore mode
+        
+        # Switch actor back to training mode
         actor.train()
-        if n_explore_runs > 0:
-            explore_results = np.array(
-                [run_policy(env, actor, fixed_atoms, smiles, max_timestamps) for _ in range(n_explore_runs)]
-            )
-            explore_delta_energy, explore_final_energy, explore_final_rl_energy, explore_episode_len = \
-                explore_results.mean(axis=0)
-            result['explore/delta_energy'] += explore_delta_energy
-            result['explore/final_energy'] += explore_final_energy
-            result['explore/final_rl_energy'] += explore_final_rl_energy
-            result['explore/episode_len'] += explore_episode_len
 
     result = {k: v / eval_episodes for k, v in result.items()}
     return result

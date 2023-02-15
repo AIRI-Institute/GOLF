@@ -44,7 +44,7 @@ def main(args, experiment_folder):
     )
 
     if args.store_only_initial_conformations:
-        assert args.timelimit == 1
+        assert args.timelimit_train == 1
 
     # Inititalize actor and critic
     backbone_args = {
@@ -149,6 +149,8 @@ def main(args, experiment_folder):
             forces = [np.array(env.force[args.reward][idx], dtype=np.float32) for idx in envs_to_reset]
             replay_buffer.add(reset_states, forces, energies)
 
+        print(time.perf_counter() - start)
+
         # Evaluate episode
         if (t + 1) % (args.eval_freq // args.n_parallel) == 0:
             step_metrics['Total_timesteps'] = (t + 1) * args.n_parallel
@@ -158,9 +160,8 @@ def main(args, experiment_folder):
                     actor=policy,
                     env=eval_env,
                     eval_episodes=args.n_eval_runs,
-                    n_explore_runs=args.n_explore_runs,
                     evaluate_multiple_timesteps=args.evaluate_multiple_timesteps,
-                    terminate_on_convergence=args.terminate_on_convergence,
+                    eval_termination_mode=args.eval_termination_mode,
                 )
             )
             logger.log(step_metrics)

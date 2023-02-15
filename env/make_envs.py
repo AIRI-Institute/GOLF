@@ -6,7 +6,7 @@ def make_envs(args):
     env_kwargs = {
         'db_path': args.db_path,
         'n_parallel': args.n_parallel,
-        'timelimit': args.timelimit,
+        'timelimit': args.timelimit_train,
         'sample_initial_conformations': True,
         'num_initial_conformations': args.num_initial_conformations,
     }
@@ -25,20 +25,21 @@ def make_envs(args):
     # Initialize env
     env = env_fn(**env_kwargs)
     env = RewardWrapper(env, **reward_wrapper_kwargs)
-    
+
     # Update kwargs for eval_env
     if args.eval_db_path != '':
         env_kwargs['db_path'] = args.eval_db_path
-    
-    env_kwargs['sample_initial_conformations'] = args.sample_initial_conformations,
+    env_kwargs.update({
+        'sample_initial_conformations': args.sample_initial_conformations,
+        'timelimit': args.timelimit_eval
+    })
 
-    # Set timelimit to 100 to correctly log eval/episode_len
     if args.reward == "rdkit":
         env_kwargs['n_parallel'] = 1
     else:
         env_kwargs['n_parallel'] = args.n_eval_runs
         reward_wrapper_kwargs['n_threads'] = args.n_eval_runs
-    
+
     # Initialize eval env
     eval_env = env_fn(**env_kwargs)
     eval_env = RewardWrapper(eval_env, **reward_wrapper_kwargs)

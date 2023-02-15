@@ -55,12 +55,17 @@ def get_args():
         type=str2bool,
         help="Sample new conformation for every seed")
 
-    # Timelimit args
+    # Episode termination args
     parser.add_argument(
-        "--timelimit",
+        "--timelimit_train",
         default=100,
         type=int,
-        help="Timelimit for MD env")
+        help="Max episode len on training")
+    parser.add_argument(
+        "--timelimit_eval",
+        default=100,
+        type=int,
+        help="Max episode len on evaluation")
     parser.add_argument(
         "--terminate_on_negative_reward",
         default=True,
@@ -73,6 +78,12 @@ def get_args():
         default=1,
         type=int,
         help="Max number of negative rewards to terminate the episode")
+    parser.add_argument(
+        "--eval_termination_mode",
+        default="fixed_length",
+        choices=["fixed_length", "delta_energy", "negative_reward"],
+        help="When to terminate the episode on evaluation")
+    
 
     # Reward args
     parser.add_argument(
@@ -184,22 +195,11 @@ def get_args():
         type=int,
         help="Number of evaluation episodes")
     parser.add_argument(
-        "--n_explore_runs",
-        default=5,
-        type=int,
-        help="Number of exploration episodes during evaluation")
-    parser.add_argument(
         "--evaluate_multiple_timesteps",
         default=False,
         choices=[True, False],
         metavar='True|False', type=str2bool,
         help="Evaluate at multiple timesteps")
-    parser.add_argument(
-        "--terminate_on_convergence",
-        default=False,
-        choices=[True, False],
-        metavar='True|False', type=str2bool,
-        help="Terminate evaluation episode based on predicted energy")
 
     # Other args
     parser.add_argument(
