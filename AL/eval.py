@@ -14,14 +14,13 @@ CONVERGENCE_THRESHOLD = 1e-5
 def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination_mode):
     teminate_episode_condition = False
     previous_energy = 0.0
-    done = np.array([False])
     delta_energy = 0
     t = 0
     state = env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
     state = {k:v.to(DEVICE) for k, v in state.items()}
     while not teminate_episode_condition:
         action, energy = actor.select_action(state)
-        state, reward, done, info = env.step(action)
+        state, reward, _, info = env.step(action)
         state = {k:v.to(DEVICE) for k, v in state.items()}
         delta_energy += reward[0]
         t += 1
@@ -34,7 +33,7 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination
             # print("predicted: {:.5f}, real: {:.5f}, TS: {:d}".format(abs(previous_energy - energy.item()), reward[0], t))
             previous_energy = energy.item()
         elif eval_termination_mode == "negative_reward":
-            teminate_episode_condition = done[0]
+            teminate_episode_condition = reward[0] < 0
         elif eval_termination_mode == "fixed_length":
             teminate_episode_condition = t >= max_timestamps
 
