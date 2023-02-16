@@ -28,14 +28,14 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination
             # Either the change in energy is smaller than the threshold 
             # or the timelimit has been reached
             if t > 1:
-                teminate_episode_condition = abs(previous_energy - energy.item()) < CONVERGENCE_THRESHOLD\
-                    or t >= max_timestamps
+                teminate_episode_condition = abs(previous_energy - energy.item()) < CONVERGENCE_THRESHOLD
             # print("predicted: {:.5f}, real: {:.5f}, TS: {:d}".format(abs(previous_energy - energy.item()), reward[0], t))
             previous_energy = energy.item()
         elif eval_termination_mode == "negative_reward":
             teminate_episode_condition = reward[0] < 0
-        elif eval_termination_mode == "fixed_length":
-            teminate_episode_condition = t >= max_timestamps
+
+        # Terminate if max len is reached
+        teminate_episode_condition = teminate_episode_condition or t >= max_timestamps
 
     return delta_energy, info['final_energy'][0], info['final_rl_energy'][0], t
 
