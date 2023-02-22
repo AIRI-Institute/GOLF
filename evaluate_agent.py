@@ -7,11 +7,13 @@ import torch
 from collections import defaultdict
 from pathlib import Path
 from tqdm import tqdm
+from schnetpack.nn import BesselRBF
 
 from env.make_envs import make_envs
 from AL import DEVICE
 from AL.AL_actor import Actor
 from AL.eval import run_policy, rdkit_minimize_until_convergence
+from AL.utils import get_cutoff_by_string
 from utils.arguments import str2bool
 
 
@@ -24,7 +26,7 @@ def rdkit_minimize(env, fixed_atoms, smiles, max_its):
     not_converged, final_energy, _ = env.minimize_rdkit(idx=0, M=max_its)
     return final_energy, not_converged
 
-def eval_agent(env, actor, n_confs, evaluate_rdkit, evaluate_rl):
+def eval_agent(env, actor, n_confs, evaluate_rdkit, evaluate_rl, eval_termination_mode):
     convergence_results = defaultdict(list)
     result = defaultdict(lambda: defaultdict(lambda: []))
 
@@ -56,7 +58,7 @@ def eval_agent(env, actor, n_confs, evaluate_rdkit, evaluate_rl):
         # Optimize with rdkit until convergence after RL
         if evaluate_rl:
              # Optimize molecule with RL and save resulting conformation
-            _ = run_policy(env, actor, fixed_atoms, smiles, max_timestamps)
+            _ = run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination_mode)
             after_rl_atoms = env.unwrapped.atoms.copy()
             _, final_rdkit_after_rl_energy = \
                 rdkit_minimize_until_convergence(env, after_rl_atoms, smiles, M=0)
@@ -106,21 +108,20 @@ def eval_agent(env, actor, n_confs, evaluate_rdkit, evaluate_rl):
 def main(checkpoint_path, args, config):
 
     # Update config
-    config.done_when_not_improved = True
-    config.timelimit = 100
-    if args.conf_number == -1:
-        config.sample_initial_conformation = False
-    else:
-        config.sample_initial_conformation = True
+    # if args.conf_number == -1:
+    #     config.sample_initial_conformation = False
+    # else:
+    #     config.sample_initial_conformation = True
+    config.sample_initial_conformation = False
+    config.timelimit_eval = args.timelimit_eval
    
     _, eval_env = make_envs(config)
 
     backbone_args = {
         'n_interactions': config.n_interactions,
-        'cutoff': config.cutoff,
-        'n_gaussians': config.n_rbf,
-        'n_rbf':  config.n_rbf,
-        'use_cosine_between_vectors': config.use_cosine_between_vectors,
+        'n_atom_basis': config.n_atom_basis,
+        'radial_basis': BesselRBF(n_rbf=config.n_rbf, cutoff=config.cutoff),
+        'cutoff_fn': get_cutoff_by_string('cosine')(config.cutoff),
     }
 
     actor = Actor(
@@ -134,7 +135,9 @@ def main(checkpoint_path, args, config):
     actor.to(DEVICE)
     actor.eval()
 
-    result, convergence_results = eval_agent(eval_env, actor, args.conf_number, args.evaluate_rdkit, args.evaluate_rl)
+    result, convergence_results = eval_agent(eval_env, actor, args.conf_number, 
+                                             args.evaluate_rdkit, args.evaluate_rl,
+                                             eval_termination_mode="fixed_length")
     
     # Convert defaultdict into normal dict to pickle it
     normal_dict = {}
@@ -157,6 +160,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_path", type=str, required=True)
     parser.add_argument("--agent_path", type=str, required=True)
     parser.add_argument("--conf_number", default=int(1e5), type=int, help="Number of conformations to evaluate on")
+    parser.add_argument("--timelimit_eval", default=500, type=int, help="Max len of episode on eval")
     parser.add_argument("--evaluate_rdkit", default=False, choices=[True, False],
                          metavar='True|False', type=str2bool, help="Evaluate initial state with rdkit")
     parser.add_argument("--evaluate_rl", default=False, choices=[True, False],
