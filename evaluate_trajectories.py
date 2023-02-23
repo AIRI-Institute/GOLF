@@ -5,7 +5,6 @@ import numpy as np
 import pickle
 import torch
 
-from collections import defaultdict
 from pathlib import Path
 from tqdm import tqdm
 from schnetpack.nn import BesselRBF
@@ -13,9 +12,7 @@ from schnetpack.nn import BesselRBF
 from env.make_envs import make_envs
 from AL import DEVICE
 from AL.AL_actor import Actor
-from AL.eval import run_policy, rdkit_minimize_until_convergence
 from AL.utils import get_cutoff_by_string
-from utils.arguments import str2bool
 
 
 class Config():
