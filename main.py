@@ -56,6 +56,7 @@ def main(args, experiment_folder):
     policy = ALPolicy(
         backbone=args.backbone,
         backbone_args=backbone_args,
+        action_scale_sheduler=args.action_scale_sheduler,
         action_scale=args.action_scale,
         action_norm_limit=args.action_norm_limit,
     ).to(DEVICE)
@@ -94,13 +95,12 @@ def main(args, experiment_folder):
         start = time.perf_counter()
         update_condition = (t + 1) >= args.batch_size // args.n_parallel and (t + 1)
 
-        # Select next action
-        actions = policy.act(state)['action'].cpu().numpy()
-
-        next_state, rewards, dones, info = env.step(actions)
-        # Done on every step or at the end of the episode
-        # dones = [done or args.greedy for done in dones]
+        # Get current timesteps
         episode_timesteps = env.unwrapped.get_env_step()
+        
+        # Select next action
+        actions = policy.act(state, episode_timesteps)['action'].cpu().numpy()
+        next_state, rewards, dones, info = env.step(actions)
 
         if not args.store_only_initial_conformations:
             current_energy = np.array(env.initial_energy[args.reward], dtype=np.float32)
@@ -129,7 +129,7 @@ def main(args, experiment_folder):
         # Update training statistics
         for i, done in enumerate(dones):
             if done:
-                logger.update_evaluation_statistics(episode_timesteps[i],
+                logger.update_evaluation_statistics(episode_timesteps[i] + 1,
                                                     episode_returns[i].item(),
                                                     info['final_energy'][i],
                                                     info['final_rl_energy'][i],

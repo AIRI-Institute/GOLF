@@ -4,7 +4,7 @@ import torch.nn as nn
 import schnetpack as spk
 from torch.linalg import vector_norm
 
-from AL.utils import get_atoms_indices_range
+from AL.utils import get_atoms_indices_range, get_action_scale_scheduler
 from utils.utils import ignore_extra_args
 
 EPS = 1e-8
@@ -16,10 +16,11 @@ backbones = {
 
 
 class Actor(nn.Module):
-    def __init__(self, backbone, backbone_args, action_scale, action_norm_limit=None):
+    def __init__(self, backbone, backbone_args, action_scale,
+                 action_scale_sheduler="Constant", action_norm_limit=None):
         super(Actor, self).__init__()
         self.action_norm_limit = action_norm_limit
-        self.action_scale = action_scale
+        self.action_scale = get_action_scale_scheduler(action_scale_sheduler, action_scale)
 
         representation = backbones[backbone](**backbone_args)
         output_modules = [
@@ -51,31 +52,34 @@ class Actor(nn.Module):
 
         return actions * coefficient
 
-    def forward(self, state_dict, train=False):
+    def forward(self, state_dict, t=None, train=False):
         output = self.model(state_dict)
         if train:
             return output
 
+        action_scale = self.action_scale.get(t)
         action = output['anti_gradient'].detach()
-        action *= self.action_scale
+        action *= action_scale
         action = self._limit_action_norm(action, get_atoms_indices_range(state_dict))
 
         return {'action': action, 'energy': output['energy']}
 
-    def select_action(self, state_dict):
-        output = self.forward(state_dict)
+    def select_action(self, state_dict, t):
+        output = self.forward(state_dict, t)
         action = output['action'].cpu().numpy()
         energy = output['energy'].detach().cpu().numpy()
         return action, energy
 
 
 class ALPolicy(nn.Module):
-    def __init__(self, backbone, backbone_args, action_scale, action_norm_limit=None):
+    def __init__(self, backbone, backbone_args, action_scale,
+                 action_scale_sheduler, action_norm_limit=None):
         super().__init__()
-        self.actor = Actor(backbone, backbone_args, action_scale, action_norm_limit)
+        self.actor = Actor(backbone, backbone_args, action_scale,
+                           action_scale_sheduler, action_norm_limit)
 
-    def act(self, state_dict):
-        return self.actor(state_dict)
+    def act(self, state_dict, t):
+        return self.actor(state_dict, t)
 
-    def select_action(self, state_dict):
-        return self.actor.select_action(state_dict)
+    def select_action(self, state_dict, t):
+        return self.actor.select_action(state_dict, t)

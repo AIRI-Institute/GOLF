@@ -19,7 +19,7 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination
     state = env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
     state = {k:v.to(DEVICE) for k, v in state.items()}
     while not teminate_episode_condition:
-        action, energy = actor.select_action(state)
+        action, energy = actor.select_action(state, [t])
         state, reward, _, info = env.step(action)
         state = {k:v.to(DEVICE) for k, v in state.items()}
         delta_energy += reward[0]
@@ -60,11 +60,11 @@ def eval_policy_dft(actor, env, eval_episodes=10):
     episode_returns = np.zeros(env.unwrapped.n_parallel)
     actor.eval()
     while len(result['eval/delta_energy']) < eval_episodes:
-        action, _ = actor.select_action(state)
+        episode_timesteps = env.unwrapped.get_env_step()
+        action, _ = actor.select_action(state, episode_timesteps)
         # Obser reward and next obs
         state, rewards, dones, infos = env.step(action)
-        episode_timesteps = env.unwrapped.get_env_step()
-        dones = [done or t > max_timestamps for done, t in zip(dones, episode_timesteps)]
+        dones = [done or (t + 1) > max_timestamps for done, t in zip(dones, episode_timesteps)]
         episode_returns += rewards
 
         envs_to_reset = []

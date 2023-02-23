@@ -7,6 +7,38 @@ import schnetpack.nn as snn
 
 from AL import DEVICE
 
+
+class ActionScaleCosineAnnealing():
+    def __init__(self, action_scale, action_scale_min=1e-5, t_max=1000):
+        self.action_scale = action_scale
+        self.action_scale_min = action_scale_min
+        self.t_max = t_max
+
+    def get(self, t):
+        return torch.FloatTensor(
+            [self.action_scale_min + 0.5 * (self.action_scale - self.action_scale_min) *\
+                (1 + np.cos(min(t_, self.t_max) * np.pi / self.t_max)) for t_ in t]
+        ).to(DEVICE)
+
+
+class ActionScaleConstant():
+    def __init__(self, action_scale):
+        self.action_scale = action_scale
+
+    def get(self, t):
+        return torch.FloatTensor(
+            [self.action_scale for t_ in t]
+        ).to(DEVICE)
+
+
+def get_action_scale_scheduler(action_scale_sheduler_type, action_scale):
+    if action_scale_sheduler_type == "Constant":
+        return ActionScaleConstant(action_scale)
+    elif action_scale_sheduler_type == "CosineAnnealing":
+        return ActionScaleCosineAnnealing(action_scale)
+    else:
+        raise ValueError("Unknown Action Scale scheduler type: {}".format(action_scale_sheduler_type))
+
 def get_lr_scheduler(scheduler_type, optimizer, **kwargs):
     if scheduler_type == "OneCycleLR":
         return torch.optim.lr_scheduler.OneCycleLR(
