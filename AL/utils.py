@@ -31,13 +31,13 @@ class ActionScaleConstant():
         ).to(DEVICE)
 
 
-def get_action_scale_scheduler(action_scale_sheduler_type, action_scale):
-    if action_scale_sheduler_type == "Constant":
+def get_action_scale_scheduler(action_scale_scheduler_type, action_scale):
+    if action_scale_scheduler_type == "Constant":
         return ActionScaleConstant(action_scale)
-    elif action_scale_sheduler_type == "CosineAnnealing":
+    elif action_scale_scheduler_type == "CosineAnnealing":
         return ActionScaleCosineAnnealing(action_scale)
     else:
-        raise ValueError("Unknown Action Scale scheduler type: {}".format(action_scale_sheduler_type))
+        raise ValueError("Unknown Action Scale scheduler type: {}".format(action_scale_scheduler_type))
 
 def get_lr_scheduler(scheduler_type, optimizer, **kwargs):
     if scheduler_type == "OneCycleLR":

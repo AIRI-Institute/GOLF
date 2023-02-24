@@ -17,10 +17,10 @@ backbones = {
 
 class Actor(nn.Module):
     def __init__(self, backbone, backbone_args, action_scale,
-                 action_scale_sheduler="Constant", action_norm_limit=None):
+                 action_scale_scheduler="Constant", action_norm_limit=None):
         super(Actor, self).__init__()
         self.action_norm_limit = action_norm_limit
-        self.action_scale = get_action_scale_scheduler(action_scale_sheduler, action_scale)
+        self.action_scale = get_action_scale_scheduler(action_scale_scheduler, action_scale)
 
         representation = backbones[backbone](**backbone_args)
         output_modules = [
@@ -73,10 +73,10 @@ class Actor(nn.Module):
 
 class ALPolicy(nn.Module):
     def __init__(self, backbone, backbone_args, action_scale,
-                 action_scale_sheduler, action_norm_limit=None):
+                 action_scale_scheduler, action_norm_limit=None):
         super().__init__()
         self.actor = Actor(backbone, backbone_args, action_scale,
-                           action_scale_sheduler, action_norm_limit)
+                           action_scale_scheduler, action_norm_limit)
 
     def act(self, state_dict, t):
         return self.actor(state_dict, t)

@@ -56,7 +56,7 @@ def main(args, experiment_folder):
     policy = ALPolicy(
         backbone=args.backbone,
         backbone_args=backbone_args,
-        action_scale_sheduler=args.action_scale_sheduler,
+        action_scale_scheduler=args.action_scale_scheduler,
         action_scale=args.action_scale,
         action_norm_limit=args.action_norm_limit,
     ).to(DEVICE)
