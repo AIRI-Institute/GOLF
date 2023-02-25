@@ -144,11 +144,10 @@ def get_args():
         type=float,
         help="Multiply actions by action_scale.")
     parser.add_argument(
-        "--action_scale_sheduler",
+        "--action_scale_scheduler",
         choices=["Constant", "CosineAnnealing"],
         default="Constant",
-        help="Action scale scheduler type"
-    )
+        help="Action scale scheduler type")
     parser.add_argument(
         "--batch_size",
         default=256,
