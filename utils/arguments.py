@@ -246,6 +246,11 @@ def get_args():
         type=str2bool,
         help="Save light and full checkpoints")
     parser.add_argument(
+        "--load_baseline",
+        type=str,
+        default=None,
+        help="Checkpoint for the actor. Does not restore replay buffer")
+    parser.add_argument(
         "--load_model",
         type=str,
         default=None,

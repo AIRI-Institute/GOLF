@@ -87,6 +87,8 @@ def main(args, experiment_folder):
         replay_buffer = pickle.load(open(f'{args.load_model}_replay', 'rb'))
     else:
         start_iter = 0
+        if args.load_baseline is not None:
+            trainer.light_load(args.load_baseline)
 
     policy.train()
     max_timesteps = int(args.max_timesteps) // args.n_parallel
