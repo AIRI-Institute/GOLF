@@ -8,8 +8,7 @@ from rdkit.Chem import AllChem, MolFromSmiles, Conformer, AddHs
 
 from .moldynamics_env import MolecularDynamics
 from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates, get_rdkit_force
-from .dft import atoms2psi4mol, get_dft_energy, \
-    update_ase_atoms_positions, calculate_dft_energy_queue
+from .dft import get_dft_energy, update_ase_atoms_positions, calculate_dft_energy_queue
 
 RDKIT_ENERGY_THRESH = 500
 
@@ -331,3 +330,21 @@ class RewardWrapper(gym.Wrapper):
 
     def update_timelimit(self, tl):
         return self.env.update_timelimit(tl)
+    
+    def get_forces(self, indices=None):
+        if indices is None:
+            indices = np.arange(self.n_parallel)
+        if self.dft:
+            reward_name = "dft"
+        else:
+            reward_name = "rdkit"
+        return [np.array(self.force[reward_name][ind], dtype=np.float32) for ind in indices]
+    
+    def get_energies(self, indices=None):
+        if indices is None:
+            indices = np.arange(self.n_parallel)
+        if self.dft:
+            reward_name = "dft"
+        else:
+            reward_name = "rdkit"
+        return np.array([self.initial_energy[reward_name][idx] for idx in indices], dtype=np.float32)

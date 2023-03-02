@@ -27,16 +27,16 @@ def eval_episode(env, actor, fixed_atoms, smiles, max_timestamps):
     l2_energy = []
     state = env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
     state = {k:v.to(DEVICE) for k, v in state.items()}
-    current_forces = [np.array(force, dtype=np.float32) for force in env.force['rdkit']][0]
-    current_energy = np.array(env.initial_energy['rdkit'], dtype=np.float32)
+    current_forces = env.get_forces()[0]
+    current_energy = env.get_energies()
     while not t >= max_timestamps:
-        action, energy = actor.select_action(state)
+        action, energy = actor.select_action(state, [t])
         l2_forces.append(np.sqrt(((action - current_forces) ** 2).mean()))
         l2_energy.append(np.sqrt(((energy - current_energy) ** 2).mean()))
-        state, reward, _, info = env.step(action)
+        state, reward, _, _ = env.step(action)
         state = {k:v.to(DEVICE) for k, v in state.items()}
-        current_forces = [np.array(force, dtype=np.float32) for force in env.force['rdkit']][0]
-        current_energy = np.array(env.initial_energy['rdkit'], dtype=np.float32)
+        current_forces = env.get_forces()[0]
+        current_energy = env.get_energies()
         delta_energy += reward[0]
         t += 1
 

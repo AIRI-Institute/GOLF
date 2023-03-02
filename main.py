@@ -75,9 +75,9 @@ def main(args, experiment_folder):
     state = env.reset()
 
     # Save initial state in replay buffer
-    current_energy = np.array(env.initial_energy[args.reward], dtype=np.float32)
-    forces = [np.array(force, dtype=np.float32) for force in env.force[args.reward]]
-    replay_buffer.add(state, forces, current_energy)
+    energies = env.get_energies()
+    forces = env.get_forces()
+    replay_buffer.add(state, forces, energies)
 
     episode_returns = np.zeros(args.n_parallel)
 
@@ -105,9 +105,9 @@ def main(args, experiment_folder):
         next_state, rewards, dones, info = env.step(actions)
 
         if not args.store_only_initial_conformations:
-            current_energy = np.array(env.initial_energy[args.reward], dtype=np.float32)
-            forces = [np.array(force, dtype=np.float32) for force in env.force[args.reward]]
-            transition = [next_state, forces, current_energy]
+            energies = env.get_energies()
+            forces = env.get_forces()
+            transition = [next_state, forces, energies]
             replay_buffer.add(*transition)
 
         state = next_state
@@ -147,8 +147,8 @@ def main(args, experiment_folder):
         if len(envs_to_reset) > 0:
             reset_states = env.reset(indices=envs_to_reset)
             state = recollate_batch(state, envs_to_reset, reset_states)
-            energies = np.array([env.initial_energy[args.reward][idx] for idx in envs_to_reset], dtype=np.float32)
-            forces = [np.array(env.force[args.reward][idx], dtype=np.float32) for idx in envs_to_reset]
+            energies = env.get_energies(indices=envs_to_reset)
+            forces = env.get_forces(indices=envs_to_reset)
             replay_buffer.add(reset_states, forces, energies)
 
         print(time.perf_counter() - start)
