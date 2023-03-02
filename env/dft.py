@@ -140,6 +140,5 @@ def calculate_dft_energy_item(queue, M):
     else:
         # Calculate DFT energy
         energy = get_dft_energy(molecule)
-    print(energy)
     
     return (idx, not_converged, energy)

@@ -34,6 +34,7 @@ class RewardWrapper(gym.Wrapper):
                  minimize_on_every_step=False,
                  molecules_xyz_prefix='',
                  M=10,
+                 skip_steps=1,
                  terminate_on_negative_reward=False,
                  max_num_negative_rewards=1):
         # Set arguments
@@ -41,6 +42,7 @@ class RewardWrapper(gym.Wrapper):
         self.n_threads = n_threads
         self.M = M
         self.minimize_on_every_step = minimize_on_every_step
+        self.skip_steps = skip_steps
         self.molecules_xyz_prefix = molecules_xyz_prefix
         self.terminate_on_negative_reward = terminate_on_negative_reward
         self.max_num_negative_rewards = max_num_negative_rewards
@@ -124,7 +126,7 @@ class RewardWrapper(gym.Wrapper):
                 self.update_coordinates['dft'](self.molecule['dft'][idx], self.env.atoms[idx].get_positions())
 
             # Calculate current rdkit reward for every trajectory
-            if self.minimize_on_every_step or dones[idx]:
+            if (self.minimize_on_every_step and env_steps[idx] % self.skip_steps == 0) or dones[idx]:
                 not_converged[idx], final_energy[idx], self.force['rdkit'][idx] = self.minimize_rdkit(idx)
                 rdkit_rewards[idx] = self.initial_energy['rdkit'][idx] - final_energy[idx]
 
@@ -132,7 +134,7 @@ class RewardWrapper(gym.Wrapper):
         if self.dft:
             queue = []
             for idx in range(self.n_parallel):
-                if self.minimize_on_every_step or dones[idx]:
+                if (self.minimize_on_every_step and env_steps[idx] % self.skip_steps == 0) or dones[idx]:
                     # Rdkit reward lower than RDKIT_DELTA_THRESH indicates highly improbable
                     # conformations which are likely to cause an error in DFT calculation and/or
                     # significantly slow them down. To mitigate this we propose to replace DFT reward
@@ -156,7 +158,7 @@ class RewardWrapper(gym.Wrapper):
         # Dones and info
         for idx in range(self.n_parallel):
             # If minimize_on_every step update initial energy
-            if self.minimize_on_every_step:
+            if (self.minimize_on_every_step and env_steps[idx] % self.skip_steps == 0):
                 # initial_energy = final_energy
                 self.initial_energy['rdkit'][idx] -= rdkit_rewards[idx]
                 # FIXME ?

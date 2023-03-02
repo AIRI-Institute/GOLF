@@ -95,7 +95,7 @@ def main(args, experiment_folder):
 
     for t in range(start_iter, max_timesteps):
         start = time.perf_counter()
-        update_condition = (t + 1) >= args.batch_size // args.n_parallel and (t + 1)
+        update_condition = (t + 1) >= args.batch_size * args.skip_steps // args.n_parallel and (t + 1) % args.skip_steps == 0
 
         # Get current timesteps
         episode_timesteps = env.unwrapped.get_env_step()
@@ -105,10 +105,16 @@ def main(args, experiment_folder):
         next_state, rewards, dones, info = env.step(actions)
 
         if not args.store_only_initial_conformations:
-            energies = env.get_energies()
-            forces = env.get_forces()
-            transition = [next_state, forces, energies]
-            replay_buffer.add(*transition)
+            envs_to_store = [i for i, ts in enumerate(episode_timesteps) if ts % args.skip_steps == 0]
+            if len(envs_to_store) > 0:
+                energies = env.get_energies(indices=envs_to_store)
+                forces = env.get_forces(indices=envs_to_store)
+                if args.n_parallel > 1:
+                    next_state_to_store = {k:v[envs_to_store] for k, v in next_state.items()}
+                else:
+                    next_state_to_store = next_state
+                transition = [next_state_to_store, forces, energies]
+                replay_buffer.add(*transition)
 
         state = next_state
         episode_returns += rewards
