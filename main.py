@@ -63,9 +63,6 @@ def main(args, experiment_folder):
         action_scale=args.action_scale,
         action_norm_limit=args.action_norm_limit,
     ).to(DEVICE)
-    eval_policy = copy.deep
-
-
     trainer = AL(
         policy=policy,
         lr=args.lr,
