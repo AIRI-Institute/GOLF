@@ -1,3 +1,4 @@
+import copy
 import datetime
 import glob
 import os
@@ -9,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import schnetpack
+from schnetpack.data.loader import _atoms_collate_fn
 
 from env.make_envs import make_envs
 from AL import DEVICE
@@ -16,7 +18,7 @@ from AL.AL_actor import ALPolicy
 from AL.AL_trainer import AL
 from AL.eval import eval_policy_dft, eval_policy_rdkit
 from AL.replay_buffer import ReplayBufferGD
-from AL.utils import calculate_action_norm, recollate_batch, get_cutoff_by_string
+from AL.utils import calculate_action_norm, recollate_batch, get_cutoff_by_string, unpad_state
 from utils.arguments import get_args
 from utils.logging import Logger
 from utils.utils import ignore_extra_args
@@ -46,7 +48,7 @@ def main(args, experiment_folder):
     if args.store_only_initial_conformations:
         assert args.timelimit_train == 1
 
-    # Inititalize actor and critic
+    # Inititalize policy and eval policy
     backbone_args = {
         'n_interactions': args.n_interactions,
         'n_atom_basis': args.n_atom_basis,
@@ -54,12 +56,15 @@ def main(args, experiment_folder):
         'cutoff_fn': get_cutoff_by_string('cosine')(args.cutoff),
     }
     policy = ALPolicy(
+        n_parallel=args.n_parallel,
         backbone=args.backbone,
         backbone_args=backbone_args,
         action_scale_scheduler=args.action_scale_scheduler,
         action_scale=args.action_scale,
         action_norm_limit=args.action_norm_limit,
     ).to(DEVICE)
+    eval_policy = copy.deep
+
 
     trainer = AL(
         policy=policy,
@@ -78,6 +83,9 @@ def main(args, experiment_folder):
     energies = env.get_energies()
     forces = env.get_forces()
     replay_buffer.add(state, forces, energies)
+
+    # Set initial states in Policy
+    policy.reset(state)
 
     episode_returns = np.zeros(args.n_parallel)
 
@@ -101,7 +109,7 @@ def main(args, experiment_folder):
         episode_timesteps = env.unwrapped.get_env_step()
         
         # Select next action
-        actions = policy.act(state, episode_timesteps)['action'].cpu().numpy()
+        actions = policy.act(episode_timesteps)['action'].cpu().numpy()
         next_state, rewards, dones, info = env.step(actions)
 
         if not args.store_only_initial_conformations:
@@ -109,11 +117,9 @@ def main(args, experiment_folder):
             if len(envs_to_store) > 0:
                 energies = env.get_energies(indices=envs_to_store)
                 forces = env.get_forces(indices=envs_to_store)
-                if args.n_parallel > 1:
-                    next_state_to_store = {k:v[envs_to_store] for k, v in next_state.items()}
-                else:
-                    next_state_to_store = next_state
-                transition = [next_state_to_store, forces, energies]
+                next_state_list = unpad_state(next_state)
+                next_state_list = [next_state_list[env_id] for env_id in envs_to_store]
+                transition = [_atoms_collate_fn(next_state_list), forces, energies]
                 replay_buffer.add(*transition)
 
         state = next_state
@@ -157,6 +163,9 @@ def main(args, experiment_folder):
             forces = env.get_forces(indices=envs_to_reset)
             replay_buffer.add(reset_states, forces, energies)
 
+            # Reset initial states in policy
+            policy.reset(reset_states, indices=envs_to_reset)
+
         print(time.perf_counter() - start)
 
         # Evaluate episode
@@ -165,7 +174,7 @@ def main(args, experiment_folder):
             step_metrics['FPS'] = args.n_parallel / (time.perf_counter() - start)
             step_metrics.update(
                 eval_function[args.reward](
-                    actor=policy,
+                    actor=copy.deepcopy(policy),
                     env=eval_env,
                     eval_episodes=args.n_eval_runs,
                     evaluate_multiple_timesteps=args.evaluate_multiple_timesteps,

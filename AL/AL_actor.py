@@ -1,10 +1,13 @@
 import torch
 import torch.nn as nn
+from functools import partial
 
 import schnetpack as spk
 from torch.linalg import vector_norm
+from torch.optim import LBFGS
 
-from AL.utils import get_atoms_indices_range, get_action_scale_scheduler
+from AL import DEVICE
+from AL.utils import get_atoms_indices_range, get_action_scale_scheduler, unpad_state
 from utils.utils import ignore_extra_args
 
 EPS = 1e-8
@@ -64,22 +67,56 @@ class Actor(nn.Module):
 
         return {'action': action, 'energy': output['energy']}
 
-    def select_action(self, state_dict, t):
-        output = self.forward(state_dict, t)
-        action = output['action'].cpu().numpy()
-        energy = output['energy'].detach().cpu().numpy()
-        return action, energy
+    # def select_action(self, state_dict, t):
+    #     output = self.forward(state_dict, t)
+    #     action = output['action'].cpu().numpy()
+    #     energy = output['energy'].detach().cpu().numpy()
+    #     return action, energy
 
 
 class ALPolicy(nn.Module):
-    def __init__(self, backbone, backbone_args, action_scale,
+    def __init__(self, n_parallel, backbone, backbone_args, action_scale,
                  action_scale_scheduler, action_norm_limit=None):
         super().__init__()
+        self.n_parallel = n_parallel
+        self.optimizer_list = [None] * n_parallel
+        self.states = [None] * n_parallel
         self.actor = Actor(backbone, backbone_args, action_scale,
                            action_scale_scheduler, action_norm_limit)
 
-    def act(self, state_dict, t):
-        return self.actor(state_dict, t)
+    def reset(self, initial_states, indices=None):
+        if indices is None:
+            indices = torch.arange(self.n_parallel)
+        unpad_initial_states = unpad_state(initial_states)
+        for i, idx in enumerate(indices):
+            self.states[idx] = {k:v.detach().clone() for k, v in unpad_initial_states[i].items()}
+            self.optimizer_list[idx] = LBFGS(self.states[idx]['_positions'], max)
 
-    def select_action(self, state_dict, t):
-        return self.actor.select_action(state_dict, t)
+    def act(self, t):
+        # Save current positions
+        prev_positions = [self.states[idx]['_positions'].detach().clone()\
+                             for idx in range(self.n_parallels)]
+        energy = torch.zeros(self.n_parallel, device=DEVICE)
+        
+        # Define reevaluation function
+        def closure(idx):
+            self.optimizer_list[idx].zero_grad()
+            output = self.actor(self.states[idx], t)
+            energy[idx] = output['energy']
+            return output['energy']
+
+        # Update all molecules' geometry
+        for i, optim in enumerate(self.optimizer_list):
+            optim.step(partial(closure, idx=i))
+        
+        # Calculate action based on saved positions and resulting geometries
+        actions = [self.states[idx]['_positions'].detach().clone() - prev_positions[idx]\
+                  for idx in range(self.n_parallel)]
+        print([action.shape for action in actions])
+        return {'action': torch.stack(actions, dim=0), 'energy': energy}
+
+    def select_action(self, t):
+        output = self.act(t)
+        action = output['action'].cpu().numpy()
+        energy = output['energy'].cpu().numpy()
+        return action, energy
