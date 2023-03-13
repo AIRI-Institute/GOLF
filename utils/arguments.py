@@ -154,6 +154,11 @@ def get_args():
         default="Constant",
         help="Action scale scheduler type")
     parser.add_argument(
+        "--max_iter",
+        type=int,
+        default=1,
+        help="Max iter for LBFGS")
+    parser.add_argument(
         "--batch_size",
         default=256,
         type=int,

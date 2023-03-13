@@ -9,7 +9,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import schnetpack
 from schnetpack.data.loader import _atoms_collate_fn
 
 from env.make_envs import make_envs
@@ -17,8 +16,9 @@ from AL import DEVICE
 from AL.AL_actor import ALPolicy
 from AL.AL_trainer import AL
 from AL.eval import eval_policy_dft, eval_policy_rdkit
+from AL.make_policies import make_policies
 from AL.replay_buffer import ReplayBufferGD
-from AL.utils import calculate_action_norm, recollate_batch, get_cutoff_by_string, unpad_state
+from AL.utils import calculate_action_norm, recollate_batch, unpad_state
 from utils.arguments import get_args
 from utils.logging import Logger
 from utils.utils import ignore_extra_args
@@ -27,6 +27,8 @@ eval_function = {
     "rdkit": ignore_extra_args(eval_policy_rdkit),
     "dft": ignore_extra_args(eval_policy_dft)
 }
+
+REWARD_THRESHOLD = -100
 
 
 def main(args, experiment_folder):
@@ -49,20 +51,8 @@ def main(args, experiment_folder):
         assert args.timelimit_train == 1
 
     # Inititalize policy and eval policy
-    backbone_args = {
-        'n_interactions': args.n_interactions,
-        'n_atom_basis': args.n_atom_basis,
-        'radial_basis': schnetpack.nn.BesselRBF(n_rbf=args.n_rbf, cutoff=args.cutoff),
-        'cutoff_fn': get_cutoff_by_string('cosine')(args.cutoff),
-    }
-    policy = ALPolicy(
-        n_parallel=args.n_parallel,
-        backbone=args.backbone,
-        backbone_args=backbone_args,
-        action_scale_scheduler=args.action_scale_scheduler,
-        action_scale=args.action_scale,
-        action_norm_limit=args.action_norm_limit,
-    ).to(DEVICE)
+    policy, eval_policy = make_policies(args)
+
     trainer = AL(
         policy=policy,
         lr=args.lr,
@@ -100,13 +90,23 @@ def main(args, experiment_folder):
 
     for t in range(start_iter, max_timesteps):
         start = time.perf_counter()
-        update_condition = (t + 1) >= args.batch_size * args.skip_steps // args.n_parallel and (t + 1) % args.skip_steps == 0
+        update_condition = (replay_buffer.size + 1) >= args.batch_size * args.skip_steps // args.n_parallel\
+            and (t + 1) % args.skip_steps == 0
 
         # Get current timesteps
         episode_timesteps = env.unwrapped.get_env_step()
         
         # Select next action
         actions = policy.act(episode_timesteps)['action'].cpu().numpy()
+        
+        # If action contains Nans then reset everything and continue
+        if np.isnan(actions).any():
+            print("RESET EVERYTHING!!!")
+            state = env.reset()
+            policy.reset(state)
+            episode_returns = np.zeros(args.n_parallel)
+            continue
+
         next_state, rewards, dones, info = env.step(actions)
 
         if not args.store_only_initial_conformations:
@@ -156,22 +156,34 @@ def main(args, experiment_folder):
         if len(envs_to_reset) > 0:
             reset_states = env.reset(indices=envs_to_reset)
             state = recollate_batch(state, envs_to_reset, reset_states)
-            energies = env.get_energies(indices=envs_to_reset)
-            forces = env.get_forces(indices=envs_to_reset)
-            replay_buffer.add(reset_states, forces, energies)
 
             # Reset initial states in policy
             policy.reset(reset_states, indices=envs_to_reset)
 
+            # Track last states with large negative rewards
+            good_last_reward = [i for i, reward in enumerate(rewards) if reward > REWARD_THRESHOLD]
+
+            # Intersection of lists of indices
+            envs_to_store = list(set(envs_to_store) & set(good_last_reward))
+            if len(envs_to_store) > 0:
+                energies = env.get_energies(indices=envs_to_store)
+                forces = env.get_forces(indices=envs_to_store)
+
+                # Discard bad final states for stability
+                reset_state_list = unpad_state(reset_states)
+                reset_state_list = [reset_state_list[i] for i in envs_to_store]
+                replay_buffer.add(_atoms_collate_fn(reset_state_list), forces, energies)
         print(time.perf_counter() - start)
 
         # Evaluate episode
         if (t + 1) % (args.eval_freq // args.n_parallel) == 0:
+            # Update eval policy
+            eval_policy.actor = copy.deepcopy(policy.actor)
             step_metrics['Total_timesteps'] = (t + 1) * args.n_parallel
             step_metrics['FPS'] = args.n_parallel / (time.perf_counter() - start)
             step_metrics.update(
                 eval_function[args.reward](
-                    actor=copy.deepcopy(policy),
+                    actor=eval_policy,
                     env=eval_env,
                     eval_episodes=args.n_eval_runs,
                     evaluate_multiple_timesteps=args.evaluate_multiple_timesteps,

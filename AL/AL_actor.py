@@ -3,6 +3,7 @@ import torch.nn as nn
 from functools import partial
 
 import schnetpack as spk
+from schnetpack import properties
 from torch.linalg import vector_norm
 from torch.optim import LBFGS
 
@@ -59,7 +60,6 @@ class Actor(nn.Module):
         output = self.model(state_dict)
         if train:
             return output
-
         action_scale = self.action_scale.get(t)
         action = output['anti_gradient'].detach()
         action *= action_scale
@@ -67,18 +67,14 @@ class Actor(nn.Module):
 
         return {'action': action, 'energy': output['energy']}
 
-    # def select_action(self, state_dict, t):
-    #     output = self.forward(state_dict, t)
-    #     action = output['action'].cpu().numpy()
-    #     energy = output['energy'].detach().cpu().numpy()
-    #     return action, energy
-
 
 class ALPolicy(nn.Module):
     def __init__(self, n_parallel, backbone, backbone_args, action_scale,
-                 action_scale_scheduler, action_norm_limit=None):
+                 action_scale_scheduler, max_iter, action_norm_limit=None):
         super().__init__()
         self.n_parallel = n_parallel
+        self.action_scale = action_scale
+        self.max_iter = max_iter
         self.optimizer_list = [None] * n_parallel
         self.states = [None] * n_parallel
         self.actor = Actor(backbone, backbone_args, action_scale,
@@ -89,19 +85,24 @@ class ALPolicy(nn.Module):
             indices = torch.arange(self.n_parallel)
         unpad_initial_states = unpad_state(initial_states)
         for i, idx in enumerate(indices):
-            self.states[idx] = {k:v.detach().clone() for k, v in unpad_initial_states[i].items()}
-            self.optimizer_list[idx] = LBFGS(self.states[idx]['_positions'], max)
+            self.states[idx] = {k:v.detach().clone().to(DEVICE) for k, v in unpad_initial_states[i].items()}
+            self.states[idx][properties.R].requires_grad_(True)
+            self.optimizer_list[idx] = LBFGS([self.states[idx][properties.R]],
+                                             lr=self.action_scale, 
+                                             max_iter=self.max_iter)
 
     def act(self, t):
         # Save current positions
-        prev_positions = [self.states[idx]['_positions'].detach().clone()\
-                             for idx in range(self.n_parallels)]
+        prev_positions = [self.states[idx][properties.R].detach().clone()\
+                             for idx in range(self.n_parallel)]
         energy = torch.zeros(self.n_parallel, device=DEVICE)
         
         # Define reevaluation function
         def closure(idx):
             self.optimizer_list[idx].zero_grad()
-            output = self.actor(self.states[idx], t)
+            # train=True to get correct gradients
+            output = self.actor(self.states[idx], t, train=True)
+            self.states[idx][properties.R].grad = -output['anti_gradient'].detach()
             energy[idx] = output['energy']
             return output['energy']
 
@@ -110,13 +111,12 @@ class ALPolicy(nn.Module):
             optim.step(partial(closure, idx=i))
         
         # Calculate action based on saved positions and resulting geometries
-        actions = [self.states[idx]['_positions'].detach().clone() - prev_positions[idx]\
+        actions = [self.states[idx][properties.R].detach().clone() - prev_positions[idx]\
                   for idx in range(self.n_parallel)]
-        print([action.shape for action in actions])
-        return {'action': torch.stack(actions, dim=0), 'energy': energy}
+        return {'action': torch.cat(actions, dim=0), 'energy': energy}
 
     def select_action(self, t):
         output = self.act(t)
         action = output['action'].cpu().numpy()
-        energy = output['energy'].cpu().numpy()
+        energy = output['energy'].detach().cpu().numpy()
         return action, energy
