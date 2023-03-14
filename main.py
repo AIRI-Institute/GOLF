@@ -100,7 +100,7 @@ def main(args, experiment_folder):
         actions = policy.act(episode_timesteps)['action'].cpu().numpy()
         
         # If action contains Nans then reset everything and continue
-        if np.isnan(actions).any():
+        if not np.isfinite(actions).all():
             print("RESET EVERYTHING!!!")
             state = env.reset()
             policy.reset(state)
