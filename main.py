@@ -90,7 +90,7 @@ def main(args, experiment_folder):
 
     for t in range(start_iter, max_timesteps):
         start = time.perf_counter()
-        update_condition = (replay_buffer.size + 1) >= args.batch_size // args.n_parallel
+        update_condition = replay_buffer.size >= args.batch_size // args.n_parallel
 
         # Get current timesteps
         episode_timesteps = env.unwrapped.get_env_step()
@@ -108,10 +108,15 @@ def main(args, experiment_folder):
         next_state, rewards, dones, info = env.step(actions)
 
         if not args.store_only_initial_conformations:
-            energies = env.get_energies()
-            forces = env.get_forces()
-            transition = [next_state, forces, energies]
-            replay_buffer.add(*transition)
+            # Track states with large negative rewards
+            envs_to_store = [i for i, reward in enumerate(rewards) if reward > REWARD_THRESHOLD]
+            
+            # Store only states with reward > REWARD_THRESHOLD
+            energies = env.get_energies(indices=envs_to_store)
+            forces = env.get_forces(indices=envs_to_store)
+            next_state_list = unpad_state(next_state)
+            next_state_list = [next_state_list[i] for i in envs_to_store]
+            replay_buffer.add(_atoms_collate_fn(next_state_list), forces, energies)
 
         state = next_state
         episode_returns += rewards
@@ -145,28 +150,20 @@ def main(args, experiment_folder):
         # If the episode is terminated
         envs_to_reset = [i for i, done in enumerate(dones) if done]
 
-        # Recollate state_batch after resets as atomic numbers might have changed.
+        # Recollate state_batch after resets.
         # Execute only if at least one env has reset.
-        if len(envs_to_reset) > 0 and not args.store_only_initial_conformations:
+        if len(envs_to_reset) > 0:
             reset_states = env.reset(indices=envs_to_reset)
             state = recollate_batch(state, envs_to_reset, reset_states)
 
             # Reset initial states in policy
             policy.reset(reset_states, indices=envs_to_reset)
 
-            # Track states with large negative rewards
-            good_last_reward = [i for i, reward in enumerate(rewards) if reward > REWARD_THRESHOLD]
+            energies = env.get_energies(indices=envs_to_reset)
+            forces = env.get_forces(indices=envs_to_reset)
+            replay_buffer.add(reset_states, forces, energies)
 
-            # Intersection of lists of indices
-            envs_to_store = list(set(envs_to_reset) & set(good_last_reward))
-            if len(envs_to_store) > 0:
-                energies = env.get_energies(indices=envs_to_store)
-                forces = env.get_forces(indices=envs_to_store)
-
-                # Discard bad final states for stability
-                reset_state_list = unpad_state(reset_states)
-                reset_state_list = [reset_state_list[i] for i in envs_to_store]
-                replay_buffer.add(_atoms_collate_fn(reset_state_list), forces, energies)
+        # Print iteration time
         print(time.perf_counter() - start)
 
         # Evaluate episode
