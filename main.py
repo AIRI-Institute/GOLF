@@ -90,8 +90,7 @@ def main(args, experiment_folder):
 
     for t in range(start_iter, max_timesteps):
         start = time.perf_counter()
-        update_condition = (replay_buffer.size + 1) >= args.batch_size * args.skip_steps // args.n_parallel\
-            and (t + 1) % args.skip_steps == 0
+        update_condition = (replay_buffer.size + 1) >= args.batch_size // args.n_parallel
 
         # Get current timesteps
         episode_timesteps = env.unwrapped.get_env_step()
@@ -99,9 +98,8 @@ def main(args, experiment_folder):
         # Select next action
         actions = policy.act(episode_timesteps)['action'].cpu().numpy()
         
-        # If action contains Nans then reset everything and continue
+        # If action contains non finites then reset everything and continue
         if not np.isfinite(actions).all():
-            print("RESET EVERYTHING!!!")
             state = env.reset()
             policy.reset(state)
             episode_returns = np.zeros(args.n_parallel)
@@ -110,14 +108,10 @@ def main(args, experiment_folder):
         next_state, rewards, dones, info = env.step(actions)
 
         if not args.store_only_initial_conformations:
-            envs_to_store = [i for i, ts in enumerate(episode_timesteps) if ts % args.skip_steps == 0]
-            if len(envs_to_store) > 0:
-                energies = env.get_energies(indices=envs_to_store)
-                forces = env.get_forces(indices=envs_to_store)
-                next_state_list = unpad_state(next_state)
-                next_state_list = [next_state_list[env_id] for env_id in envs_to_store]
-                transition = [_atoms_collate_fn(next_state_list), forces, energies]
-                replay_buffer.add(*transition)
+            energies = env.get_energies()
+            forces = env.get_forces()
+            transition = [next_state, forces, energies]
+            replay_buffer.add(*transition)
 
         state = next_state
         episode_returns += rewards
@@ -153,18 +147,18 @@ def main(args, experiment_folder):
 
         # Recollate state_batch after resets as atomic numbers might have changed.
         # Execute only if at least one env has reset.
-        if len(envs_to_reset) > 0:
+        if len(envs_to_reset) > 0 and not args.store_only_initial_conformations:
             reset_states = env.reset(indices=envs_to_reset)
             state = recollate_batch(state, envs_to_reset, reset_states)
 
             # Reset initial states in policy
             policy.reset(reset_states, indices=envs_to_reset)
 
-            # Track last states with large negative rewards
+            # Track states with large negative rewards
             good_last_reward = [i for i, reward in enumerate(rewards) if reward > REWARD_THRESHOLD]
 
             # Intersection of lists of indices
-            envs_to_store = list(set(envs_to_store) & set(good_last_reward))
+            envs_to_store = list(set(envs_to_reset) & set(good_last_reward))
             if len(envs_to_store) > 0:
                 energies = env.get_energies(indices=envs_to_store)
                 forces = env.get_forces(indices=envs_to_store)

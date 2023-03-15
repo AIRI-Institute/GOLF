@@ -32,11 +32,6 @@ def get_args():
         type=int,
         help="Number of parallel threads for DFT computations")
     parser.add_argument(
-        "--skip_steps",
-        default=1,
-        type=int,
-        help="Calculate reward and add transition to replay buffer on every Nth step")
-    parser.add_argument(
         "--db_path",
         default="env/data/malonaldehyde.db",
         type=str,

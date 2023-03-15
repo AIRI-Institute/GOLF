@@ -18,7 +18,6 @@ def make_envs(args):
         'minimize_on_every_step': args.minimize_on_every_step,
         'molecules_xyz_prefix': args.molecules_xyz_prefix,
         'M': args.M,
-        'skip_steps': args.skip_steps,
         'terminate_on_negative_reward': args.terminate_on_negative_reward,
         'max_num_negative_rewards': args.max_num_negative_rewards
     }
@@ -40,10 +39,6 @@ def make_envs(args):
     else:
         env_kwargs['n_parallel'] = args.n_eval_runs
         reward_wrapper_kwargs['n_threads'] = args.n_eval_runs
-    
-    
-    # For more accurate evaluation 
-    reward_wrapper_kwargs['skip_steps'] = 1
 
     # Initialize eval env
     eval_env = env_fn(**env_kwargs)
