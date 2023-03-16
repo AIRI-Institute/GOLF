@@ -13,7 +13,6 @@ from schnetpack.data.loader import _atoms_collate_fn
 
 from env.make_envs import make_envs
 from AL import DEVICE
-from AL.AL_actor import ALPolicy
 from AL.AL_trainer import AL
 from AL.eval import eval_policy_dft, eval_policy_rdkit
 from AL.make_policies import make_policies
@@ -112,11 +111,12 @@ def main(args, experiment_folder):
             envs_to_store = [i for i, reward in enumerate(rewards) if reward > REWARD_THRESHOLD]
             
             # Store only states with reward > REWARD_THRESHOLD
-            energies = env.get_energies(indices=envs_to_store)
-            forces = env.get_forces(indices=envs_to_store)
-            next_state_list = unpad_state(next_state)
-            next_state_list = [next_state_list[i] for i in envs_to_store]
-            replay_buffer.add(_atoms_collate_fn(next_state_list), forces, energies)
+            if len(envs_to_store) > 0:
+                energies = env.get_energies(indices=envs_to_store)
+                forces = env.get_forces(indices=envs_to_store)
+                next_state_list = unpad_state(next_state)
+                next_state_list = [next_state_list[i] for i in envs_to_store]
+                replay_buffer.add(_atoms_collate_fn(next_state_list), forces, energies)
 
         state = next_state
         episode_returns += rewards
