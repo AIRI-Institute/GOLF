@@ -31,7 +31,10 @@ class ReplayBufferGD(object):
     def sample(self, batch_size):
         ind = np.random.choice(self.size, batch_size, replace=False)
         states = [self.states[i] for i in ind]
-        state_batch = {key: value.to(self.device) for key, value in _atoms_collate_fn(states).items()}
+        state_batch = {
+            key: value.to(self.device)
+            for key, value in _atoms_collate_fn(states).items()
+        }
         forces = torch.cat([self.forces[i] for i in ind]).to(self.device)
         energy = self.energy[ind].to(self.device)
         return state_batch, forces, energy

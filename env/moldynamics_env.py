@@ -20,21 +20,26 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # For backoff exceptions
 def on_giveup(details):
-    print("Giving Up after {} tries. Time elapsed: {:.3f} :(".format(details['tries'], details['elapsed']))
+    print(
+        "Giving Up after {} tries. Time elapsed: {:.3f} :(".format(
+            details["tries"], details["elapsed"]
+        )
+    )
 
 
 class MolecularDynamics(gym.Env):
     metadata = {"render_modes": ["human"], "name": "md_v0"}
     DISTANCE_THRESH = 0.7
 
-    def __init__(self,
-                 db_path,
-                 converter,
-                 n_parallel=1,
-                 timelimit=10,
-                 sample_initial_conformations=True,
-                 num_initial_conformations=50000,
-                 ):
+    def __init__(
+        self,
+        db_path,
+        converter,
+        n_parallel=1,
+        timelimit=10,
+        sample_initial_conformations=True,
+        num_initial_conformations=50000,
+    ):
         self.db_path = db_path
         self.converter = converter
         self.n_parallel = n_parallel
@@ -43,8 +48,8 @@ class MolecularDynamics(gym.Env):
 
         self.db_len = self.get_db_length()
         self.atoms = None
-        self.mean_energy = 0.
-        self.std_energy = 1.
+        self.mean_energy = 0.0
+        self.std_energy = 1.0
         self.initial_molecule_conformations = []
 
         # Store random subset of molecules DB
@@ -72,11 +77,16 @@ class MolecularDynamics(gym.Env):
         for idx in range(self.n_parallel):
             # Unpad action
             self.atoms[idx].set_positions(
-                self.atoms[idx].get_positions() + actions[cumsum_numbers_atoms[idx]:cumsum_numbers_atoms[idx + 1]]
+                self.atoms[idx].get_positions()
+                + actions[cumsum_numbers_atoms[idx] : cumsum_numbers_atoms[idx + 1]]
             )
 
             # Check if there are atoms too close to each other in the molecule
-            self.atoms[idx], num_bad_pairs_before, num_bad_pairs_after = self.process_molecule(self.atoms[idx])
+            (
+                self.atoms[idx],
+                num_bad_pairs_before,
+                num_bad_pairs_after,
+            ) = self.process_molecule(self.atoms[idx])
             self.total_num_bad_pairs_before += num_bad_pairs_before
             self.total_num_bad_pairs_after += num_bad_pairs_after
 
@@ -88,8 +98,8 @@ class MolecularDynamics(gym.Env):
             obs.append(self.converter(self.atoms[idx]))
 
         # Add info about bad pairs
-        info['total_bad_pairs_before_process'] = self.total_num_bad_pairs_before
-        info['total_bad_pairs_after_process'] = self.total_num_bad_pairs_after
+        info["total_bad_pairs_before_process"] = self.total_num_bad_pairs_before
+        info["total_bad_pairs_after_process"] = self.total_num_bad_pairs_after
 
         # Collate observations into a batch
         obs = _atoms_collate_fn(obs)
@@ -104,9 +114,13 @@ class MolecularDynamics(gym.Env):
 
         # If sample_initial_conformations iterate over all initial conformations sequentially
         if self.sample_initial_conformations:
-            db_indices = np.random.choice(len(self.initial_molecule_conformations), len(indices), replace=False)
+            db_indices = np.random.choice(
+                len(self.initial_molecule_conformations), len(indices), replace=False
+            )
         else:
-            start_conf_idx = self.conformation_idx % len(self.initial_molecule_conformations)
+            start_conf_idx = self.conformation_idx % len(
+                self.initial_molecule_conformations
+            )
             db_indices = np.arange(start_conf_idx, start_conf_idx + len(indices))
             if increment_conf_idx:
                 self.conformation_idx += len(indices)
@@ -119,9 +133,9 @@ class MolecularDynamics(gym.Env):
             self.atoms[idx] = row.toatoms().copy()
 
             # Check if row has Smiles
-            if hasattr(row, 'smiles'):
+            if hasattr(row, "smiles"):
                 self.smiles[idx] = row.smiles
-                self.energy[idx] = row.data['energy']
+                self.energy[idx] = row.data["energy"]
 
             # Reset env_steps
             self.env_steps[idx] = 0
@@ -150,8 +164,11 @@ class MolecularDynamics(gym.Env):
         if num_initial_conformations == -1 or num_initial_conformations == self.db_len:
             indices = np.arange(1, self.db_len + 1)
         else:
-            indices = np.random.choice(np.arange(1, self.db_len + 1), min(self.db_len, num_initial_conformations),
-                                       replace=False)
+            indices = np.random.choice(
+                np.arange(1, self.db_len + 1),
+                min(self.db_len, num_initial_conformations),
+                replace=False,
+            )
         self.initial_molecule_conformations = []
         for idx in indices:
             row = self.get_molecule(int(idx))
@@ -163,7 +180,7 @@ class MolecularDynamics(gym.Env):
         exception=DatabaseError,
         jitter=backoff.full_jitter,
         max_tries=10,
-        on_giveup=on_giveup
+        on_giveup=on_giveup,
     )
     def get_molecule(self, idx):
         with connect(self.db_path) as conn:
@@ -172,7 +189,9 @@ class MolecularDynamics(gym.Env):
     def get_atoms_num_cumsum(self):
         atoms_num_cumsum = [0]
         for atom in self.atoms:
-            atoms_num_cumsum.append(atoms_num_cumsum[-1] + len(atom.get_atomic_numbers()))
+            atoms_num_cumsum.append(
+                atoms_num_cumsum[-1] + len(atom.get_atomic_numbers())
+            )
 
         return atoms_num_cumsum
 
@@ -220,12 +239,14 @@ class MolecularDynamics(gym.Env):
 
 
 def env_fn(**kwargs):
-    '''
+    """
     To support the AEC API, the raw_env() function just uses the from_parallel
     function to convert from a ParallelEnv to an AEC env
-    '''
+    """
     converter = AtomsConverter(
-        neighbor_list=ASENeighborList(cutoff=math.inf), dtype=torch.float32, device=torch.device('cpu')
+        neighbor_list=ASENeighborList(cutoff=math.inf),
+        dtype=torch.float32,
+        device=torch.device("cpu"),
     )
     env = MolecularDynamics(converter=converter, **kwargs)
     return env

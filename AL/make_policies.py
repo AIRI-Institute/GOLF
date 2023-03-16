@@ -4,13 +4,14 @@ from AL import DEVICE
 from AL.AL_actor import ALPolicy
 from AL.utils import get_cutoff_by_string
 
+
 def make_policies(args):
     # Backbone args
     backbone_args = {
-        'n_interactions': args.n_interactions,
-        'n_atom_basis': args.n_atom_basis,
-        'radial_basis': schnetpack.nn.BesselRBF(n_rbf=args.n_rbf, cutoff=args.cutoff),
-        'cutoff_fn': get_cutoff_by_string('cosine')(args.cutoff),
+        "n_interactions": args.n_interactions,
+        "n_atom_basis": args.n_atom_basis,
+        "radial_basis": schnetpack.nn.BesselRBF(n_rbf=args.n_rbf, cutoff=args.cutoff),
+        "cutoff_fn": get_cutoff_by_string("cosine")(args.cutoff),
     }
 
     # Initialize policy
@@ -21,7 +22,7 @@ def make_policies(args):
         action_scale_scheduler=args.action_scale_scheduler,
         action_scale=args.action_scale,
         action_norm_limit=args.action_norm_limit,
-        max_iter=args.max_iter
+        max_iter=args.max_iter,
     ).to(DEVICE)
 
     # Initialize eval policy
@@ -36,7 +37,7 @@ def make_policies(args):
         action_scale_scheduler=args.action_scale_scheduler,
         action_scale=args.action_scale,
         action_norm_limit=args.action_norm_limit,
-        max_iter=args.max_iter
+        max_iter=args.max_iter,
     ).to(DEVICE)
 
     return policy, eval_policy

@@ -5,11 +5,13 @@ from multiprocessing import Manager, Pool
 from psi4 import SCFConvergenceError
 from psi4.driver.p4util.exceptions import OptimizationConvergenceError
 
-#os.environ['PSI_SCRATCH'] = "/dev/shm/tmp"
+# os.environ['PSI_SCRATCH'] = "/dev/shm/tmp"
 
-psi4.set_options({
-    "CACHELEVEL": 0,
-})
+psi4.set_options(
+    {
+        "CACHELEVEL": 0,
+    }
+)
 psi4.set_memory("8 GB")
 # psi4.core.set_output_file("/dev/null")
 
@@ -19,8 +21,7 @@ psi_bohr2angstroms = 0.52917720859
 
 
 def read_xyz_file_block(file, look_for_charge=True):
-    """
-    """
+    """ """
 
     atomic_symbols = []
     xyz_coordinates = []
@@ -45,8 +46,7 @@ def read_xyz_file_block(file, look_for_charge=True):
 
 
 def read_xyz_file(filename, look_for_charge=True):
-    """
-    """
+    """ """
     mol_data = []
     with open(filename) as xyz_file:
         while xyz_file:
@@ -61,20 +61,33 @@ def read_xyz_file(filename, look_for_charge=True):
 
 def xyz2psi4mol(atoms, coordinates):
     molecule_string = HEADER + "\n".join(
-        [" ".join([atom, ] + list(map(str, x))) for atom, x in zip(atoms, coordinates)])
+        [
+            " ".join(
+                [
+                    atom,
+                ]
+                + list(map(str, x))
+            )
+            for atom, x in zip(atoms, coordinates)
+        ]
+    )
     mol = psi4.geometry(molecule_string)
     return mol
+
 
 def atoms2psi4mol(atoms):
     atomic_numbers = [str(atom) for atom in atoms.get_atomic_numbers().tolist()]
     coordinates = atoms.get_positions().tolist()
     return xyz2psi4mol(atomic_numbers, coordinates)
 
+
 def get_dft_energy(mol):
     try:
-        energy = psi4.driver.energy(FUNCTIONAL_STRING, **{"molecule": mol, "return_wfn": False})
+        energy = psi4.driver.energy(
+            FUNCTIONAL_STRING, **{"molecule": mol, "return_wfn": False}
+        )
     except SCFConvergenceError as e:
-        # Set energy to some threshold if SOSCF does not converge 
+        # Set energy to some threshold if SOSCF does not converge
         # Multiply by 627.5 to go from Hartree to kcal/mol
         print("DFT optimization did not converge!")
         return -10000.0 * 627.5
@@ -85,10 +98,12 @@ def get_dft_energy(mol):
 def update_ase_atoms_positions(atoms, positions):
     atoms.set_positions(positions)
 
+
 def update_psi4_geometry(molecule, positions):
     psi4matrix = psi4.core.Matrix.from_array(positions / psi_bohr2angstroms)
     molecule.set_geometry(psi4matrix)
     molecule.update_geometry()
+
 
 def calculate_dft_energy_queue(queue, n_threads, M):
     m = Manager()
@@ -104,7 +119,7 @@ def calculate_dft_energy_queue(queue, n_threads, M):
     p = Pool(n_threads)
 
     # Calculate energy for every item in the queue.
-    # To mitigate large variance in dft computation times  
+    # To mitigate large variance in dft computation times
     # for different molecules the size of the queue
     # must be significantly larger then n_threads.
     energy_calculators = []
@@ -113,11 +128,12 @@ def calculate_dft_energy_queue(queue, n_threads, M):
 
     # Wait for the asynchrounous reader threads to finish
     results = [ec.get() for ec in energy_calculators]
-    results = sorted(results, key=lambda x:x[0])
+    results = sorted(results, key=lambda x: x[0])
     p.terminate()
     p.join()
 
     return results
+
 
 def calculate_dft_energy_item(queue, M):
     # Get molecule from the queue
@@ -127,9 +143,11 @@ def calculate_dft_energy_item(queue, M):
     # Perform DFT minimization
     not_converged = True
     if M > 0:
-        psi4.set_options({'geom_maxiter': M})
+        psi4.set_options({"geom_maxiter": M})
         try:
-            energy = psi4.optimize(FUNCTIONAL_STRING, **{"molecule": molecule, "return_wfn": False})
+            energy = psi4.optimize(
+                FUNCTIONAL_STRING, **{"molecule": molecule, "return_wfn": False}
+            )
             not_converged = False
         except OptimizationConvergenceError as e:
             molecule.set_geometry(e.wfn.molecule().geometry())
@@ -140,5 +158,5 @@ def calculate_dft_energy_item(queue, M):
     else:
         # Calculate DFT energy
         energy = get_dft_energy(molecule)
-    
+
     return (idx, not_converged, energy)

@@ -24,7 +24,7 @@ from utils.utils import ignore_extra_args
 
 eval_function = {
     "rdkit": ignore_extra_args(eval_policy_rdkit),
-    "dft": ignore_extra_args(eval_policy_dft)
+    "dft": ignore_extra_args(eval_policy_dft),
 }
 
 REWARD_THRESHOLD = -100
@@ -32,7 +32,7 @@ REWARD_THRESHOLD = -100
 
 def main(args, experiment_folder):
     # Set env name
-    args.env = args.db_path.split('/')[-1].split('.')[0]
+    args.env = args.db_path.split("/")[-1].split(".")[0]
 
     # Initialize logger
     logger = Logger(experiment_folder, args)
@@ -41,10 +41,7 @@ def main(args, experiment_folder):
     env, eval_env = make_envs(args)
 
     # Initialize replay buffer
-    replay_buffer = ReplayBufferGD(
-        device=DEVICE,
-        max_size=args.replay_buffer_size
-    )
+    replay_buffer = ReplayBufferGD(device=DEVICE, max_size=args.replay_buffer_size)
 
     if args.store_only_initial_conformations:
         assert args.timelimit_train == 1
@@ -76,9 +73,11 @@ def main(args, experiment_folder):
     episode_returns = np.zeros(args.n_parallel)
 
     if args.load_model is not None:
-        start_iter = int(args.load_model.split('/')[-1].split('_')[-1]) // args.n_parallel + 1
+        start_iter = (
+            int(args.load_model.split("/")[-1].split("_")[-1]) // args.n_parallel + 1
+        )
         trainer.load(args.load_model)
-        replay_buffer = pickle.load(open(f'{args.load_model}_replay', 'rb'))
+        replay_buffer = pickle.load(open(f"{args.load_model}_replay", "rb"))
     else:
         start_iter = 0
         if args.load_baseline is not None:
@@ -93,10 +92,10 @@ def main(args, experiment_folder):
 
         # Get current timesteps
         episode_timesteps = env.unwrapped.get_env_step()
-        
+
         # Select next action
-        actions = policy.act(episode_timesteps)['action'].cpu().numpy()
-        
+        actions = policy.act(episode_timesteps)["action"].cpu().numpy()
+
         # If action contains non finites then reset everything and continue
         if not np.isfinite(actions).all():
             state = env.reset()
@@ -108,8 +107,10 @@ def main(args, experiment_folder):
 
         if not args.store_only_initial_conformations:
             # Track states with large negative rewards
-            envs_to_store = [i for i, reward in enumerate(rewards) if reward > REWARD_THRESHOLD]
-            
+            envs_to_store = [
+                i for i, reward in enumerate(rewards) if reward > REWARD_THRESHOLD
+            ]
+
             # Store only states with reward > REWARD_THRESHOLD
             if len(envs_to_store) > 0:
                 energies = env.get_energies(indices=envs_to_store)
@@ -128,23 +129,31 @@ def main(args, experiment_folder):
         else:
             step_metrics = dict()
 
-        step_metrics['Timestamp'] = str(datetime.datetime.now())
-        step_metrics['Action_norm'] = calculate_action_norm(actions, env.get_atoms_num_cumsum()).item()
+        step_metrics["Timestamp"] = str(datetime.datetime.now())
+        step_metrics["Action_norm"] = calculate_action_norm(
+            actions, env.get_atoms_num_cumsum()
+        ).item()
 
         # Calculate average number of pairs of atoms too close together
         # in env before and after processing
-        step_metrics['Molecule/num_bad_pairs_before'] = info['total_bad_pairs_before_process']
-        step_metrics['Molecule/num_bad_pairs_after'] = info['total_bad_pairs_after_process']
+        step_metrics["Molecule/num_bad_pairs_before"] = info[
+            "total_bad_pairs_before_process"
+        ]
+        step_metrics["Molecule/num_bad_pairs_after"] = info[
+            "total_bad_pairs_after_process"
+        ]
 
         # Update training statistics
         for i, done in enumerate(dones):
             if done:
-                logger.update_evaluation_statistics(episode_timesteps[i] + 1,
-                                                    episode_returns[i].item(),
-                                                    info['final_energy'][i],
-                                                    info['final_rl_energy'][i],
-                                                    info['threshold_exceeded_pct'][i],
-                                                    info['not_converged'][i])
+                logger.update_evaluation_statistics(
+                    episode_timesteps[i] + 1,
+                    episode_returns[i].item(),
+                    info["final_energy"][i],
+                    info["final_rl_energy"][i],
+                    info["threshold_exceeded_pct"][i],
+                    info["not_converged"][i],
+                )
                 episode_returns[i] = 0
 
         # If the episode is terminated
@@ -170,8 +179,8 @@ def main(args, experiment_folder):
         if (t + 1) % (args.eval_freq // args.n_parallel) == 0:
             # Update eval policy
             eval_policy.actor = copy.deepcopy(policy.actor)
-            step_metrics['Total_timesteps'] = (t + 1) * args.n_parallel
-            step_metrics['FPS'] = args.n_parallel / (time.perf_counter() - start)
+            step_metrics["Total_timesteps"] = (t + 1) * args.n_parallel
+            step_metrics["FPS"] = args.n_parallel / (time.perf_counter() - start)
             step_metrics.update(
                 eval_function[args.reward](
                     actor=eval_policy,
@@ -184,22 +193,28 @@ def main(args, experiment_folder):
             logger.log(step_metrics)
 
         # Save checkpoints
-        if (t + 1) % (args.full_checkpoint_freq // args.n_parallel) == 0 and args.save_checkpoints:
+        if (t + 1) % (
+            args.full_checkpoint_freq // args.n_parallel
+        ) == 0 and args.save_checkpoints:
             # Remove previous checkpoint
-            old_checkpoint_files = glob.glob(f'{experiment_folder}/full_cp_iter*')
+            old_checkpoint_files = glob.glob(f"{experiment_folder}/full_cp_iter*")
             for cp_file in old_checkpoint_files:
                 os.remove(cp_file)
 
             # Save new checkpoint
             save_t = (t + 1) * args.n_parallel
-            trainer_save_name = f'{experiment_folder}/full_cp_iter_{save_t}'
+            trainer_save_name = f"{experiment_folder}/full_cp_iter_{save_t}"
             trainer.save(trainer_save_name)
-            with open(f'{experiment_folder}/full_cp_iter_{save_t}_replay', 'wb') as outF:
+            with open(
+                f"{experiment_folder}/full_cp_iter_{save_t}_replay", "wb"
+            ) as outF:
                 pickle.dump(replay_buffer, outF)
 
-        if (t + 1) % (args.light_checkpoint_freq // args.n_parallel) == 0 and args.save_checkpoints:
+        if (t + 1) % (
+            args.light_checkpoint_freq // args.n_parallel
+        ) == 0 and args.save_checkpoints:
             save_t = (t + 1) * args.n_parallel
-            trainer_save_name = f'{experiment_folder}/light_cp_iter_{save_t}'
+            trainer_save_name = f"{experiment_folder}/light_cp_iter_{save_t}"
             trainer.light_save(trainer_save_name)
 
 
@@ -215,11 +230,13 @@ if __name__ == "__main__":
     random.seed(args.seed)
     # args.git_sha = get_current_gitsha()
 
-    start_time = datetime.datetime.strftime(datetime.datetime.now(), '%Y_%m_%d_%H_%M_%S')
+    start_time = datetime.datetime.strftime(
+        datetime.datetime.now(), "%Y_%m_%d_%H_%M_%S"
+    )
     if args.load_model is not None:
-        assert os.path.exists(f'{args.load_model}_actor'), "Checkpoint not found!"
-        exp_folder = log_dir / args.load_model.split('/')[-2]
+        assert os.path.exists(f"{args.load_model}_actor"), "Checkpoint not found!"
+        exp_folder = log_dir / args.load_model.split("/")[-2]
     else:
-        exp_folder = log_dir / f'{args.exp_name}_{start_time}_{args.seed}'
+        exp_folder = log_dir / f"{args.exp_name}_{start_time}_{args.seed}"
 
     main(args, exp_folder)
