@@ -11,13 +11,13 @@ import numpy as np
 import torch
 from schnetpack.data.loader import _atoms_collate_fn
 
-from env.make_envs import make_envs
 from AL import DEVICE
 from AL.AL_trainer import AL
 from AL.eval import eval_policy_dft, eval_policy_rdkit
 from AL.make_policies import make_policies
 from AL.replay_buffer import ReplayBufferGD
 from AL.utils import calculate_action_norm, recollate_batch, unpad_state
+from env.make_envs import make_envs
 from utils.arguments import get_args
 from utils.logging import Logger
 from utils.utils import ignore_extra_args

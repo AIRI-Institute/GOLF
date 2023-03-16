@@ -13,33 +13,36 @@ CONVERGENCE_THRESHOLD = 1e-5
 
 def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination_mode):
     teminate_episode_condition = False
-    previous_energy = 0.0
     delta_energy = 0
     t = 0
+
     # Reset initial state in actor
     state = env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
     actor.reset({k: v.to(DEVICE) for k, v in state.items()})
+
+    # Get initial final energies in case of an optimization failure
+    initial_energy = env.get_energies()
+
     while not teminate_episode_condition:
-        action, energy = actor.select_action([t])
+        action, _, done = actor.select_action([t])
         state, reward, _, info = env.step(action)
         state = {k: v.to(DEVICE) for k, v in state.items()}
         delta_energy += reward[0]
         t += 1
-        if eval_termination_mode == "delta_energy":
-            # Either the change in energy is smaller than the threshold
-            # or the timelimit has been reached
-            if t > 1:
-                teminate_episode_condition = (
-                    abs(previous_energy - energy.item()) < CONVERGENCE_THRESHOLD
-                )
-            previous_energy = energy.item()
+        if eval_termination_mode == "grad_norm":
+            teminate_episode_condition = done[0]
         elif eval_termination_mode == "negative_reward":
             teminate_episode_condition = reward[0] < 0
-
         # Terminate if max len is reached
         teminate_episode_condition = teminate_episode_condition or t >= max_timestamps
 
-    return delta_energy, info["final_energy"][0], info["final_rl_energy"][0], t
+    if delta_energy < 0:
+        final_energy = initial_energy[0]
+        delta_energy = 0
+    else:
+        final_energy = info["final_energy"][0]
+
+    return delta_energy, final_energy, t
 
 
 def rdkit_minimize_until_convergence(env, fixed_atoms, smiles, M=None):
@@ -66,7 +69,8 @@ def eval_policy_dft(actor, env, eval_episodes=10):
     actor.eval()
     while len(result["eval/delta_energy"]) < eval_episodes:
         episode_timesteps = env.unwrapped.get_env_step()
-        action, _ = actor.select_action(episode_timesteps)
+        # TODO incorporate actor dones into DFT evaluation
+        action, _, actor_dones = actor.select_action(episode_timesteps)
         # Obser reward and next obs
         state, rewards, dones, infos = env.step(action)
         dones = [
@@ -119,17 +123,11 @@ def eval_policy_rdkit(
 
         # Evaluate policy in eval mode
         actor.eval()
-        (
-            eval_delta_energy,
-            eval_final_energy,
-            eval_final_rl_energy,
-            eval_episode_len,
-        ) = run_policy(
+        eval_delta_energy, eval_final_energy, eval_episode_len = run_policy(
             env, actor, fixed_atoms, smiles, max_timestamps, eval_termination_mode
         )
         result["eval/delta_energy"] += eval_delta_energy
         result["eval/final_energy"] += eval_final_energy
-        result["eval/final_rl_energy"] += eval_final_rl_energy
         result["eval/episode_len"] += eval_episode_len
 
         # Compute minimal energy of the molecule
@@ -153,7 +151,7 @@ def eval_policy_rdkit(
             for timelimit in TIMELIMITS:
                 # Set env's TL to current timelimit
                 env.update_timelimit(timelimit)
-                delta_energy_at, final_energy_at, _, _ = run_policy(
+                delta_energy_at, final_energy_at, _ = run_policy(
                     env,
                     actor,
                     fixed_atoms,

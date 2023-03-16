@@ -1,14 +1,14 @@
-import gym
-import numpy as np
 import os
 from collections import defaultdict
+
+import gym
+import numpy as np
+from rdkit.Chem import AddHs, AllChem, Conformer, MolFromSmiles
 from schnetpack.data.loader import _atoms_collate_fn
 
-from rdkit.Chem import AllChem, MolFromSmiles, Conformer, AddHs
-
+from .dft import calculate_dft_energy_queue, get_dft_energy, update_ase_atoms_positions
 from .moldynamics_env import MolecularDynamics
-from .xyz2mol import parse_molecule, get_rdkit_energy, set_coordinates, get_rdkit_force
-from .dft import get_dft_energy, update_ase_atoms_positions, calculate_dft_energy_queue
+from .xyz2mol import get_rdkit_energy, get_rdkit_force, parse_molecule, set_coordinates
 
 RDKIT_ENERGY_THRESH = 500
 
@@ -184,7 +184,7 @@ class RewardWrapper(gym.Wrapper):
             # When agent encountered 'max_num_negative_rewards'
             # terminate the episode
             if self.terminate_on_negative_reward:
-                if rewards[idx] < 0:
+                if rewards[idx] <= 0:
                     self.negative_rewards_counter[idx] += 1
                 if self.negative_rewards_counter[idx] >= self.max_num_negative_rewards:
                     dones[idx] = True

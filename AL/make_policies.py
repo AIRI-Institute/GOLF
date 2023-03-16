@@ -38,6 +38,7 @@ def make_policies(args):
         action_scale=args.action_scale,
         action_norm_limit=args.action_norm_limit,
         max_iter=args.max_iter,
+        grad_threshold=args.grad_threshold,
     ).to(DEVICE)
 
     return policy, eval_policy

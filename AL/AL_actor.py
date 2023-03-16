@@ -1,14 +1,15 @@
-import torch
-import torch.nn as nn
 from functools import partial
 
+import numpy as np
 import schnetpack as spk
+import torch
+import torch.nn as nn
 from schnetpack import properties
 from torch.linalg import vector_norm
 from torch.optim import LBFGS
 
 from AL import DEVICE
-from AL.utils import get_atoms_indices_range, get_action_scale_scheduler, unpad_state
+from AL.utils import get_action_scale_scheduler, get_atoms_indices_range, unpad_state
 from utils.utils import ignore_extra_args
 
 EPS = 1e-8
@@ -101,11 +102,13 @@ class ALPolicy(nn.Module):
         action_scale_scheduler,
         max_iter,
         action_norm_limit=None,
+        grad_threshold=1e-5,
     ):
         super().__init__()
         self.n_parallel = n_parallel
         self.action_scale = action_scale
         self.max_iter = max_iter
+        self.grad_threshold = grad_threshold
         self.optimizer_list = [None] * n_parallel
         self.states = [None] * n_parallel
         self.actor = Actor(
@@ -153,15 +156,28 @@ class ALPolicy(nn.Module):
         for i, optim in enumerate(self.optimizer_list):
             optim.step(partial(closure, idx=i))
 
+        # Check if optimizers have reached optimal states (for evaluation only)
+        done = [
+            torch.tensor(
+                optim._gather_flat_grad().abs().max() <= self.grad_threshold
+            ).unsqueeze(0)
+            for optim in self.optimizer_list
+        ]
+
         # Calculate action based on saved positions and resulting geometries
         actions = [
             self.states[idx][properties.R].detach().clone() - prev_positions[idx]
             for idx in range(self.n_parallel)
         ]
-        return {"action": torch.cat(actions, dim=0), "energy": energy}
+        return {
+            "action": torch.cat(actions, dim=0),
+            "energy": energy,
+            "done": torch.cat(done, dim=0),
+        }
 
     def select_action(self, t):
         output = self.act(t)
         action = output["action"].cpu().numpy()
         energy = output["energy"].detach().cpu().numpy()
-        return action, energy
+        done = output["done"].cpu().numpy()
+        return action, energy, done

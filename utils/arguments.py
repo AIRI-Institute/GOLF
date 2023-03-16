@@ -85,8 +85,14 @@ def get_args():
     parser.add_argument(
         "--eval_termination_mode",
         default="fixed_length",
-        choices=["fixed_length", "delta_energy", "negative_reward"],
+        choices=["fixed_length", "grad_norm", "negative_reward"],
         help="When to terminate the episode on evaluation",
+    )
+    parser.add_argument(
+        "--grad_threshold",
+        default=1e-5,
+        type=float,
+        help="Terminates optimization when norm of the gradient is smaller than the threshold",
     )
 
     # Reward args

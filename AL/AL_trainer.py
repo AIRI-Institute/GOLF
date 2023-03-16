@@ -5,7 +5,7 @@ from schnetpack import properties
 from torch.nn.functional import mse_loss
 
 from AL import DEVICE
-from AL.utils import calculate_gradient_norm, get_lr_scheduler, get_atoms_indices_range
+from AL.utils import calculate_gradient_norm, get_atoms_indices_range, get_lr_scheduler
 
 
 class AL(object):
