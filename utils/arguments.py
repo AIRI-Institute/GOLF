@@ -165,7 +165,12 @@ def get_args():
         default="Constant",
         help="Action scale scheduler type",
     )
-    parser.add_argument("--max_iter", type=int, default=1, help="Max iter for LBFGS")
+    parser.add_argument(
+        "--max_iter",
+        type=int,
+        default=1,
+        help="Number of iterations in the inner cycle LBFGS",
+    )
     parser.add_argument(
         "--batch_size",
         default=256,
@@ -184,10 +189,23 @@ def get_args():
         help="LR scheduler",
     )
     parser.add_argument(
-        "--action_norm_limit", default=0.05, type=float, help="Limit max action norm"
+        "--action_norm_limit",
+        default=0.05,
+        type=float,
+        help="Upper limit for action norm. Action norms larger get scaled down",
     )
-    parser.add_argument("--energy_loss_coef", default=0.01, type=float)
-    parser.add_argument("--force_loss_coef", default=1.0, type=float)
+    parser.add_argument(
+        "--energy_loss_coef",
+        default=0.01,
+        type=float,
+        help="Weight for the energy part of the backbone loss",
+    )
+    parser.add_argument(
+        "--force_loss_coef",
+        default=1.0,
+        type=float,
+        help="Weight for the forces part of the backbone loss",
+    )
     parser.add_argument(
         "--store_only_initial_conformations",
         default=False,
@@ -195,6 +213,13 @@ def get_args():
         metavar="True|False",
         type=str2bool,
         help="For baseline experiments.",
+    )
+    parser.add_argument(
+        "--optimizer",
+        default="adam",
+        type=str,
+        choices=["adam", "lion"],
+        help="Optimizer type",
     )
 
     # Eval args

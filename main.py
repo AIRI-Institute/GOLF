@@ -58,6 +58,7 @@ def main(args, experiment_folder):
         energy_loss_coef=args.energy_loss_coef,
         force_loss_coef=args.force_loss_coef,
         total_steps=args.max_timesteps,
+        optimizer_name=args.optimizer,
     )
 
     state = env.reset()

@@ -5,7 +5,12 @@ from schnetpack import properties
 from torch.nn.functional import mse_loss
 
 from AL import DEVICE
-from AL.utils import calculate_gradient_norm, get_atoms_indices_range, get_lr_scheduler
+from AL.utils import (
+    calculate_gradient_norm,
+    get_lr_scheduler,
+    get_atoms_indices_range,
+    get_optimizer_class,
+)
 
 
 class AL(object):
@@ -19,9 +24,12 @@ class AL(object):
         energy_loss_coef=0.01,
         force_loss_coef=0.99,
         total_steps=0,
+        optimizer_name="adam",
     ):
         self.actor = policy.actor
-        self.optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr)
+        self.optimizer = get_optimizer_class(optimizer_name)(
+            self.actor.parameters(), lr=lr
+        )
         self.use_lr_scheduler = lr_scheduler is not None
         if self.use_lr_scheduler:
             lr_kwargs = {

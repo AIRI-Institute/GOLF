@@ -1,11 +1,11 @@
-import torch
 import numpy as np
-
-from schnetpack.data.loader import _atoms_collate_fn
-from schnetpack import properties
 import schnetpack.nn as snn
+import torch
+from schnetpack import properties
+from schnetpack.data.loader import _atoms_collate_fn
 
 from AL import DEVICE
+from AL.optim.lion_pytorch import Lion
 
 
 class ActionScaleCosineAnnealing:
@@ -61,6 +61,15 @@ def get_lr_scheduler(scheduler_type, optimizer, **kwargs):
         )
     else:
         raise ValueError("Unknown LR scheduler type: {}".format(scheduler_type))
+
+
+def get_optimizer_class(optimizer_name):
+    if optimizer_name == "adam":
+        return torch.optim.Adam
+    elif optimizer_name == "lion":
+        return Lion
+    else:
+        raise ValueError(f"Unknown optimizer: {optimizer_name}")
 
 
 def recollate_batch(state_batch, indices, new_state_batch):
