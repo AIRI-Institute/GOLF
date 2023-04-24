@@ -89,7 +89,7 @@ def main(args, experiment_folder):
 
     for t in range(start_iter, max_timesteps):
         start = time.perf_counter()
-        update_condition = replay_buffer.size >= args.batch_size // args.n_parallel
+        update_condition = replay_buffer.size >= args.batch_size
 
         # Get current timesteps
         episode_timesteps = env.unwrapped.get_env_step()

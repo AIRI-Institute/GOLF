@@ -221,6 +221,20 @@ def get_args():
         choices=["adam", "lion"],
         help="Optimizer type",
     )
+    parser.add_argument(
+        "--policy",
+        default="base",
+        type=str,
+        choices=["base", "async", "mt", "mp"],
+        help="Policy type",
+    )
+    parser.add_argument(
+        "--lbfgs_device",
+        default="cuda",
+        type=str,
+        choices=["cuda", "cpu"],
+        help="LBFGS device type",
+    )
 
     # Eval args
     parser.add_argument(
