@@ -396,6 +396,7 @@ class ALAsyncPolicy(nn.Module):
         if indices is None:
             indices = torch.arange(self.n_parallel)
         unpad_initial_states = unpad_state(initial_states)
+        torch.set_grad_enabled(True)
         for i, idx in enumerate(indices):
             state = {key: value.detach().clone().to(self.lbfgs_device) for key, value in unpad_initial_states[i].items()}
             self.conformation_optimizers[idx] = \
@@ -419,6 +420,7 @@ class ALAsyncPolicy(nn.Module):
                 break
 
             states = _atoms_collate_fn(list(individual_states.values()))
+            torch.set_grad_enabled(True)
             states = {key: value.to(DEVICE) for key, value in states.items()}
             output = self.actor(states, t, train=True)
             anti_gradients = torch.split(output['anti_gradient'].detach().to(self.lbfgs_device), states[properties.n_atoms].tolist())
