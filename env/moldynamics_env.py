@@ -60,6 +60,7 @@ class MolecularDynamics(gym.Env):
         self.atoms = [None] * self.n_parallel
         self.smiles = [None] * self.n_parallel
         self.energy = [None] * self.n_parallel
+        self.force = [None] * self.n_parallel
         self.env_steps = [None] * self.n_parallel
 
         self.total_num_bad_pairs_before = 0
@@ -135,7 +136,10 @@ class MolecularDynamics(gym.Env):
             # Check if row has Smiles
             if hasattr(row, "smiles"):
                 self.smiles[idx] = row.smiles
+                # energy in Hartrees
                 self.energy[idx] = row.data["energy"]
+                # forces in Hartees/ Angstrom
+                self.force[idx] = row.data["forces"]
 
             # Reset env_steps
             self.env_steps[idx] = 0

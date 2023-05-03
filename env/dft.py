@@ -1,6 +1,7 @@
-import os
+import concurrent.futures
 import psi4
-from multiprocessing import Manager, Pool
+import numpy as np
+import multiprocessing as mp
 
 from psi4 import SCFConvergenceError
 from psi4.driver.p4util.exceptions import OptimizationConvergenceError
@@ -13,11 +14,15 @@ psi4.set_options(
     }
 )
 psi4.set_memory("8 GB")
+psi4.core.set_output_file("/dev/null")
+psi4.core.IOManager.shared_object().set_default_path("/dev/shm/tmp")
+psi4.core.set_num_threads(4)
 # psi4.core.set_output_file("/dev/null")
 
 HEADER = "units ang \n nocom \n noreorient \n"
 FUNCTIONAL_STRING = "wb97x-d/def2-svp"
 psi_bohr2angstroms = 0.52917720859
+EXECUTOR = None
 
 
 def read_xyz_file_block(file, look_for_charge=True):
@@ -81,18 +86,20 @@ def atoms2psi4mol(atoms):
     return xyz2psi4mol(atomic_numbers, coordinates)
 
 
-def get_dft_energy(mol):
+def get_dft_forces_energy(mol):
+    # Energy in Hartrees, force in Hatrees/Angstrom
     try:
-        energy = psi4.driver.energy(
-            FUNCTIONAL_STRING, **{"molecule": mol, "return_wfn": False}
+        gradient, wfn = psi4.driver.gradient(
+            FUNCTIONAL_STRING, **{"molecule": mol, "return_wfn": True}
         )
+        energy = wfn.energy()
     except SCFConvergenceError as e:
         # Set energy to some threshold if SOSCF does not converge
-        # Multiply by 627.5 to go from Hartree to kcal/mol
         print("DFT optimization did not converge!")
-        return -10000.0 * 627.5
+        return -10000.0
     psi4.core.clean()
-    return energy * 627.5
+    forces = -np.array(gradient) / psi_bohr2angstroms
+    return energy, -np.array(gradient) / psi_bohr2angstroms
 
 
 def update_ase_atoms_positions(atoms, positions):
@@ -106,41 +113,27 @@ def update_psi4_geometry(molecule, positions):
 
 
 def calculate_dft_energy_queue(queue, n_threads, M):
-    m = Manager()
+    global EXECUTOR
+    if EXECUTOR is None:
+        method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
+        EXECUTOR = concurrent.futures.ProcessPoolExecutor(
+            max_workers=n_threads, mp_context=mp.get_context(method)
+        )
 
-    # Create multiprocessing queue
-    q = m.Queue()
-
-    # Create a group of parallel writers and start them
-    for elem in queue:
-        q.put(elem)
-
-    # Create multiprocessing pool
-    p = Pool(n_threads)
-
-    # Calculate energy for every item in the queue.
-    # To mitigate large variance in dft computation times
-    # for different molecules the size of the queue
-    # must be significantly larger then n_threads.
-    energy_calculators = []
-    for i in range(len(queue)):
-        energy_calculators.append(p.apply_async(calculate_dft_energy_item, (q, M)))
-
-    # Wait for the asynchrounous reader threads to finish
-    results = [ec.get() for ec in energy_calculators]
+    futures = [EXECUTOR.submit(calculate_dft_energy_item, task, M) for task in queue]
+    results = [future.result() for future in concurrent.futures.as_completed(futures)]
     results = sorted(results, key=lambda x: x[0])
-    p.terminate()
-    p.join()
 
     return results
 
 
-def calculate_dft_energy_item(queue, M):
+def calculate_dft_energy_item(task, M):
     # Get molecule from the queue
-    ase_atoms, _, idx = queue.get()
+    ase_atoms, _, idx = task
     molecule = atoms2psi4mol(ase_atoms)
 
     # Perform DFT minimization
+    # Energy in Hartree
     not_converged = True
     if M > 0:
         psi4.set_options({"geom_maxiter": M})
@@ -152,11 +145,9 @@ def calculate_dft_energy_item(queue, M):
         except OptimizationConvergenceError as e:
             molecule.set_geometry(e.wfn.molecule().geometry())
             energy = e.wfn.energy()
-        # Hartree to kcal/mol
-        energy *= 627.5
         psi4.core.clean()
     else:
         # Calculate DFT energy
-        energy = get_dft_energy(molecule)
+        energy, gradient = get_dft_forces_energy(molecule)
 
-    return (idx, not_converged, energy)
+    return idx, not_converged, energy, gradient

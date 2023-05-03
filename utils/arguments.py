@@ -160,6 +160,14 @@ def get_args():
         help="Multiply actions by action_scale.",
     )
     parser.add_argument(
+        "--subtract_atomization_energy",
+        default=True,
+        choices=[True, False],
+        metavar="True|False",
+        type=str2bool,
+        help="Subtract atomization energy from the DFT energy for training",
+    )
+    parser.add_argument(
         "--action_scale_scheduler",
         choices=["Constant", "CosineAnnealing"],
         default="Constant",

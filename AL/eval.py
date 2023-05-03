@@ -17,7 +17,9 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination
     t = 0
 
     # Reset initial state in actor
-    state = env.set_initial_positions(fixed_atoms, smiles, energy_list=[None])
+    state = env.set_initial_positions(
+        fixed_atoms, smiles, energy_list=[None], force_list=[None]
+    )
     actor.reset({k: v.to(DEVICE) for k, v in state.items()})
 
     # Get initial final energies in case of an optimization failure
@@ -39,6 +41,10 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination
     if delta_energy < 0:
         final_energy = initial_energy[0]
         delta_energy = 0
+        # Reset env to initial state
+        state = env.set_initial_positions(
+            fixed_atoms, smiles, energy_list=[None], force_list=[None]
+        )
     else:
         final_energy = info["final_energy"][0]
 
@@ -47,7 +53,9 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination
 
 def rdkit_minimize_until_convergence(env, fixed_atoms, smiles, M=None):
     M_init = 1000
-    env.set_initial_positions(fixed_atoms, smiles, energy_list=[None], M=M)
+    env.set_initial_positions(
+        fixed_atoms, smiles, energy_list=[None], force_list=[None], M=M
+    )
     initial_energy = env.initial_energy["rdkit"][0]
     not_converged, final_energy, _ = env.minimize_rdkit(idx=0, M=M_init)
     while not_converged:

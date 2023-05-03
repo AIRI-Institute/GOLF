@@ -11,7 +11,7 @@ from schnetpack.nn import BesselRBF
 
 from env.make_envs import make_envs
 from AL import DEVICE
-from AL.AL_actor import Actor
+from AL.AL_actor import ALPolicy
 from AL.eval import run_policy, rdkit_minimize_until_convergence
 from AL.utils import get_cutoff_by_string
 from utils.arguments import str2bool
@@ -143,14 +143,21 @@ def main(checkpoint_path, args, config):
         "cutoff_fn": get_cutoff_by_string("cosine")(config.cutoff),
     }
 
-    actor = Actor(
+    actor = ALPolicy(
+        # tmp
+        n_parallel=1,
         backbone=config.backbone,
         backbone_args=backbone_args,
+        action_scale_scheduler=config.action_scale_scheduler,
         action_scale=config.action_scale,
         action_norm_limit=config.action_norm_limit,
+        max_iter=config.max_iter,
+        grad_threshold=1e-6,
     )
     agent_path = checkpoint_path / args.agent_path
-    actor.load_state_dict(torch.load(agent_path, map_location=torch.device(DEVICE)))
+    actor.actor.load_state_dict(
+        torch.load(agent_path, map_location=torch.device(DEVICE))
+    )
     actor.to(DEVICE)
     actor.eval()
 
@@ -160,7 +167,7 @@ def main(checkpoint_path, args, config):
         args.conf_number,
         args.evaluate_rdkit,
         args.evaluate_rl,
-        eval_termination_mode="fixed_length",
+        eval_termination_mode="grad_norm",
     )
 
     # Convert defaultdict into normal dict to pickle it

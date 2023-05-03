@@ -6,7 +6,11 @@ import numpy as np
 from rdkit.Chem import AddHs, AllChem, Conformer, MolFromSmiles
 from schnetpack.data.loader import _atoms_collate_fn
 
-from .dft import calculate_dft_energy_queue, get_dft_energy, update_ase_atoms_positions
+from .dft import (
+    calculate_dft_energy_queue,
+    get_dft_forces_energy,
+    update_ase_atoms_positions,
+)
 from .moldynamics_env import MolecularDynamics
 from .xyz2mol import get_rdkit_energy, get_rdkit_force, parse_molecule, set_coordinates
 
@@ -51,7 +55,7 @@ class RewardWrapper(gym.Wrapper):
             "rdkit": set_coordinates,
             "dft": update_ase_atoms_positions,
         }
-        self.get_energy = {"rdkit": get_rdkit_energy, "dft": get_dft_energy}
+        self.get_energy = {"rdkit": get_rdkit_energy, "dft": get_dft_forces_energy}
         self.get_force = {
             "rdkit": get_rdkit_force,
             "dft": None,
@@ -152,6 +156,7 @@ class RewardWrapper(gym.Wrapper):
                     else:
                         self.threshold_exceeded[idx] += 1
                         rewards[idx] = rdkit_rewards[idx]
+                        self.force["dft"][idx] = self.force["rdkit"][idx]
 
             # Sort queue according to the molecule size
             queue = sorted(queue, key=lambda x: x[1], reverse=True)
@@ -159,8 +164,9 @@ class RewardWrapper(gym.Wrapper):
             result = calculate_dft_energy_queue(
                 queue, n_threads=self.n_threads, M=self.M
             )
-            for idx, _, energy in result:
+            for idx, _, energy, force in result:
                 rewards[idx] = self.initial_energy["dft"][idx] - energy
+                self.force["dft"][idx] = force
         else:
             rewards = rdkit_rewards
 
@@ -179,7 +185,9 @@ class RewardWrapper(gym.Wrapper):
                 # Then the initial DFT energy would be calculated from the
                 # rdkit reward but the final energy would come from DFT.
                 if self.dft:
-                    self.initial_energy["dft"][idx] -= rewards[idx]
+                    self.initial_energy["dft"][idx] = (
+                        self.initial_energy["dft"][idx] - rewards[idx]
+                    )
 
             # When agent encountered 'max_num_negative_rewards'
             # terminate the episode
@@ -257,7 +265,6 @@ class RewardWrapper(gym.Wrapper):
                 self.initial_energy["rdkit"][idx],
                 self.force["rdkit"][idx],
             ) = self.minimize_rdkit(idx)
-
             # Calculate initial dft energy
             if self.dft:
                 queue = []
@@ -267,6 +274,7 @@ class RewardWrapper(gym.Wrapper):
                 self.molecule["dft"][idx] = self.env.atoms[idx].copy()
                 if self.env.energy[idx] is not None and self.M == 0:
                     self.initial_energy["dft"][idx] = self.env.energy[idx]
+                    self.force["dft"][idx] = self.env.force[idx]
                 else:
                     queue.append((self.molecule["dft"][idx], atoms_num[idx], idx))
 
@@ -278,18 +286,21 @@ class RewardWrapper(gym.Wrapper):
             result = calculate_dft_energy_queue(
                 queue, n_threads=self.n_threads, M=self.M
             )
-            for idx, _, energy in result:
+            for idx, _, energy, force in result:
                 self.initial_energy["dft"][idx] = energy
+                self.force["dft"][idx] = force
 
         return obs
 
-    def set_initial_positions(self, atoms_list, smiles_list, energy_list, M=None):
+    def set_initial_positions(
+        self, atoms_list, smiles_list, energy_list, force_list, M=None
+    ):
         super().reset(increment_conf_idx=False)
 
         # Set molecules and get observation
         obs_list = []
-        for idx, (atoms, smiles, energy) in enumerate(
-            zip(atoms_list, smiles_list, energy_list)
+        for idx, (atoms, smiles, energy, force) in enumerate(
+            zip(atoms_list, smiles_list, energy_list, force_list)
         ):
             self.env.atoms[idx] = atoms.copy()
             obs_list.append(self.env.converter(self.env.atoms[idx]))
@@ -330,8 +341,9 @@ class RewardWrapper(gym.Wrapper):
                 # psi4.core.Molecule object cannot be stored in the MP Queue.
                 # Instead store ase.Atoms and transform into psi4 format later.
                 self.molecule["dft"][idx] = self.env.atoms[idx].copy()
-                if energy is not None and self.M == 0:
+                if (energy is not None and force is not None) and self.M == 0:
                     self.initial_energy["dft"][idx] = energy
+                    self.force["dft"][idx] = force
                 else:
                     queue.append(
                         (
@@ -349,8 +361,9 @@ class RewardWrapper(gym.Wrapper):
             result = calculate_dft_energy_queue(
                 queue, n_threads=self.n_threads, M=self.M
             )
-            for idx, _, energy in result:
+            for idx, _, energy, force in result:
                 self.initial_energy["dft"][idx] = energy
+                self.force["dft"][idx] = force
 
         obs = _atoms_collate_fn(obs_list)
         return obs

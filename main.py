@@ -1,12 +1,14 @@
 import copy
 import datetime
 import glob
+import math
 import os
 import pickle
 import random
 import time
 from pathlib import Path
 
+from ase.db import connect
 import numpy as np
 import torch
 from schnetpack.data.loader import _atoms_collate_fn
@@ -41,7 +43,14 @@ def main(args, experiment_folder):
     env, eval_env = make_envs(args)
 
     # Initialize replay buffer
-    replay_buffer = ReplayBufferGD(device=DEVICE, max_size=args.replay_buffer_size)
+    with connect(args.db_path) as conn:
+        if "atomrefs" in conn.metadata and args.subtract_atomization_energy:
+            atomrefs = conn.metadata["atomrefs"]["energy"]
+        else:
+            atomrefs = None
+    replay_buffer = ReplayBufferGD(
+        device=DEVICE, max_size=args.replay_buffer_size, atomrefs=atomrefs
+    )
 
     if args.store_only_initial_conformations:
         assert args.timelimit_train == 1
@@ -94,19 +103,19 @@ def main(args, experiment_folder):
         # Get current timesteps
         episode_timesteps = env.unwrapped.get_env_step()
 
-        # Select next action
-        actions = policy.act(episode_timesteps)["action"].cpu().numpy()
-
-        # If action contains non finites then reset everything and continue
-        if not np.isfinite(actions).all():
-            state = env.reset()
-            policy.reset(state)
-            episode_returns = np.zeros(args.n_parallel)
-            continue
-
-        next_state, rewards, dones, info = env.step(actions)
-
         if not args.store_only_initial_conformations:
+            # Select next action
+            actions = policy.act(episode_timesteps)["action"].cpu().numpy()
+            print("policy.act() time: {:.4f}".format(time.perf_counter() - start))
+
+            # If action contains non finites then reset everything and continue
+            if not np.isfinite(actions).all():
+                state = env.reset()
+                policy.reset(state)
+                episode_returns = np.zeros(args.n_parallel)
+                continue
+
+            next_state, rewards, dones, info = env.step(actions)
             # Track states with large negative rewards
             envs_to_store = [
                 i for i, reward in enumerate(rewards) if reward > REWARD_THRESHOLD
@@ -120,42 +129,52 @@ def main(args, experiment_folder):
                 next_state_list = [next_state_list[i] for i in envs_to_store]
                 replay_buffer.add(_atoms_collate_fn(next_state_list), forces, energies)
 
-        state = next_state
-        episode_returns += rewards
+            state = next_state
+            episode_returns += rewards
+        else:
+            dones = np.stack([True for _ in range(args.n_parallel)])
 
         # Train agent after collecting sufficient data
+        prev_start = time.perf_counter()
         if update_condition:
-            for _ in range(args.n_parallel):
+            for update_num in range(args.n_parallel):
                 step_metrics = trainer.update(replay_buffer)
+                new_start = time.perf_counter()
+                print(
+                    "policy.train {} time: {:.4f}".format(
+                        update_num, new_start - prev_start
+                    )
+                )
+                prev_start = new_start
         else:
             step_metrics = dict()
 
         step_metrics["Timestamp"] = str(datetime.datetime.now())
-        step_metrics["Action_norm"] = calculate_action_norm(
-            actions, env.get_atoms_num_cumsum()
-        ).item()
 
-        # Calculate average number of pairs of atoms too close together
-        # in env before and after processing
-        step_metrics["Molecule/num_bad_pairs_before"] = info[
-            "total_bad_pairs_before_process"
-        ]
-        step_metrics["Molecule/num_bad_pairs_after"] = info[
-            "total_bad_pairs_after_process"
-        ]
-
-        # Update training statistics
-        for i, done in enumerate(dones):
-            if done:
-                logger.update_evaluation_statistics(
-                    episode_timesteps[i] + 1,
-                    episode_returns[i].item(),
-                    info["final_energy"][i],
-                    info["final_rl_energy"][i],
-                    info["threshold_exceeded_pct"][i],
-                    info["not_converged"][i],
-                )
-                episode_returns[i] = 0
+        if not args.store_only_initial_conformations:
+            step_metrics["Action_norm"] = calculate_action_norm(
+                actions, env.get_atoms_num_cumsum()
+            ).item()
+            # Calculate average number of pairs of atoms too close together
+            # in env before and after processing
+            step_metrics["Molecule/num_bad_pairs_before"] = info[
+                "total_bad_pairs_before_process"
+            ]
+            step_metrics["Molecule/num_bad_pairs_after"] = info[
+                "total_bad_pairs_after_process"
+            ]
+            # Update training statistics
+            for i, done in enumerate(dones):
+                if done:
+                    logger.update_evaluation_statistics(
+                        episode_timesteps[i] + 1,
+                        episode_returns[i].item(),
+                        info["final_energy"][i],
+                        info["final_rl_energy"][i],
+                        info["threshold_exceeded_pct"][i],
+                        info["not_converged"][i],
+                    )
+                    episode_returns[i] = 0
 
         # If the episode is terminated
         envs_to_reset = [i for i, done in enumerate(dones) if done]
@@ -174,23 +193,24 @@ def main(args, experiment_folder):
             replay_buffer.add(reset_states, forces, energies)
 
         # Print iteration time
-        print(time.perf_counter() - start)
+        print("Full iteration time: {:.4f}".format(time.perf_counter() - start))
 
         # Evaluate episode
-        if (t + 1) % (args.eval_freq // args.n_parallel) == 0:
+        if (t + 1) % math.ceil(args.eval_freq / float(args.n_parallel)) == 0:
             # Update eval policy
             eval_policy.actor = copy.deepcopy(policy.actor)
             step_metrics["Total_timesteps"] = (t + 1) * args.n_parallel
             step_metrics["FPS"] = args.n_parallel / (time.perf_counter() - start)
-            step_metrics.update(
-                eval_function[args.reward](
-                    actor=eval_policy,
-                    env=eval_env,
-                    eval_episodes=args.n_eval_runs,
-                    evaluate_multiple_timesteps=args.evaluate_multiple_timesteps,
-                    eval_termination_mode=args.eval_termination_mode,
+            if not args.store_only_initial_conformations:
+                step_metrics.update(
+                    eval_function[args.reward](
+                        actor=eval_policy,
+                        env=eval_env,
+                        eval_episodes=args.n_eval_runs,
+                        evaluate_multiple_timesteps=args.evaluate_multiple_timesteps,
+                        eval_termination_mode=args.eval_termination_mode,
+                    )
                 )
-            )
             logger.log(step_metrics)
 
         # Save checkpoints
