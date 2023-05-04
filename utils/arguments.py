@@ -161,7 +161,7 @@ def get_args():
     )
     parser.add_argument(
         "--subtract_atomization_energy",
-        default=True,
+        default=False,
         choices=[True, False],
         metavar="True|False",
         type=str2bool,
@@ -242,6 +242,12 @@ def get_args():
         type=str,
         choices=["cuda", "cpu"],
         help="LBFGS device type",
+    )
+    parser.add_argument(
+        "--experience_saver",
+        default="reward_threshold",
+        choices=["reward_threshold", "initial_and_last"],
+        help="How to save experience to replay buffer",
     )
 
     # Eval args

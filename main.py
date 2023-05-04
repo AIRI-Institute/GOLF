@@ -11,14 +11,14 @@ from pathlib import Path
 from ase.db import connect
 import numpy as np
 import torch
-from schnetpack.data.loader import _atoms_collate_fn
 
 from AL import DEVICE
 from AL.AL_trainer import AL
 from AL.eval import eval_policy_dft, eval_policy_rdkit
 from AL.make_policies import make_policies
+from AL.make_saver import make_saver
 from AL.replay_buffer import ReplayBufferGD
-from AL.utils import calculate_action_norm, recollate_batch, unpad_state
+from AL.utils import calculate_action_norm, recollate_batch
 from env.make_envs import make_envs
 from utils.arguments import get_args
 from utils.logging import Logger
@@ -52,8 +52,14 @@ def main(args, experiment_folder):
         device=DEVICE, max_size=args.replay_buffer_size, atomrefs=atomrefs
     )
 
+    # Initialize experience saver
+    experience_saver = make_saver(args, env, replay_buffer, REWARD_THRESHOLD)
+
     if args.store_only_initial_conformations:
         assert args.timelimit_train == 1
+
+    if args.reward == "rdkit":
+        assert not args.subtract_atomization_energy
 
     # Inititalize policy and eval policy
     policy, eval_policy = make_policies(args)
@@ -106,7 +112,7 @@ def main(args, experiment_folder):
         if not args.store_only_initial_conformations:
             # Select next action
             actions = policy.act(episode_timesteps)["action"].cpu().numpy()
-            print("policy.act() time: {:.4f}".format(time.perf_counter() - start))
+            # print("policy.act() time: {:.4f}".format(time.perf_counter() - start))
 
             # If action contains non finites then reset everything and continue
             if not np.isfinite(actions).all():
@@ -116,19 +122,12 @@ def main(args, experiment_folder):
                 continue
 
             next_state, rewards, dones, info = env.step(actions)
-            # Track states with large negative rewards
-            envs_to_store = [
-                i for i, reward in enumerate(rewards) if reward > REWARD_THRESHOLD
-            ]
 
-            # Store only states with reward > REWARD_THRESHOLD
-            if len(envs_to_store) > 0:
-                energies = env.get_energies(indices=envs_to_store)
-                forces = env.get_forces(indices=envs_to_store)
-                next_state_list = unpad_state(next_state)
-                next_state_list = [next_state_list[i] for i in envs_to_store]
-                replay_buffer.add(_atoms_collate_fn(next_state_list), forces, energies)
+            # Save data to replay buffer
+            experience_saver(next_state, rewards, dones)
+            print(replay_buffer.size)
 
+            # Move to next state
             state = next_state
             episode_returns += rewards
         else:
@@ -140,11 +139,11 @@ def main(args, experiment_folder):
             for update_num in range(args.n_parallel):
                 step_metrics = trainer.update(replay_buffer)
                 new_start = time.perf_counter()
-                print(
-                    "policy.train {} time: {:.4f}".format(
-                        update_num, new_start - prev_start
-                    )
-                )
+                # print(
+                #     "policy.train {} time: {:.4f}".format(
+                #         update_num, new_start - prev_start
+                #     )
+                # )
                 prev_start = new_start
         else:
             step_metrics = dict()
@@ -188,6 +187,7 @@ def main(args, experiment_folder):
             # Reset initial states in policy
             policy.reset(reset_states, indices=envs_to_reset)
 
+            # Add new initial states to the buffer
             energies = env.get_energies(indices=envs_to_reset)
             forces = env.get_forces(indices=envs_to_reset)
             replay_buffer.add(reset_states, forces, energies)

@@ -138,6 +138,8 @@ class MolecularDynamics(gym.Env):
                 self.smiles[idx] = row.smiles
                 # energy in Hartrees
                 self.energy[idx] = row.data["energy"]
+
+            if hasattr(row, "forces"):
                 # forces in Hartees/ Angstrom
                 self.force[idx] = row.data["forces"]
 
