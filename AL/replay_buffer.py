@@ -57,4 +57,5 @@ class ReplayBufferGD(object):
                 self.atomrefs[state_batch[properties.Z]], idx_m, dim_size=max_m
             ).unsqueeze(-1)
             energy -= atomization_energy
+
         return state_batch, forces, energy

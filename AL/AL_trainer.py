@@ -2,6 +2,7 @@ import math
 
 import torch
 from schnetpack import properties
+from schnetpack.nn import scatter_add
 from torch.nn.functional import mse_loss
 
 from AL import DEVICE
@@ -54,23 +55,17 @@ class AL(object):
         output = self.actor(state, train=True)
         predicted_energy = output["energy"]
         predicted_force = output["anti_gradient"]
-
-        atoms_indices_range = get_atoms_indices_range(state)
         n_atoms = state[properties.n_atoms]
-        n_atoms_expanded = torch.ones(
-            size=(predicted_force.size(0),), device=DEVICE, dtype=torch.float32
-        )
-        for i in range(atoms_indices_range.size(0) - 1):
-            n_atoms_expanded[
-                atoms_indices_range[i] : atoms_indices_range[i + 1]
-            ] = n_atoms[i]
 
         energy_loss = mse_loss(predicted_energy, energy.squeeze(1))
         force_loss = torch.sum(
-            mse_loss(predicted_force, force, reduction="none").mean(-1)
-            / n_atoms_expanded
+            scatter_add(
+                mse_loss(predicted_force, force, reduction="none").mean(-1),
+                state[properties.idx_m],
+                dim_size=n_atoms.size(0),
+            )
+            / n_atoms
         ) / n_atoms.size(0)
-
         loss = self.force_loss_coef * force_loss + self.energy_loss_coef * energy_loss
 
         metrics["loss"] = loss.item()

@@ -52,18 +52,18 @@ def main(args, experiment_folder):
         device=DEVICE, max_size=args.replay_buffer_size, atomrefs=atomrefs
     )
 
-    # Initialize experience saver
-    experience_saver = make_saver(args, env, replay_buffer, REWARD_THRESHOLD)
-
-    if args.store_only_initial_conformations:
-        assert args.timelimit_train == 1
-
-    if args.reward == "rdkit":
-        assert not args.subtract_atomization_energy
-
     # Inititalize policy and eval policy
     policy, eval_policy = make_policies(args)
 
+    # Initialize experience saver
+    experience_saver = make_saver(
+        args,
+        env=env,
+        replay_buffer=replay_buffer,
+        actor=policy.actor,
+        reward_thresh=REWARD_THRESHOLD,
+    )
+    # Initialize trainer
     trainer = AL(
         policy=policy,
         lr=args.lr,
@@ -112,7 +112,7 @@ def main(args, experiment_folder):
         if not args.store_only_initial_conformations:
             # Select next action
             actions = policy.act(episode_timesteps)["action"].cpu().numpy()
-            # print("policy.act() time: {:.4f}".format(time.perf_counter() - start))
+            print("policy.act() time: {:.4f}".format(time.perf_counter() - start))
 
             # If action contains non finites then reset everything and continue
             if not np.isfinite(actions).all():
@@ -124,8 +124,11 @@ def main(args, experiment_folder):
             next_state, rewards, dones, info = env.step(actions)
 
             # Save data to replay buffer
+            prev_start = time.perf_counter()
             experience_saver(next_state, rewards, dones)
-            print(replay_buffer.size)
+            print(
+                "experience save time: {:.4f}".format(time.perf_counter() - prev_start)
+            )
 
             # Move to next state
             state = next_state
@@ -139,16 +142,17 @@ def main(args, experiment_folder):
             for update_num in range(args.n_parallel):
                 step_metrics = trainer.update(replay_buffer)
                 new_start = time.perf_counter()
-                # print(
-                #     "policy.train {} time: {:.4f}".format(
-                #         update_num, new_start - prev_start
-                #     )
-                # )
+                print(
+                    "policy.train {} time: {:.4f}".format(
+                        update_num, new_start - prev_start
+                    )
+                )
                 prev_start = new_start
         else:
             step_metrics = dict()
 
         step_metrics["Timestamp"] = str(datetime.datetime.now())
+        step_metrics["RB_size"] = replay_buffer.size
 
         if not args.store_only_initial_conformations:
             step_metrics["Action_norm"] = calculate_action_norm(
@@ -245,6 +249,14 @@ if __name__ == "__main__":
     log_dir = Path(args.log_dir)
     if args.seed is None:
         args.seed = random.randint(0, 1000000)
+
+    # Check hyperparameters
+    if args.store_only_initial_conformations:
+        assert args.timelimit_train == 1
+
+    if args.reward == "rdkit":
+        assert not args.subtract_atomization_energy
+
     # Seed everything
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
