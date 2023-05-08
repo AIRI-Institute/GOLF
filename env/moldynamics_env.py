@@ -226,7 +226,7 @@ class MolecularDynamics(gym.Env):
         # that r_ij < THRESH is a rare event that affects at most
         # one pair of atoms so moving them apart should not cause
         # any other r_kl to become < THRESH.
-        for (i, j) in bad_indices_before:
+        for i, j in bad_indices_before:
             coef = MolecularDynamics.DISTANCE_THRESH + 0.05 - r_ij[i, j]
             positions[i] -= 0.5 * coef * dir_ij[i, j]
             positions[j] -= 0.5 * coef * dir_ij[j, i]

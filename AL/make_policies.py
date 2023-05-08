@@ -1,13 +1,11 @@
 import schnetpack
+from torch.optim import SGD
 
 from AL import DEVICE
-from AL.AL_actor import (
-    ALPolicy,
-    ALMultiThreadingPolicy,
-    ALAsyncPolicy,
-    ALMultiProcessingPolicy,
-)
+from AL.AL_actor import ConformationOptimizer, LBFGSConformationOptimizer
 from AL.utils import get_cutoff_by_string
+from AL.optim.lion_pytorch import Lion
+from utils.utils import ignore_extra_args
 
 
 def make_policies(args):
@@ -23,24 +21,46 @@ def make_policies(args):
         "n_parallel": args.n_parallel,
         "backbone": args.backbone,
         "backbone_args": backbone_args,
-        "action_scale_scheduler": args.action_scale_scheduler,
-        "action_scale": args.action_scale,
+        "lr_scheduler": args.conf_opt_lr_scheduler,
         "action_norm_limit": args.action_norm_limit,
-        "max_iter": args.max_iter,
-        "lbfgs_device": args.lbfgs_device,
     }
 
-    # Initialize policy
-    if args.policy == "base":
-        policy = ALPolicy(**policy_args).to(DEVICE)
-    elif args.policy == "mt":
-        policy = ALMultiThreadingPolicy(**policy_args).to(DEVICE)
-    elif args.policy == "async":
-        policy = ALAsyncPolicy(**policy_args).to(DEVICE)
-    elif args.policy == "mp":
-        policy = ALMultiProcessingPolicy(**policy_args).to(DEVICE)
+    if args.conformation_optimizer == "LBFGS":
+        policy_args.update(
+            {
+                "grad_threshold": args.grad_threshold,
+                "lbfgs_device": args.lbfgs_device,
+                "optimizer_kwargs": {
+                    "lr": 1,
+                    "max_iter": args.max_iter,
+                },
+            }
+        )
+        policy = ignore_extra_args(LBFGSConformationOptimizer)(**policy_args).to(DEVICE)
+    elif args.conformation_optimizer == "GD":
+        policy_args.update(
+            {
+                "optimizer": SGD,
+                "optimizer_kwargs": {
+                    "lr": args.conf_opt_lr,
+                    "momentum": args.momentum,
+                },
+            }
+        )
+        policy = ignore_extra_args(ConformationOptimizer)(**policy_args).to(DEVICE)
+    elif args.conformation_optimizer == "Lion":
+        policy_args.update(
+            {
+                "optimizer": Lion,
+                "optimizer_kwargs": {
+                    "lr": args.conf_opt_lr,
+                    "betas": (args.lion_beta1, args.lion_beta2),
+                },
+            }
+        )
+        policy = ignore_extra_args(ConformationOptimizer)(**policy_args).to(DEVICE)
     else:
-        raise ValueError("Unknowm policy type: {}!".format(args.policy))
+        raise NotImplemented("Unknowm policy type: {}!".format(args.policy))
 
     # Initialize eval policy
     if args.reward == "rdkit":
@@ -50,17 +70,14 @@ def make_policies(args):
 
     # Update argument
     policy_args["n_parallel"] = n_parallel_eval
-    policy_args["grad_threshold"] = args.grad_threshold
 
-    if args.policy == "base":
-        eval_policy = ALPolicy(**policy_args).to(DEVICE)
-    elif args.policy == "mt":
-        eval_policy = ALMultiThreadingPolicy(**policy_args).to(DEVICE)
-    elif args.policy == "async":
-        eval_policy = ALAsyncPolicy(**policy_args).to(DEVICE)
-    elif args.policy == "mp":
-        eval_policy = ALMultiProcessingPolicy(**policy_args).to(DEVICE)
+    if args.conformation_optimizer == "LBFGS":
+        eval_policy = ignore_extra_args(LBFGSConformationOptimizer)(**policy_args).to(
+            DEVICE
+        )
+    elif args.conformation_optimizer == "GD" or args.conformation_optimizer == "Lion":
+        eval_policy = ignore_extra_args(ConformationOptimizer)(**policy_args).to(DEVICE)
     else:
-        raise ValueError("Unknowm policy type: {}!".format(args.policy))
+        raise NotImplemented("Unknowm policy type: {}!".format(args.policy))
 
     return policy, eval_policy

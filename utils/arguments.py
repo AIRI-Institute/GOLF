@@ -82,18 +82,6 @@ def get_args():
         type=int,
         help="Max number of negative rewards to terminate the episode",
     )
-    parser.add_argument(
-        "--eval_termination_mode",
-        default="fixed_length",
-        choices=["fixed_length", "grad_norm", "negative_reward"],
-        help="When to terminate the episode on evaluation",
-    )
-    parser.add_argument(
-        "--grad_threshold",
-        default=1e-5,
-        type=float,
-        help="Terminates optimization when norm of the gradient is smaller than the threshold",
-    )
 
     # Reward args
     parser.add_argument(
@@ -113,7 +101,7 @@ def get_args():
     parser.add_argument(
         "--M",
         type=int,
-        default=10,
+        default=0,
         help="Number of steps to run rdkit minimization for",
     )
     parser.add_argument(
@@ -154,25 +142,46 @@ def get_args():
 
     # AL args
     parser.add_argument(
-        "--action_scale",
-        default=0.01,
-        type=float,
-        help="Multiply actions by action_scale.",
+        "--conformation_optimizer",
+        default="LBFGS",
+        type=str,
+        choices=["GD", "Lion", "LBFGS"],
+        help="Conformation optimizer type",
     )
     parser.add_argument(
-        "--subtract_atomization_energy",
+        "--conf_opt_lr",
+        default=1.0,
+        type=float,
+        help="Initial learning rate for conformation optimizer.",
+    )
+    parser.add_argument(
+        "--conf_opt_lr_scheduler",
+        choices=["Constant", "CosineAnnealing"],
+        default="Constant",
+        help="Conformation optimizer learning rate scheduler type",
+    )
+    parser.add_argument(
+        "--experience_saver",
+        default="reward_threshold",
+        choices=["reward_threshold", "initial_and_last", "gradient_missmatch"],
+        help="How to save experience to replay buffer",
+    )
+    parser.add_argument(
+        "--grad_missmatch_threshold",
+        default=1.0,
+        type=float,
+        help="Save states where predicted forces deviates from GT forces by threshold (in terms of MSE)",
+    )
+    parser.add_argument(
+        "--store_only_initial_conformations",
         default=False,
         choices=[True, False],
         metavar="True|False",
         type=str2bool,
-        help="Subtract atomization energy from the DFT energy for training",
+        help="For baseline experiments.",
     )
-    parser.add_argument(
-        "--action_scale_scheduler",
-        choices=["Constant", "CosineAnnealing"],
-        default="Constant",
-        help="Action scale scheduler type",
-    )
+
+    # LBFGS args
     parser.add_argument(
         "--max_iter",
         type=int,
@@ -180,14 +189,49 @@ def get_args():
         help="Number of iterations in the inner cycle LBFGS",
     )
     parser.add_argument(
+        "--lbfgs_device",
+        default="cuda",
+        type=str,
+        choices=["cuda", "cpu"],
+        help="LBFGS device type",
+    )
+
+    # GD args
+    parser.add_argument(
+        "--momentum",
+        default=0.0,
+        type=float,
+        help="Momentum argument for gradient descent confromation optimizer",
+    )
+
+    # Lion args
+    parser.add_argument(
+        "--lion_beta1",
+        default=0.9,
+        type=float,
+        help="Beta_1 for Lion conformation optimizer",
+    )
+    parser.add_argument(
+        "--lion_beta2",
+        default=0.99,
+        type=float,
+        help="Beta_2 for Lion conformation optimizer",
+    )
+
+    # Training args
+    parser.add_argument(
         "--batch_size",
-        default=256,
+        default=64,
         type=int,
         help="Batch size for both actor and critic",
     )
     parser.add_argument("--lr", default=3e-4, type=float, help="Actor learning rate")
     parser.add_argument(
-        "--clip_value", default=None, help="Clipping value for actor gradients"
+        "--optimizer",
+        default="adam",
+        type=str,
+        choices=["adam", "lion"],
+        help="Optimizer type",
     )
     parser.add_argument(
         "--lr_scheduler",
@@ -197,10 +241,7 @@ def get_args():
         help="LR scheduler",
     )
     parser.add_argument(
-        "--action_norm_limit",
-        default=0.05,
-        type=float,
-        help="Upper limit for action norm. Action norms larger get scaled down",
+        "--clip_value", default=None, help="Clipping value for actor gradients"
     )
     parser.add_argument(
         "--energy_loss_coef",
@@ -215,45 +256,27 @@ def get_args():
         help="Weight for the forces part of the backbone loss",
     )
     parser.add_argument(
-        "--store_only_initial_conformations",
+        "--replay_buffer_size", default=int(1e5), type=int, help="Size of replay buffer"
+    )
+    parser.add_argument(
+        "--max_timesteps",
+        default=1e6,
+        type=int,
+        help="Max time steps to run environment",
+    )
+    parser.add_argument(
+        "--subtract_atomization_energy",
         default=False,
         choices=[True, False],
         metavar="True|False",
         type=str2bool,
-        help="For baseline experiments.",
+        help="Subtract atomization energy from the DFT energy for training",
     )
     parser.add_argument(
-        "--optimizer",
-        default="adam",
-        type=str,
-        choices=["adam", "lion"],
-        help="Optimizer type",
-    )
-    parser.add_argument(
-        "--policy",
-        default="base",
-        type=str,
-        choices=["base", "async", "mt", "mp"],
-        help="Policy type",
-    )
-    parser.add_argument(
-        "--lbfgs_device",
-        default="cuda",
-        type=str,
-        choices=["cuda", "cpu"],
-        help="LBFGS device type",
-    )
-    parser.add_argument(
-        "--experience_saver",
-        default="reward_threshold",
-        choices=["reward_threshold", "initial_and_last", "gradient_missmatch"],
-        help="How to save experience to replay buffer",
-    )
-    parser.add_argument(
-        "--grad_missmatch_threshold",
-        default=1.0,
+        "--action_norm_limit",
+        default=0.05,
         type=float,
-        help="Save states where predicted forces deviates from GT forces by threshold (in terms of MSE)",
+        help="Upper limit for action norm. Action norms larger get scaled down",
     )
 
     # Eval args
@@ -271,19 +294,22 @@ def get_args():
         type=str2bool,
         help="Evaluate at multiple timesteps",
     )
+    parser.add_argument(
+        "--eval_termination_mode",
+        default="fixed_length",
+        choices=["fixed_length", "grad_norm", "negative_reward"],
+        help="When to terminate the episode on evaluation",
+    )
+    parser.add_argument(
+        "--grad_threshold",
+        default=1e-5,
+        type=float,
+        help="Terminates optimization when norm of the gradient is smaller than the threshold",
+    )
 
     # Other args
     parser.add_argument(
         "--exp_name", required=True, type=str, help="Name of the experiment"
-    )
-    parser.add_argument(
-        "--replay_buffer_size", default=int(1e5), type=int, help="Size of replay buffer"
-    )
-    parser.add_argument(
-        "--max_timesteps",
-        default=1e6,
-        type=int,
-        help="Max time steps to run environment",
     )
     parser.add_argument("--seed", default=None, type=int, help="Random seed")
     parser.add_argument(
@@ -314,7 +340,10 @@ def get_args():
         help="Checkpoint for the actor. Does not restore replay buffer",
     )
     parser.add_argument(
-        "--load_model", type=str, default=None, help="Path to load the model from"
+        "--load_model",
+        type=str,
+        default=None,
+        help="Full checkpoint path (conformation optimizer and replay buffer)",
     )
     parser.add_argument("--log_dir", default=".", help="Directory where runs are saved")
     parser.add_argument(

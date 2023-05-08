@@ -7,42 +7,40 @@ from AL import DEVICE
 from AL.optim.lion_pytorch import Lion
 
 
-class ActionScaleCosineAnnealing:
-    def __init__(self, action_scale, action_scale_min=1e-5, t_max=1000):
-        self.action_scale = action_scale
-        self.action_scale_min = action_scale_min
+class LRCosineAnnealing:
+    def __init__(self, lr, lr_min=1e-5, t_max=1000):
+        self.lr = lr
+        self.lr_min = lr_min
         self.t_max = t_max
 
     def get(self, t):
         return torch.FloatTensor(
             [
-                self.action_scale_min
+                self.lr_min
                 + 0.5
-                * (self.action_scale - self.action_scale_min)
+                * (self.lr - self.lr_min)
                 * (1 + np.cos(min(t_, self.t_max) * np.pi / self.t_max))
                 for t_ in t
             ]
         ).to(DEVICE)
 
 
-class ActionScaleConstant:
-    def __init__(self, action_scale):
-        self.action_scale = action_scale
+class LRConstant:
+    def __init__(self, lr):
+        self.lr = lr
 
     def get(self, t):
-        return torch.FloatTensor([self.action_scale for t_ in t]).to(DEVICE)
+        return torch.FloatTensor([self.lr for t_ in t]).to(DEVICE)
 
 
-def get_action_scale_scheduler(action_scale_scheduler_type, action_scale):
-    if action_scale_scheduler_type == "Constant":
-        return ActionScaleConstant(action_scale)
-    elif action_scale_scheduler_type == "CosineAnnealing":
-        return ActionScaleCosineAnnealing(action_scale)
+def get_conformation_lr_scheduler(lr_scheduler_type, lr):
+    if lr_scheduler_type == "Constant":
+        return LRConstant(lr)
+    elif lr_scheduler_type == "CosineAnnealing":
+        return LRCosineAnnealing(lr)
     else:
         raise ValueError(
-            "Unknown Action Scale scheduler type: {}".format(
-                action_scale_scheduler_type
-            )
+            "Unknown conformation LR scheduler type: {}".format(lr_scheduler_type)
         )
 
 
@@ -227,9 +225,13 @@ def _atoms_collate_fn(batch):
             coll_batch[key + "_local"] = torch.cat([d[key] for d in batch], 0)
 
     seg_m = torch.cumsum(coll_batch[properties.n_atoms], dim=0)
-    seg_m = torch.cat([torch.zeros((1,), dtype=seg_m.dtype, device=seg_m.device), seg_m], dim=0)
+    seg_m = torch.cat(
+        [torch.zeros((1,), dtype=seg_m.dtype, device=seg_m.device), seg_m], dim=0
+    )
     idx_m = torch.repeat_interleave(
-        torch.arange(len(batch), device=seg_m.device), repeats=coll_batch[properties.n_atoms], dim=0
+        torch.arange(len(batch), device=seg_m.device),
+        repeats=coll_batch[properties.n_atoms],
+        dim=0,
     )
     coll_batch[properties.idx_m] = idx_m
 
