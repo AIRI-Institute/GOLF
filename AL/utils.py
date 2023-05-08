@@ -33,11 +33,11 @@ class LRConstant:
         return torch.FloatTensor([self.lr for t_ in t]).to(DEVICE)
 
 
-def get_conformation_lr_scheduler(lr_scheduler_type, lr):
+def get_conformation_lr_scheduler(lr_scheduler_type, lr, t_max):
     if lr_scheduler_type == "Constant":
         return LRConstant(lr)
     elif lr_scheduler_type == "CosineAnnealing":
-        return LRCosineAnnealing(lr)
+        return LRCosineAnnealing(lr, t_max=t_max)
     else:
         raise ValueError(
             "Unknown conformation LR scheduler type: {}".format(lr_scheduler_type)

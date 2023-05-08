@@ -22,6 +22,7 @@ def make_policies(args):
         "backbone": args.backbone,
         "backbone_args": backbone_args,
         "lr_scheduler": args.conf_opt_lr_scheduler,
+        "t_max": args.timelimit_train,
         "action_norm_limit": args.action_norm_limit,
     }
 

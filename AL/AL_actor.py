@@ -217,6 +217,7 @@ class ConformationOptimizer(nn.Module):
         backbone,
         backbone_args,
         lr_scheduler,
+        t_max,
         optimizer,
         optimizer_kwargs,
         action_norm_limit=None,
@@ -224,7 +225,7 @@ class ConformationOptimizer(nn.Module):
         super().__init__()
         self.n_parallel = n_parallel
         self.lr_scheduler = get_conformation_lr_scheduler(
-            lr_scheduler, optimizer_kwargs["lr"]
+            lr_scheduler, optimizer_kwargs["lr"], t_max
         )
         self.optimizer = optimizer
         self.optimizer_kwargs = optimizer_kwargs
