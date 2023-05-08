@@ -287,14 +287,6 @@ def get_args():
         "--n_eval_runs", default=10, type=int, help="Number of evaluation episodes"
     )
     parser.add_argument(
-        "--evaluate_multiple_timesteps",
-        default=False,
-        choices=[True, False],
-        metavar="True|False",
-        type=str2bool,
-        help="Evaluate at multiple timesteps",
-    )
-    parser.add_argument(
         "--eval_termination_mode",
         default="fixed_length",
         choices=["fixed_length", "grad_norm", "negative_reward"],

@@ -1,13 +1,10 @@
 import numpy as np
-import torch
 
 from collections import defaultdict
 
 from AL import DEVICE
 from AL.utils import recollate_batch
 
-
-TIMELIMITS = [1, 5, 10, 50, 100]
 CONVERGENCE_THRESHOLD = 1e-5
 
 
@@ -114,7 +111,6 @@ def eval_policy_rdkit(
     actor,
     env,
     eval_episodes=10,
-    evaluate_multiple_timesteps=True,
     eval_termination_mode=False,
 ):
     assert env.n_parallel == 1, "Eval env is supposed to have n_parallel=1."
@@ -153,28 +149,6 @@ def eval_policy_rdkit(
                     fixed_atoms[0].get_positions(),
                 )
             )
-
-        # Evaluate policy at multiple timelimits
-        if evaluate_multiple_timesteps:
-            for timelimit in TIMELIMITS:
-                # Set env's TL to current timelimit
-                env.update_timelimit(timelimit)
-                delta_energy_at, final_energy_at, _ = run_policy(
-                    env,
-                    actor,
-                    fixed_atoms,
-                    smiles,
-                    max_timestamps,
-                    eval_termination_mode,
-                )
-                result[f"eval/delta_energy_at_{timelimit}"] += delta_energy_at
-
-                # If reward is given by rdkit we know the optimal energy for the conformation.
-                result[f"eval/pct_of_minimized_energy_at_{timelimit}"] += (
-                    initial_energy - final_energy_at
-                ) / (initial_energy - final_energy)
-            # Set env's TL to original value
-            env.update_timelimit(max_timestamps)
 
         # Switch actor back to training mode
         actor.train()
