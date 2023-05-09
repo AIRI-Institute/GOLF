@@ -99,12 +99,6 @@ def get_args():
         help="Whether to minimize conformation with rdkit on every step",
     )
     parser.add_argument(
-        "--M",
-        type=int,
-        default=0,
-        help="Number of steps to run rdkit minimization for",
-    )
-    parser.add_argument(
         "--molecules_xyz_prefix",
         type=str,
         default="",

@@ -112,7 +112,7 @@ def update_psi4_geometry(molecule, positions):
     molecule.update_geometry()
 
 
-def calculate_dft_energy_queue(queue, n_threads, M):
+def calculate_dft_energy_queue(queue, n_threads):
     global EXECUTOR
     if EXECUTOR is None:
         method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
@@ -120,14 +120,14 @@ def calculate_dft_energy_queue(queue, n_threads, M):
             max_workers=n_threads, mp_context=mp.get_context(method)
         )
 
-    futures = [EXECUTOR.submit(calculate_dft_energy_item, task, M) for task in queue]
+    futures = [EXECUTOR.submit(calculate_dft_energy_item, task) for task in queue]
     results = [future.result() for future in concurrent.futures.as_completed(futures)]
     results = sorted(results, key=lambda x: x[0])
 
     return results
 
 
-def calculate_dft_energy_item(task, M):
+def calculate_dft_energy_item(task):
     # Get molecule from the queue
     ase_atoms, _, idx = task
     molecule = atoms2psi4mol(ase_atoms)
@@ -135,19 +135,7 @@ def calculate_dft_energy_item(task, M):
     # Perform DFT minimization
     # Energy in Hartree
     not_converged = True
-    if M > 0:
-        psi4.set_options({"geom_maxiter": M})
-        try:
-            energy = psi4.optimize(
-                FUNCTIONAL_STRING, **{"molecule": molecule, "return_wfn": False}
-            )
-            not_converged = False
-        except OptimizationConvergenceError as e:
-            molecule.set_geometry(e.wfn.molecule().geometry())
-            energy = e.wfn.energy()
-        psi4.core.clean()
-    else:
-        # Calculate DFT energy
-        energy, gradient = get_dft_forces_energy(molecule)
+    # Calculate DFT energy
+    energy, gradient = get_dft_forces_energy(molecule)
 
     return idx, not_converged, energy, gradient
