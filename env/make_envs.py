@@ -18,7 +18,6 @@ def make_envs(args):
         "n_threads": args.n_threads,
         "minimize_on_every_step": args.minimize_on_every_step,
         "molecules_xyz_prefix": args.molecules_xyz_prefix,
-        "M": args.M,
         "terminate_on_negative_reward": args.terminate_on_negative_reward,
         "max_num_negative_rewards": args.max_num_negative_rewards,
     }
