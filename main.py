@@ -211,7 +211,6 @@ def main(args, experiment_folder):
                         actor=eval_policy,
                         env=eval_env,
                         eval_episodes=args.n_eval_runs,
-                        evaluate_multiple_timesteps=args.evaluate_multiple_timesteps,
                         eval_termination_mode=args.eval_termination_mode,
                     )
                 )
