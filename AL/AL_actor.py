@@ -1,17 +1,12 @@
 import asyncio
 import collections
-import concurrent.futures
-from dataclasses import dataclass
-import multiprocessing
-import queue
-from functools import partial
 
+import numpy as np
 import schnetpack as spk
 import torch
 import torch.nn as nn
 from schnetpack import properties
 from torch.linalg import vector_norm
-from torch.optim import LBFGS, SGD
 
 from AL import DEVICE
 from AL.utils import (
@@ -111,116 +106,51 @@ class Actor(nn.Module):
         return {"action": forces, "energy": output["energy"]}
 
 
-# class LBFGSConformationOptimizer(nn.Module):
-#     def __init__(
-#         self,
-#         n_parallel,
-#         backbone,
-#         backbone_args,
-#         lr,
-#         max_iter,
-#         action_norm_limit=None,
-#         grad_threshold=1e-5,
-#         lbfgs_device="cuda",
-#     ):
-#         super().__init__()
-#         self.n_parallel = n_parallel
-#         self.lr = lr
-#         self.max_iter = max_iter
-#         self.grad_threshold = grad_threshold
-#         self.optimizer_list = [None] * n_parallel
-#         self.states = [None] * n_parallel
-#         self.actor = Actor(
-#             backbone,
-#             backbone_args,
-#             action_norm_limit,
-#         )
-#         self.lbfgs_device = torch.device(lbfgs_device)
+class RdkitActor(nn.Module):
+    def __init__(self, env):
+        super().__init__()
+        self.env = env
 
-#     def reset(self, initial_states, indices=None):
-#         if indices is None:
-#             indices = torch.arange(self.n_parallel)
-#         unpad_initial_states = unpad_state(initial_states)
-#         for i, idx in enumerate(indices):
-#             self.states[idx] = {
-#                 k: v.detach().clone().to(self.lbfgs_device)
-#                 for k, v in unpad_initial_states[i].items()
-#             }
-#             self.states[idx][properties.R].requires_grad_(True)
-#             self.optimizer_list[idx] = LBFGS(
-#                 [self.states[idx][properties.R]],
-#                 lr=self.lr,
-#                 max_iter=self.max_iter,
-#             )
+    def forward(self, state_dict, train=False):
+        # Update atoms inside env
+        energy = np.zeros(self.env.n_parallel)
+        forces = [None] * self.env.n_parallel
 
-#     def act(self, t):
-#         # Save current positions
-#         prev_positions = [
-#             self.states[idx][properties.R].detach().clone()
-#             for idx in range(self.n_parallel)
-#         ]
-#         energy = torch.zeros(self.n_parallel, device=self.lbfgs_device)
-#         n_iter = [0] * self.n_parallel
+        current_coordinates = [
+            self.env.env.atoms[idx].get_positions()
+            for idx in range(self.env.n_parallel)
+        ]
+        new_coordinates = torch.split(
+            state_dict[properties.R].detach().cpu(),
+            state_dict[properties.n_atoms].tolist(),
+        )
 
-#         # Define reevaluation function
-#         def closure(idx):
-#             self.optimizer_list[idx].zero_grad()
-#             # train=True to get correct gradients
-#             state = {key: value.to(DEVICE) for key, value in self.states[idx].items()}
-#             output = self.actor(state, train=True)
-#             self.states[idx][properties.R].grad = (
-#                 -output["anti_gradient"].detach().to(self.lbfgs_device)
-#             )
-#             energy[idx] = output["energy"].to(self.lbfgs_device)
-#             n_iter[idx] += 1
-#             return output["energy"]
+        for idx in range(self.env.n_parallel):
+            # Update coordinates inside env
+            self.env.update_coordinates["rdkit"](
+                self.env.molecule["rdkit"][idx],
+                np.float64(new_coordinates[idx].numpy()),
+            )
+            _, energy[idx], forces[idx] = self.env.minimize_rdkit(idx)
+            forces[idx] = torch.Tensor(forces[idx])
 
-#         # Update all molecules' geometry
-#         for i, optim in enumerate(self.optimizer_list):
-#             optim.step(partial(closure, idx=i))
+            # Restore original coordinates
+            self.env.update_coordinates["rdkit"](
+                self.env.molecule["rdkit"][idx], current_coordinates[idx]
+            )
 
-#         # Check if optimizers have reached optimal states (for evaluation only)
-#         done = [
-#             torch.tensor(
-#                 optim._gather_flat_grad().abs().max() <= self.grad_threshold
-#             ).unsqueeze(0)
-#             for optim in self.optimizer_list
-#         ]
-
-#         # Calculate action based on saved positions and resulting geometries
-#         actions = [
-#             self.states[idx][properties.R].detach().clone() - prev_positions[idx]
-#             for idx in range(self.n_parallel)
-#         ]
-#         return {
-#             "action": torch.cat(actions, dim=0),
-#             "energy": energy,
-#             "done": torch.cat(done, dim=0),
-#             "n_iter": n_iter,
-#         }
-
-#     def select_action(self, t, return_n_iter=False):
-#         output = self.act(t)
-#         action = output["action"].cpu().numpy()
-#         energy = output["energy"].detach().cpu().numpy()
-#         done = output["done"].cpu().numpy()
-#         if return_n_iter:
-#             return action, energy, done, output["n_iter"]
-
-#         return action, energy, done
+        return {"anti_gradient": torch.cat(forces), "energy": torch.tensor(energy)}
 
 
 class ConformationOptimizer(nn.Module):
     def __init__(
         self,
         n_parallel,
-        backbone,
-        backbone_args,
+        actor,
         lr_scheduler,
         t_max,
         optimizer,
         optimizer_kwargs,
-        action_norm_limit=None,
     ):
         super().__init__()
         self.n_parallel = n_parallel
@@ -231,11 +161,7 @@ class ConformationOptimizer(nn.Module):
         self.optimizer_kwargs = optimizer_kwargs
         self.optimizer_list = [None] * n_parallel
         self.states = [None] * n_parallel
-        self.actor = Actor(
-            backbone,
-            backbone_args,
-            action_norm_limit,
-        )
+        self.actor = actor
 
     def reset(self, initial_states, indices=None):
         if indices is None:
@@ -359,10 +285,8 @@ class LBFGSConformationOptimizer(nn.Module):
     def __init__(
         self,
         n_parallel,
-        backbone,
-        backbone_args,
+        actor,
         optimizer_kwargs,
-        action_norm_limit=None,
         grad_threshold=1e-5,
         lbfgs_device="cuda",
     ):
@@ -370,11 +294,7 @@ class LBFGSConformationOptimizer(nn.Module):
         self.n_parallel = n_parallel
         self.grad_threshold = grad_threshold
         self.optimizer_kwargs = optimizer_kwargs
-        self.actor = Actor(
-            backbone,
-            backbone_args,
-            action_norm_limit,
-        )
+        self.actor = actor
         self.lbfgs_device = torch.device(lbfgs_device)
         self.loop = asyncio.new_event_loop()
         self.policy2optimizer_queues = None
@@ -459,11 +379,11 @@ class LBFGSConformationOptimizer(nn.Module):
 
         return result
 
-    def act(self):
+    def act(self, t):
         return self.loop.run_until_complete(self._act_async())
 
     def select_action(self, t, return_n_iter=False):
-        output = self.act()
+        output = self.act(t)
         action = output["action"].cpu().numpy()
         energy = output["energy"].detach().cpu().numpy()
         done = output["done"].cpu().numpy()

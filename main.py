@@ -53,7 +53,7 @@ def main(args, experiment_folder):
     )
 
     # Inititalize policy and eval policy
-    policy, eval_policy = make_policies(args)
+    policy, eval_policy = make_policies(env, eval_env, args)
 
     # Initialize experience saver
     experience_saver = make_saver(
@@ -140,7 +140,7 @@ def main(args, experiment_folder):
         prev_start = time.perf_counter()
         if update_condition:
             for update_num in range(args.n_parallel):
-                step_metrics = trainer.update(replay_buffer)
+                # step_metrics = trainer.update(replay_buffer)
                 new_start = time.perf_counter()
                 print(
                     "policy.train {} time: {:.4f}".format(
@@ -202,7 +202,8 @@ def main(args, experiment_folder):
         # Evaluate episode
         if (t + 1) % math.ceil(args.eval_freq / float(args.n_parallel)) == 0:
             # Update eval policy
-            eval_policy.actor = copy.deepcopy(policy.actor)
+            if args.actor != "rdkit":
+                eval_policy.actor = copy.deepcopy(policy.actor)
             step_metrics["Total_timesteps"] = (t + 1) * args.n_parallel
             step_metrics["FPS"] = args.n_parallel / (time.perf_counter() - start)
             if not args.store_only_initial_conformations:

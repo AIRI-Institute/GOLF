@@ -229,7 +229,6 @@ def charge_is_OK(
     q_list = []
 
     if allow_charged_fragments:
-
         BO_valences = list(BO.sum(axis=1))
         for i, atom in enumerate(atoms):
             q = get_atomic_charge(atom, atomic_valence_electrons[atom], BO_valences[i])
@@ -548,7 +547,6 @@ def AC2BO(AC, atoms, charge, allow_charged_fragments=True, use_graph=True):
     best_BO = AC.copy()
 
     for valences in valences_list:
-
         UA, DU_from_AC = get_UA(valences, AC_valence)
 
         check_len = len(UA) == 0
@@ -724,7 +722,6 @@ def xyz2AC(atoms, xyz, charge, use_huckel=False):
 
 
 def xyz2AC_vdW(atoms, xyz):
-
     # Get mol template
     mol = get_proto_mol(atoms)
 

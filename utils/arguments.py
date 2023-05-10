@@ -136,6 +136,13 @@ def get_args():
 
     # AL args
     parser.add_argument(
+        "--actor",
+        default="AL",
+        type=str,
+        choices=["AL", "rdkit"],
+        help="Actor type. Rdkit can be used for evaluation only",
+    )
+    parser.add_argument(
         "--conformation_optimizer",
         default="LBFGS",
         type=str,
