@@ -273,7 +273,7 @@ class RewardWrapper(gym.Wrapper):
         return obs
 
     def set_initial_positions(
-        self, atoms_list, smiles_list, energy_list, force_list, max_its=None
+        self, atoms_list, smiles_list, energy_list, force_list, max_its=0
     ):
         super().reset(increment_conf_idx=False)
 
