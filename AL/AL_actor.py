@@ -212,30 +212,30 @@ class ConformationOptimizer(nn.Module):
 
         # Update all molecules' geometry
         for i, optim in enumerate(self.optimizer_list):
-            self.states[i][properties.R].grad = gradients[i]
+            self.states[i][properties.R].grad = gradients[i].to(DEVICE)
             optim.step()
 
         # Done always False
-        done = [torch.tensor([False]).unsqueeze(0) for _ in self.optimizer_list]
+        done = [torch.tensor([False]) for _ in self.optimizer_list]
 
         # Calculate action based on saved positions and resulting geometries
         actions = [
             self.states[idx][properties.R].detach().clone() - prev_positions[idx]
             for idx in range(self.n_parallel)
         ]
+        is_finite_action = [torch.isfinite(action).all().unsqueeze(dim=0) for action in actions]
         return {
             "action": torch.cat(actions, dim=0),
-            "energy": energy,
+            "energy": energy.detach(),
             "done": torch.cat(done, dim=0),
+            "n_iter": torch.ones_like(energy),
+            "is_finite_action": torch.cat(is_finite_action),
+            "anti_gradient": output["anti_gradient"].detach(),
         }
 
     def select_action(self, t):
         output = self.act(t)
-        action = output["action"].cpu().numpy()
-        energy = output["energy"].detach().cpu().numpy()
-        done = output["done"].cpu().numpy()
-
-        return action, energy, done
+        return {key: value.cpu().numpy() for key, value in output.items()}
 
 
 class AsyncLBFGS:
@@ -254,6 +254,7 @@ class AsyncLBFGS:
         self.optimizer2policy_queue = optimizer2policy_queue
         self.optimizer = lbfgs.LBFGS([self.state[properties.R]], **optimizer_kwargs)
         self.energy = None
+        self.anti_gradient = None
         self.n_iter = None
         self.grad_threshold = grad_threshold
 
@@ -262,7 +263,11 @@ class AsyncLBFGS:
         await self.optimizer2policy_queue.put(self.state)
         anti_gradient, energy = await self.policy2optimizer_queue.get()
         self.state[properties.R].grad = -anti_gradient
-        self.energy = energy
+        # Energy and anti-gradient before step
+        if self.n_iter == 0:
+            self.anti_gradient = anti_gradient
+            self.energy = energy
+
         self.n_iter += 1
         return energy
 
@@ -282,6 +287,7 @@ class AsyncLBFGS:
             "done": done,
             "is_finite_action": is_finite_action,
             "n_iter": torch.tensor([self.n_iter]),
+            "anti_gradient": self.anti_gradient,
         }
 
 
@@ -390,14 +396,6 @@ class LBFGSConformationOptimizer(nn.Module):
     def act(self, t):
         return self.loop.run_until_complete(self._act_async())
 
-    def select_action(self, t, return_n_iter=False):
+    def select_action(self, t):
         output = self.act(t)
-        action = output["action"].cpu().numpy()
-        energy = output["energy"].detach().cpu().numpy()
-        done = output["done"].cpu().numpy()
-        is_finite_action = output["is_finite_action"].cpu().numpy()
-        n_iter = output["n_iter"].cpu().numpy()
-        if return_n_iter:
-            return action, energy, done, is_finite_action, n_iter
-
-        return action, energy, done
+        return {key: value.cpu().numpy() for key, value in output.items()}

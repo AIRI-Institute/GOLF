@@ -31,7 +31,9 @@ def eval_episode(env, actor, fixed_atoms, smiles, max_timestamps):
     current_forces = env.get_forces()[0]
     current_energy = env.get_energies()
     while not t >= max_timestamps:
-        action, energy = actor.select_action(state, [t])
+        select_action_result = actor.select_action(state, [t])
+        action = select_action_result["action"]
+        energy = select_action_result["energy"]
         l2_forces.append(np.sqrt(((action - current_forces) ** 2).mean()))
         l2_energy.append(np.sqrt(((energy - current_energy) ** 2).mean()))
         state, reward, _, _ = env.step(action)
