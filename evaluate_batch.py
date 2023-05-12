@@ -376,7 +376,7 @@ def main(checkpoint_path, args, config):
                     stats['rdkit_initial_energy'].append(float(initial_energy))
                     stats['rdkit_final_energy'].append(float(final_energy_rdkit))
 
-                    pct = (initial_energy - info['final_energy'][-1]) / (initial_energy - final_energy_rdkit)
+                    pct = (initial_energy - info['final_energy'][i]) / (initial_energy - final_energy_rdkit)
                     stats['pct_of_minimized_energy'].append(pct)
 
                     negative_reward_step = negative_reward_steps[i]
