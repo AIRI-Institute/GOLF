@@ -51,6 +51,7 @@ class MolecularDynamics(gym.Env):
         self.mean_energy = 0.0
         self.std_energy = 1.0
         self.initial_molecule_conformations = []
+        self.initial_conformations_ids = []
 
         # Store random subset of molecules DB
         self.get_initial_molecule_conformations(num_initial_conformations)
@@ -62,6 +63,7 @@ class MolecularDynamics(gym.Env):
         self.energy = [None] * self.n_parallel
         self.force = [None] * self.n_parallel
         self.env_steps = [None] * self.n_parallel
+        self.atoms_ids = [None] * self.n_parallel
 
         self.total_num_bad_pairs_before = 0
         self.total_num_bad_pairs_after = 0
@@ -122,22 +124,26 @@ class MolecularDynamics(gym.Env):
             start_conf_idx = self.conformation_idx % len(
                 self.initial_molecule_conformations
             )
-            db_indices = np.arange(start_conf_idx, start_conf_idx + len(indices))
+            db_indices = np.mod(
+                np.arange(start_conf_idx, start_conf_idx + len(indices)), len(self.initial_conformations_ids)
+            ).astype(np.int64)
             if increment_conf_idx:
                 self.conformation_idx += len(indices)
 
         rows = [self.initial_molecule_conformations[db_idx] for db_idx in db_indices]
 
         obs = []
-        for idx, row in zip(indices, rows):
+        for idx, row, atom_id in zip(indices, rows, self.initial_conformations_ids[db_indices]):
             # Copy to avoid changing the atoms object inplace
             self.atoms[idx] = row.toatoms().copy()
+            self.atoms_ids[idx] = int(atom_id)
 
             # Check if row has Smiles
             if hasattr(row, "smiles"):
                 self.smiles[idx] = row.smiles
                 # energy in Hartrees
-                self.energy[idx] = row.data["energy"]
+                if "energy" in row.data:
+                    self.energy[idx] = row.data["energy"]
 
             if hasattr(row, "forces"):
                 # forces in Hartees/ Angstrom
@@ -168,15 +174,15 @@ class MolecularDynamics(gym.Env):
 
     def get_initial_molecule_conformations(self, num_initial_conformations):
         if num_initial_conformations == -1 or num_initial_conformations == self.db_len:
-            indices = np.arange(1, self.db_len + 1)
+            self.initial_conformations_ids = np.arange(1, self.db_len + 1)
         else:
-            indices = np.random.choice(
+            self.initial_conformations_ids = np.random.choice(
                 np.arange(1, self.db_len + 1),
                 min(self.db_len, num_initial_conformations),
                 replace=False,
             )
         self.initial_molecule_conformations = []
-        for idx in indices:
+        for idx in self.initial_conformations_ids:
             row = self.get_molecule(int(idx))
             self.initial_molecule_conformations.append(row)
 

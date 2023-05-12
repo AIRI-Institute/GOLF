@@ -23,7 +23,9 @@ def run_policy(env, actor, fixed_atoms, smiles, max_timestamps, eval_termination
     initial_energy = env.get_energies()
 
     while not teminate_episode_condition:
-        action, _, done = actor.select_action([t])
+        select_action_result = actor.select_action([t])
+        action = select_action_result["action"]
+        done = select_action_result["done"]
         state, reward, _, info = env.step(action)
         state = {k: v.to(DEVICE) for k, v in state.items()}
         delta_energy += reward[0]
@@ -75,7 +77,9 @@ def eval_policy_dft(actor, env, eval_episodes=10):
     while len(result["eval/delta_energy"]) < eval_episodes:
         episode_timesteps = env.unwrapped.get_env_step()
         # TODO incorporate actor dones into DFT evaluation
-        action, _, actor_dones = actor.select_action(episode_timesteps)
+        select_action_result = actor.select_action(episode_timesteps)
+        action = select_action_result["action"]
+        actor_dones = select_action_result["done"]
         # Obser reward and next obs
         state, rewards, dones, infos = env.step(action)
         dones = [
