@@ -95,7 +95,7 @@ class Actor(nn.Module):
             raise ValueError("Last output has not been set yet!")
         return self.last_energy, self.last_forces
 
-    def forward(self, state_dict, train=False):
+    def forward(self, state_dict, active_optimizers_ids=None, train=False):
         output = self.model(state_dict)
         self._save_last_output(output)
         if train:
@@ -111,32 +111,36 @@ class RdkitActor(nn.Module):
         super().__init__()
         self.env = env
 
-    def forward(self, state_dict, train=False):
+    def forward(self, state_dict, active_optimizers_ids=None, train=False):
+        if active_optimizers_ids is None:
+            opt_ids = list(range(self.env.n_parallel))
+        else:
+            opt_ids = active_optimizers_ids
+
         # Update atoms inside env
-        energy = np.zeros(self.env.n_parallel)
-        forces = [None] * self.env.n_parallel
+        energy = np.zeros(len(opt_ids))
+        forces = [None] * len(opt_ids)
 
         current_coordinates = [
-            self.env.env.atoms[idx].get_positions()
-            for idx in range(self.env.n_parallel)
+            self.env.env.atoms[idx].get_positions() for idx in opt_ids
         ]
         new_coordinates = torch.split(
             state_dict[properties.R].detach().cpu(),
             state_dict[properties.n_atoms].tolist(),
         )
 
-        for idx in range(self.env.n_parallel):
+        for i, idx in enumerate(opt_ids):
             # Update coordinates inside env
             self.env.update_coordinates["rdkit"](
                 self.env.molecule["rdkit"][idx],
-                np.float64(new_coordinates[idx].numpy()),
+                np.float64(new_coordinates[i].numpy()),
             )
-            _, energy[idx], forces[idx] = self.env.minimize_rdkit(idx)
-            forces[idx] = torch.Tensor(forces[idx])
+            _, energy[i], forces[i] = self.env.minimize_rdkit(idx)
+            forces[i] = torch.Tensor(forces[i])
 
             # Restore original coordinates
             self.env.update_coordinates["rdkit"](
-                self.env.molecule["rdkit"][idx], current_coordinates[idx]
+                self.env.molecule["rdkit"][idx], current_coordinates[i]
             )
 
         return {"anti_gradient": torch.cat(forces), "energy": torch.tensor(energy)}
@@ -350,7 +354,11 @@ class LBFGSConformationOptimizer(nn.Module):
             states = _atoms_collate_fn(list(individual_states.values()))
             torch.set_grad_enabled(True)
             states = {key: value.to(DEVICE) for key, value in states.items()}
-            output = self.actor(states, train=True)
+            output = self.actor(
+                state_dict=states,
+                active_optimizers_ids=list(conformation_optimizers_ids),
+                train=True,
+            )
             anti_gradients = torch.split(
                 output["anti_gradient"].detach().to(self.lbfgs_device),
                 states[properties.n_atoms].tolist(),

@@ -63,6 +63,7 @@ def main(args, experiment_folder):
         actor=policy.actor,
         reward_thresh=REWARD_THRESHOLD,
     )
+
     # Initialize trainer
     trainer = AL(
         policy=policy,
@@ -140,7 +141,7 @@ def main(args, experiment_folder):
         prev_start = time.perf_counter()
         if update_condition:
             for update_num in range(args.n_parallel):
-                # step_metrics = trainer.update(replay_buffer)
+                step_metrics = trainer.update(replay_buffer)
                 new_start = time.perf_counter()
                 print(
                     "policy.train {} time: {:.4f}".format(
