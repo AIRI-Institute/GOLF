@@ -1,5 +1,5 @@
 
-python3.9 main.py --n_parallel 16 \
+python3.9 main.py --n_parallel 32 \
 --n_threads 16 \
 --db_path "train_4k_mff_with_forces_wooutliers.db" \
 --eval_db_path "test_4k_mff.db" \

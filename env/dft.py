@@ -1,5 +1,6 @@
 import concurrent.futures
 import io
+import struct
 import ase
 import ase.io
 import time
@@ -128,16 +129,41 @@ def calculate_dft_energy_queue_old(queue, n_threads):
     return results
 
 
+def recvall(sock, count):
+    buf = b''
+    while count:
+        newbuf = sock.recv(count)
+        if not newbuf: return None
+        buf += newbuf
+        count -= len(newbuf)
+    return buf
+
+
+def send_one_message(sock, data):
+    length = len(data)
+    sock.sendall(struct.pack('!I', length))
+    sock.sendall(data)
+
+
+def recv_one_message(sock):
+    buf = recvall(sock, 4)
+    length, = struct.unpack('!I', buf)
+    return recvall(sock, length)
+
+
 def calculate_dft_energy_queue(queue, n_threads):
-    host = socket.gethostname()
-
     sockets = []
-    for port in range(20000, 20016):
-        print("connect", port)
 
-        sock = socket.socket()
-        sock.connect((host, port))
-        sockets.append(sock)
+    #for host in [socket.gethostname()]:
+    #    for port in [20000, 20001]:
+
+    for host in ["192.168.19.101", "192.168.19.102"]:
+        for port in range(20000, 20016):
+            print("connect", host, port)
+
+            sock = socket.socket()
+            sock.connect((host, port))
+            sockets.append(sock)
 
     results = []
     while len(queue) > 0:
@@ -156,11 +182,11 @@ def calculate_dft_energy_queue(queue, n_threads):
 
             print("job", idx, "send", len(task), "bytes to", sock.getsockname())
 
-            sock.send(task)
+            send_one_message(sock, task)
             waitlist.append(sock)
 
         for sock in waitlist:
-            result = sock.recv(1024*1024)
+            result = recv_one_message(sock)
             print("recv", len(result), "bytes from", sock.getsockname())
 
             result = pickle.loads(result)
@@ -214,11 +240,11 @@ if __name__ == "__main__":
     conn, address = server_socket.accept()
 
     while True:
-        data = conn.recv(1024*1024)
+        data = recv_one_message(conn)
         while len(data) == 0:
             print(port, "connection lost, accept")
             conn, address = server_socket.accept()
-            data = conn.recv(1024*1024)
+            data = recv_one_message(conn)
 
         print(port, "recv", len(data), "bytes from", address)
 
@@ -229,4 +255,4 @@ if __name__ == "__main__":
         result = pickle.dumps(result)
 
         print(port, "send", len(result), "bytes to", address)
-        conn.send(result)
+        send_one_message(conn, result)
