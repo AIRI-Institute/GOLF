@@ -75,8 +75,14 @@ class Logger:
                 self.exploration_threshold_exceeded_pct,
             ],
         ):
-            metrics[f"Exploration {name}, mean"] = np.mean(d)
-            metrics[f"Exploration {name}, std"] = np.std(d)
+            if len(d) == 0:
+                mean = 0.0
+                std = 0.0
+            else:
+                mean = np.mean(d)
+                std = np.std(d)
+            metrics[f"Exploration {name}, mean"] = mean
+            metrics[f"Exploration {name}, std"] = std
         with open(self.metrics_file, "a") as out_metrics:
             json.dump(metrics, out_metrics)
             out_metrics.write("\n")
