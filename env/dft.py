@@ -133,7 +133,7 @@ def recvall(sock, count):
     buf = b''
     while count:
         newbuf = sock.recv(count)
-        if not newbuf: return None
+        if not newbuf: return newbuf
         buf += newbuf
         count -= len(newbuf)
     return buf
@@ -147,6 +147,7 @@ def send_one_message(sock, data):
 
 def recv_one_message(sock):
     buf = recvall(sock, 4)
+    if not buf: return buf
     length, = struct.unpack('!I', buf)
     return recvall(sock, length)
 
