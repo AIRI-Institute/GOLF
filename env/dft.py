@@ -1,23 +1,24 @@
 import concurrent.futures
+import io
+import ase
+import ase.io
+import time
+import socket
 import psi4
 import numpy as np
 import multiprocessing as mp
+import pickle
 
 from psi4 import SCFConvergenceError
 from psi4.driver.p4util.exceptions import OptimizationConvergenceError
 
 # os.environ['PSI_SCRATCH'] = "/dev/shm/tmp"
+# psi4.set_options({ "CACHELEVEL": 0 })
 
-psi4.set_options(
-    {
-        "CACHELEVEL": 0,
-    }
-)
 psi4.set_memory("8 GB")
-psi4.core.set_output_file("/dev/null")
-psi4.core.IOManager.shared_object().set_default_path("/dev/shm/tmp")
+psi4.core.IOManager.shared_object().set_default_path("/dev/shm/")
 psi4.core.set_num_threads(4)
-# psi4.core.set_output_file("/dev/null")
+psi4.core.set_output_file("/dev/null")
 
 HEADER = "units ang \n nocom \n noreorient \n"
 FUNCTIONAL_STRING = "wb97x-d/def2-svp"
@@ -112,7 +113,7 @@ def update_psi4_geometry(molecule, positions):
     molecule.update_geometry()
 
 
-def calculate_dft_energy_queue(queue, n_threads):
+def calculate_dft_energy_queue_old(queue, n_threads):
     global EXECUTOR
     if EXECUTOR is None:
         method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
@@ -127,15 +128,105 @@ def calculate_dft_energy_queue(queue, n_threads):
     return results
 
 
+def calculate_dft_energy_queue(queue, n_threads):
+    host = socket.gethostname()
+
+    sockets = []
+    for port in range(20000, 20016):
+        print("connect", port)
+
+        sock = socket.socket()
+        sock.connect((host, port))
+        sockets.append(sock)
+
+    results = []
+    while len(queue) > 0:
+        waitlist = []
+
+        for sock in sockets:
+            if len(queue) == 0: break
+
+            task = queue.pop()
+            ase_atoms, dummy, idx = task
+
+            ase_atoms = ase_atoms.todict()
+
+            task = (ase_atoms, dummy, idx)
+            task = pickle.dumps(task)
+
+            print("job", idx, "send", len(task), "bytes to", sock.getsockname())
+
+            sock.send(task)
+            waitlist.append(sock)
+
+        for sock in waitlist:
+            result = sock.recv(1024*1024)
+            print("recv", len(result), "bytes from", sock.getsockname())
+
+            result = pickle.loads(result)
+
+            results.append(result)
+
+    results = sorted(results, key=lambda x: x[0])
+
+    return results
+
+
 def calculate_dft_energy_item(task):
     # Get molecule from the queue
     ase_atoms, _, idx = task
+
+    ase_atoms = ase.Atoms.fromdict(ase_atoms)
+
+    print("task", idx)
+
+    t1 = time.time()
+
     molecule = atoms2psi4mol(ase_atoms)
 
     # Perform DFT minimization
     # Energy in Hartree
     not_converged = True
     # Calculate DFT energy
+
     energy, gradient = get_dft_forces_energy(molecule)
 
+    t = time.time() - t1
+
+    print("time", t)
+
     return idx, not_converged, energy, gradient
+
+
+if __name__ == "__main__":
+    import sys
+
+    host = socket.gethostname()
+    port = int(sys.argv[1])
+
+    server_socket = socket.socket()
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.bind((host, port))
+
+    server_socket.listen(1)
+
+    print(port, "accept")
+    conn, address = server_socket.accept()
+
+    while True:
+        data = conn.recv(1024*1024)
+        while len(data) == 0:
+            print(port, "connection lost, accept")
+            conn, address = server_socket.accept()
+            data = conn.recv(1024*1024)
+
+        print(port, "recv", len(data), "bytes from", address)
+
+        task = pickle.loads(data)
+
+        result = calculate_dft_energy_item(task)
+
+        result = pickle.dumps(result)
+
+        print(port, "send", len(result), "bytes to", address)
+        conn.send(result)
