@@ -1,8 +1,16 @@
-#! /bin/sh -ex
+#! /bin/bash -ex
 
 # kill `ps uaxww | grep dft.py | awk '{ print $2 }'`
 
-trap 'kill -9 $(jobs -p)' EXIT
+function cleanup {
+    echo "stop workers"
+    pkill -P $$
+
+    echo "clean /dev/shm"
+    rm -f "/dev/shm/psi.*"
+}
+
+trap cleanup EXIT
 
 rm -f /dev/shm/psi.*
 
