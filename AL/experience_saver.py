@@ -40,12 +40,17 @@ class RewardThresholdSaver(BaseSaver):
 
 
 class InitialAndLastSaver(BaseSaver):
-    def __init__(self, env, replay_buffer):
+    def __init__(self, env, replay_buffer, reward_threshold):
         super().__init__(env, replay_buffer)
+        self.reward_threshold = reward_threshold
 
-    def __call__(self, states, _, dones):
+    def __call__(self, states, rewards, dones):
         # Track last states of trajectories
-        envs_to_store = [i for i, done in enumerate(dones) if done]
+        envs_to_store = [
+            i
+            for i, (done, reward) in enumerate(zip(dones, rewards))
+            if done and reward > self.reward_threshold
+        ]
         super().save(states, envs_to_store)
 
 
