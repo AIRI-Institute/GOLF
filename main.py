@@ -141,7 +141,11 @@ def main(args, experiment_folder):
         prev_start = time.perf_counter()
         if update_condition:
             for update_num in range(args.n_parallel):
-                step_metrics = trainer.update(replay_buffer)
+                try:
+                    step_metrics = trainer.update(replay_buffer)
+                except RuntimeError:
+                    print("Backwards error")
+                    step_metrics = dict()
                 new_start = time.perf_counter()
                 print(
                     "policy.train {} time: {:.4f}".format(
@@ -207,7 +211,7 @@ def main(args, experiment_folder):
                 eval_policy.actor = copy.deepcopy(policy.actor)
             step_metrics["Total_timesteps"] = (t + 1) * args.n_parallel
             step_metrics["FPS"] = args.n_parallel / (time.perf_counter() - start)
-            if not args.store_only_initial_conformations:
+            if not args.store_only_initial_conformations or args.reward == "rdkit":
                 step_metrics.update(
                     eval_function[args.reward](
                         actor=eval_policy,
