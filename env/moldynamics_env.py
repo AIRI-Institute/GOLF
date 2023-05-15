@@ -125,7 +125,8 @@ class MolecularDynamics(gym.Env):
                 self.initial_molecule_conformations
             )
             db_indices = np.mod(
-                np.arange(start_conf_idx, start_conf_idx + len(indices)), len(self.initial_conformations_ids)
+                np.arange(start_conf_idx, start_conf_idx + len(indices)),
+                len(self.initial_conformations_ids),
             ).astype(np.int64)
             if increment_conf_idx:
                 self.conformation_idx += len(indices)
@@ -133,7 +134,9 @@ class MolecularDynamics(gym.Env):
         rows = [self.initial_molecule_conformations[db_idx] for db_idx in db_indices]
 
         obs = []
-        for idx, row, atom_id in zip(indices, rows, self.initial_conformations_ids[db_indices]):
+        for idx, row, atom_id in zip(
+            indices, rows, self.initial_conformations_ids[db_indices]
+        ):
             # Copy to avoid changing the atoms object inplace
             self.atoms[idx] = row.toatoms().copy()
             self.atoms_ids[idx] = int(atom_id)
