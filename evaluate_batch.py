@@ -395,9 +395,6 @@ def main(checkpoint_path, args, config):
             early_stop_info[early_stop_step]["energy_mse"][early_stop_step_mask] = (
                 energies - energies_ground_truth
             )[early_stop_step_mask] ** 2
-            early_stop_info[early_stop_step]["force_norm"][
-                early_stop_step_mask
-            ] = np.mean(np.linalg.norm(forces_ground_truth[i], axis=1))
 
             for i in np.where(early_stop_step_mask)[0]:
                 if non_finite_action_mask[i]:
@@ -406,6 +403,9 @@ def main(checkpoint_path, args, config):
                 early_stop_info[early_stop_step]["force_mse"][i] = np.mean(
                     (forces[i] - forces_ground_truth[i]) ** 2
                 )
+                early_stop_info[early_stop_step]["force_norm"][
+                    early_stop_step_mask
+                ] = np.mean(np.linalg.norm(forces_ground_truth[i], ord="fro"))
 
         actions *= get_not_finished_mask(state, ~is_finite_action | finished)
         state, rewards, dones, info = eval_env.step(actions)
