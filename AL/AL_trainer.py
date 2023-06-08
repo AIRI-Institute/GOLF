@@ -75,7 +75,7 @@ class AL(object):
         metrics["force_loss_contrib"] = force_loss.item() * self.force_loss_coef
 
         if not torch.all(torch.isfinite(loss)):
-            print(f"Non finite values in GD loss")
+            print(f"Non finite values in loss")
             return metrics
 
         self.optimizer.zero_grad()
