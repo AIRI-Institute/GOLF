@@ -12,11 +12,15 @@ function cleanup {
 
 trap cleanup EXIT
 
+range=$1
+begin=20000
+end=`expr $begin + $range`
+
 rm -f /dev/shm/psi.*
 
-for port in `seq 20000 20015`;
+for port in `seq $begin $end`;
 do
-    python3.9 ./env/dft.py $port &
+    python3.9 ../env/dft.py $port &
 done
 
 wait
