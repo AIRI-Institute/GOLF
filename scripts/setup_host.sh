@@ -1,4 +1,4 @@
-#!bin/bash -ex
+#! /bin/bash -ex
 
 n_ports=$1
 
