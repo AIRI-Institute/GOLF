@@ -1,8 +1,8 @@
 
-python3.9 main.py --n_parallel 32 \
---n_threads 16 \
---db_path "train_4k_mff_with_forces_wooutliers.db" \
---eval_db_path "test_4k_mff.db" \
+python3.9 main.py --n_parallel 240 \
+--n_threads 24 \
+--db_path "env/data/train_4k_mff_with_forces_wooutlier.db" \
+--eval_db_path "env/data/test_4k_mff.db" \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
 --timelimit_train 100 \
@@ -42,10 +42,10 @@ python3.9 main.py --n_parallel 32 \
 --eval_freq 1000 \
 --n_eval_runs 10 \
 --eval_termination_mode fixed_length \
---exp_name exp_name \
+--exp_name DFT_LBFGS \
 --seed 100 \
 --full_checkpoint_freq 10000 \
 --light_checkpoint_freq 50000 \
 --save_checkpoints True \
---load_baseline full_cp_iter_500000 \
+--load_baseline "models/DFT-baseline/full_cp_iter_500000" \
 --log_dir results \

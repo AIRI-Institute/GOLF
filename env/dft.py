@@ -25,6 +25,7 @@ HEADER = "units ang \n nocom \n noreorient \n"
 FUNCTIONAL_STRING = "wb97x-d/def2-svp"
 psi_bohr2angstroms = 0.52917720859
 EXECUTOR = None
+PORT_RANGE_BEGIN = 20000
 
 
 def read_xyz_file_block(file, look_for_charge=True):
@@ -130,10 +131,11 @@ def calculate_dft_energy_queue_old(queue, n_threads):
 
 
 def recvall(sock, count):
-    buf = b''
+    buf = b""
     while count:
         newbuf = sock.recv(count)
-        if not newbuf: return newbuf
+        if not newbuf:
+            return newbuf
         buf += newbuf
         count -= len(newbuf)
     return buf
@@ -141,25 +143,34 @@ def recvall(sock, count):
 
 def send_one_message(sock, data):
     length = len(data)
-    sock.sendall(struct.pack('!I', length))
+    sock.sendall(struct.pack("!I", length))
     sock.sendall(data)
 
 
 def recv_one_message(sock):
     buf = recvall(sock, 4)
-    if not buf: return buf
-    length, = struct.unpack('!I', buf)
+    if not buf:
+        return buf
+    (length,) = struct.unpack("!I", buf)
     return recvall(sock, length)
 
 
 def calculate_dft_energy_queue(queue, n_threads):
     sockets = []
 
-    #for host in [socket.gethostname()]:
-    #    for port in [20000, 20001]:
-
-    for host in ["192.168.19.101", "192.168.19.102"]:
-        for port in range(20000, 20016):
+    for host in [
+        "192.168.19.21",
+        "192.168.19.22",
+        "192.168.19.23",
+        "192.168.19.24",
+        "192.168.19.25",
+        "192.168.19.26",
+        "192.168.19.27",
+        "192.168.19.28",
+        "192.168.19.29",
+        "192.168.19.30",
+    ]:
+        for port in range(PORT_RANGE_BEGIN, PORT_RANGE_BEGIN + n_threads):
             print("connect", host, port)
 
             sock = socket.socket()
@@ -171,7 +182,8 @@ def calculate_dft_energy_queue(queue, n_threads):
         waitlist = []
 
         for sock in sockets:
-            if len(queue) == 0: break
+            if len(queue) == 0:
+                break
 
             task = queue.pop()
             ase_atoms, dummy, idx = task
@@ -225,10 +237,25 @@ def calculate_dft_energy_item(task):
     return idx, not_converged, energy, gradient
 
 
+# Get correct hostname
+def get_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0)
+    try:
+        # doesn't even have to be reachable
+        s.connect(("10.254.254.254", 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = "127.0.0.1"
+    finally:
+        s.close()
+    return IP
+
+
 if __name__ == "__main__":
     import sys
 
-    host = socket.gethostname()
+    host = get_ip()
     port = int(sys.argv[1])
 
     server_socket = socket.socket()
