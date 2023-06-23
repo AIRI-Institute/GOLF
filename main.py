@@ -17,7 +17,7 @@ from AL.AL_trainer import AL
 from AL.eval import eval_policy_dft, eval_policy_rdkit
 from AL.make_policies import make_policies
 from AL.make_saver import make_saver
-from AL.replay_buffer import ReplayBufferGD
+from AL.replay_buffer import ReplayBufferGD, fill_replay_buffer
 from AL.utils import calculate_action_norm, recollate_batch
 from env.make_envs import make_envs
 from utils.arguments import get_args
@@ -43,6 +43,11 @@ def main(args, experiment_folder):
     env, eval_env = make_envs(args)
 
     # Initialize replay buffer
+    if args.reward == "dft":
+        assert (
+            args.subtract_atomization_energy
+        ), "Attempting to train with no atomization energy subtraction\
+            will likely result in the divergence of the model"
     with connect(args.db_path) as conn:
         if "atomrefs" in conn.metadata and args.subtract_atomization_energy:
             atomrefs = conn.metadata["atomrefs"]["energy"]
@@ -51,6 +56,9 @@ def main(args, experiment_folder):
     replay_buffer = ReplayBufferGD(
         device=DEVICE, max_size=args.replay_buffer_size, atomrefs=atomrefs
     )
+    # Fill up the replay buffer with initial conformations
+    fill_replay_buffer(replay_buffer, args)
+    print("Initial replay buffer size: {:d}".format(replay_buffer.size))
 
     # Inititalize policy and eval policy
     policy, eval_policy = make_policies(env, eval_env, args)
@@ -78,12 +86,6 @@ def main(args, experiment_folder):
     )
 
     state = env.reset()
-
-    # Save initial state in replay buffer
-    energies = env.get_energies()
-    forces = env.get_forces()
-    replay_buffer.add(state, forces, energies)
-
     # Set initial states in Policy
     policy.reset(state)
 
@@ -141,11 +143,7 @@ def main(args, experiment_folder):
         prev_start = time.perf_counter()
         if update_condition:
             for update_num in range(args.n_parallel):
-                try:
-                    step_metrics = trainer.update(replay_buffer)
-                except RuntimeError:
-                    print("Backwards error")
-                    step_metrics = dict()
+                step_metrics = trainer.update(replay_buffer)
                 new_start = time.perf_counter()
                 print(
                     "policy.train {} time: {:.4f}".format(
@@ -192,14 +190,8 @@ def main(args, experiment_folder):
         if len(envs_to_reset) > 0:
             reset_states = env.reset(indices=envs_to_reset)
             state = recollate_batch(state, envs_to_reset, reset_states)
-
             # Reset initial states in policy
             policy.reset(reset_states, indices=envs_to_reset)
-
-            # Add new initial states to the buffer
-            energies = env.get_energies(indices=envs_to_reset)
-            forces = env.get_forces(indices=envs_to_reset)
-            replay_buffer.add(reset_states, forces, energies)
 
         # Print iteration time
         print("Full iteration time: {:.4f}".format(time.perf_counter() - start))
@@ -207,8 +199,9 @@ def main(args, experiment_folder):
         # Evaluate episode
         if (t + 1) % math.ceil(args.eval_freq / float(args.n_parallel)) == 0:
             # Update eval policy
-            if args.actor != "rdkit":
-                eval_policy.actor = copy.deepcopy(policy.actor)
+            # if args.actor != "rdkit":
+            #    eval_policy.actor = copy.deepcopy(policy.actor)
+            eval_policy.actor = copy.deepcopy(policy.actor)
             step_metrics["Total_timesteps"] = (t + 1) * args.n_parallel
             step_metrics["FPS"] = args.n_parallel / (time.perf_counter() - start)
             if not args.store_only_initial_conformations or args.reward == "rdkit":

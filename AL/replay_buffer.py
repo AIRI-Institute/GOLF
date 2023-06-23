@@ -6,6 +6,8 @@ from schnetpack.data.loader import _atoms_collate_fn
 from schnetpack.nn import scatter_add
 
 from AL.utils import unpad_state
+from env.moldynamics_env import env_fn
+from env.wrappers import RewardWrapper
 
 
 class ReplayBufferGD(object):
@@ -59,3 +61,40 @@ class ReplayBufferGD(object):
             energy -= atomization_energy
 
         return state_batch, forces, energy
+
+
+def fill_replay_buffer(replay_buffer, args):
+    # Env kwargs
+    env_kwargs = {
+        "db_path": args.db_path,
+        "n_parallel": 1,
+        "timelimit": args.timelimit_train,
+        "sample_initial_conformations": False,
+        "num_initial_conformations": args.num_initial_conformations,
+    }
+    # Initialize env
+    env = env_fn(**env_kwargs)
+    if args.num_initial_conformations == -1:
+        total_confs = env.get_db_length()
+    else:
+        total_confs = args.num_initial_conformations
+
+    # Reward wrapper kwargs
+    reward_wrapper_kwargs = {
+        "dft": args.reward == "dft",
+        "n_threads": args.n_threads,
+        "minimize_on_every_step": args.minimize_on_every_step,
+        "molecules_xyz_prefix": args.molecules_xyz_prefix,
+        "terminate_on_negative_reward": args.terminate_on_negative_reward,
+        "max_num_negative_rewards": args.max_num_negative_rewards,
+    }
+    # Initialize reward wrapper
+    env = RewardWrapper(env, **reward_wrapper_kwargs)
+
+    # Fill up the replay buffer
+    for _ in range(total_confs):
+        state = env.reset()
+        # Save initial state in replay buffer
+        energies = env.get_energies()
+        forces = env.get_forces()
+        replay_buffer.add(state, forces, energies)
