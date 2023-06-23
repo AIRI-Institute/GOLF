@@ -13,7 +13,7 @@ function cleanup {
 trap cleanup EXIT
 
 range=$1
-begin=20000
+begin=$2
 end=`expr $begin + $range`
 
 rm -f /dev/shm/psi.*
