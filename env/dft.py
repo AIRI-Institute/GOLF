@@ -23,9 +23,10 @@ psi4.core.set_output_file("/dev/null")
 
 HEADER = "units ang \n nocom \n noreorient \n"
 FUNCTIONAL_STRING = "wb97x-d/def2-svp"
-psi_bohr2angstroms = 0.52917720859
+PSI4_BOHR2ANGSTROM = 0.52917720859
 EXECUTOR = None
-PORT_RANGE_BEGIN = 20000
+PORT_RANGE_BEGIN_TRAIN = 20000
+PORT_RANGE_BEGIN_EVAL = 30000
 
 
 def read_xyz_file_block(file, look_for_charge=True):
@@ -101,8 +102,8 @@ def get_dft_forces_energy(mol):
         print("DFT optimization did not converge!")
         return -10000.0
     psi4.core.clean()
-    forces = -np.array(gradient) / psi_bohr2angstroms
-    return energy, -np.array(gradient) / psi_bohr2angstroms
+    forces = -np.array(gradient) / PSI4_BOHR2ANGSTROM
+    return energy, forces
 
 
 def update_ase_atoms_positions(atoms, positions):
@@ -110,7 +111,7 @@ def update_ase_atoms_positions(atoms, positions):
 
 
 def update_psi4_geometry(molecule, positions):
-    psi4matrix = psi4.core.Matrix.from_array(positions / psi_bohr2angstroms)
+    psi4matrix = psi4.core.Matrix.from_array(positions / PSI4_BOHR2ANGSTROM)
     molecule.set_geometry(psi4matrix)
     molecule.update_geometry()
 
@@ -155,14 +156,20 @@ def recv_one_message(sock):
     return recvall(sock, length)
 
 
-def calculate_dft_energy_queue(queue, n_threads):
+def calculate_dft_energy_queue(queue, n_threads, evaluation=False):
     sockets = []
+
+    # Different ports for train/eval to avoid "Connection refused errors"
+    if evaluation:
+        port_range_begin = PORT_RANGE_BEGIN_EVAL
+    else:
+        port_range_begin = PORT_RANGE_BEGIN_TRAIN
 
     for host in [
         "192.168.19.21",
         "192.168.19.22",
         "192.168.19.23",
-        "192.168.19.24",
+        # "192.168.19.24",
         "192.168.19.25",
         "192.168.19.26",
         "192.168.19.27",
@@ -170,14 +177,15 @@ def calculate_dft_energy_queue(queue, n_threads):
         "192.168.19.29",
         "192.168.19.30",
     ]:
-        for port in range(PORT_RANGE_BEGIN, PORT_RANGE_BEGIN + n_threads):
-            print("connect", host, port)
+        for port in range(port_range_begin, port_range_begin + n_threads):
+            # print("connect", host, port)
 
             sock = socket.socket()
             sock.connect((host, port))
             sockets.append(sock)
 
     results = []
+    print("QUEUE LEN: ", len(queue))
     while len(queue) > 0:
         waitlist = []
 
@@ -193,14 +201,14 @@ def calculate_dft_energy_queue(queue, n_threads):
             task = (ase_atoms, dummy, idx)
             task = pickle.dumps(task)
 
-            print("job", idx, "send", len(task), "bytes to", sock.getsockname())
+            # print("job", idx, "send", len(task), "bytes to", sock.getsockname())
 
             send_one_message(sock, task)
             waitlist.append(sock)
 
         for sock in waitlist:
             result = recv_one_message(sock)
-            print("recv", len(result), "bytes from", sock.getsockname())
+            # print("recv", len(result), "bytes from", sock.getsockname())
 
             result = pickle.loads(result)
 

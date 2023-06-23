@@ -148,7 +148,7 @@ class MolecularDynamics(gym.Env):
                 if "energy" in row.data:
                     self.energy[idx] = row.data["energy"]
 
-            if hasattr(row, "forces"):
+            if hasattr(row.data, "forces"):
                 # forces in Hartees/ Angstrom
                 self.force[idx] = row.data["forces"]
 
