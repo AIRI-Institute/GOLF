@@ -9,7 +9,6 @@ from AL import DEVICE
 from AL.utils import (
     calculate_gradient_norm,
     get_lr_scheduler,
-    get_atoms_indices_range,
     get_optimizer_class,
 )
 
@@ -109,7 +108,9 @@ class AL(object):
 
     def load(self, filename):
         self.light_load(filename)
-        self.optimizer.load_state_dict(torch.load(f"{filename}_optimizer"))
+        self.optimizer.load_state_dict(
+            torch.load(f"{filename}_optimizer", map_location=DEVICE)
+        )
 
     def light_load(self, filename):
-        self.actor.load_state_dict(torch.load(f"{filename}_actor"))
+        self.actor.load_state_dict(torch.load(f"{filename}_actor", map_location=DEVICE))
