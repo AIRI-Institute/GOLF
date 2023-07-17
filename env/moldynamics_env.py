@@ -64,6 +64,7 @@ class MolecularDynamics(gym.Env):
         self.force = [None] * self.n_parallel
         self.env_steps = [None] * self.n_parallel
         self.atoms_ids = [None] * self.n_parallel
+        self.optimal_energy = [None] * self.n_parallel
 
         self.total_num_bad_pairs_before = 0
         self.total_num_bad_pairs_after = 0
@@ -151,6 +152,9 @@ class MolecularDynamics(gym.Env):
             if hasattr(row.data, "forces"):
                 # forces in Hartees/ Angstrom
                 self.force[idx] = row.data["forces"]
+
+            if hasattr(row.data, "optimal_energy"):
+                self.optimal_energy[idx] = row.data["optimal_energy"]
 
             # Reset env_steps
             self.env_steps[idx] = 0
