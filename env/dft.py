@@ -56,7 +56,7 @@ def log(conformation_id, message, path, logging):
 
 
 def calculate_dft_energy_tcp_client(task, host, port, logging=False):
-    path = f'client_{port}.out'
+    path = f'client_{host}_{port}.out'
     conformation_id, step, ase_atoms = task
     try:
         log(conformation_id, 'going to connect', path, logging)

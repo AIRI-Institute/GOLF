@@ -284,11 +284,12 @@ def main(checkpoint_path, args, config):
         np.random.seed(0)
         torch.use_deterministic_algorithms(True)
 
+    dft_server_destinations = get_dft_server_destinations(args.n_threads, args.port_type == 'eval')
     method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
-    executors = [concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context(method)) for _ in range(args.n_threads)]
+    executors = [concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context(method)) for _ in
+                 range(len(dft_server_destinations))]
     futures = {}
     barrier = collections.Counter()
-    dft_server_destinations = get_dft_server_destinations(args.n_threads, args.port_type == 'eval')
     eval_env = make_env(config)
     eval_policy = make_policies(eval_env, eval_env, config)[0]
 
@@ -399,7 +400,7 @@ def main(checkpoint_path, args, config):
 
         for task in tasks:
             conformation_id, step, molecule = task
-            worker_id = global_conformation_index % args.n_threads
+            worker_id = global_conformation_index % len(dft_server_destinations)
             host, port = dft_server_destinations[worker_id]
             future = executors[worker_id].submit(calculate_dft_energy_tcp_client, task, host, port,
                                                  args.logging_tcp_client)
@@ -428,11 +429,7 @@ def main(checkpoint_path, args, config):
         assert n_conf >= n_conf_processed_total
 
         done_future_ids = set()
-        k = 0
         for future_id, future in futures.items():
-            if k >= args.n_threads:
-                break
-
             if not future.done():
                 continue
 
