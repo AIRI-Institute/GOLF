@@ -41,7 +41,6 @@ def make_envs(args):
         env_kwargs["n_parallel"] = 1
     else:
         env_kwargs["n_parallel"] = args.n_eval_runs
-        reward_wrapper_kwargs["n_threads"] = args.n_eval_runs
         reward_wrapper_kwargs["minimize_on_every_step"] = False
         reward_wrapper_kwargs["evaluation"] = True
 
