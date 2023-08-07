@@ -388,7 +388,7 @@ def main(checkpoint_path, args, config):
                 conformation_id = eval_env.atoms_ids[i]
                 step_stats = StepStats(n_iter=n_iters[i], energy=energies[i], force=forces[i])
                 stats[conformation_id].step2stats[early_stop_step] = step_stats
-                tasks.append((conformation_id, early_stop_step, eval_env.molecule["dft"][i]))
+                tasks.append((conformation_id, early_stop_step, eval_env.molecule["dft"][i].copy()))
 
         # Handle lbfgs dones
         lbfgs_dones_mask = ~finished & lbfgs_dones & (lbfgs_done_steps == -1)
