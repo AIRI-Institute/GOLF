@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 from collections import defaultdict
 
@@ -67,12 +68,17 @@ def rdkit_minimize_until_convergence(env, fixed_atoms, smiles, max_its=0):
 
 
 def eval_policy_dft(actor, env, eval_episodes=10):
+    start = time.perf_counter()
     max_timestamps = env.unwrapped.TL
     result = defaultdict(list)
+    episode_returns = np.zeros(env.unwrapped.n_parallel)
     state = env.reset()
+
+    # Get initial final energies in case of an optimization failure
+    initial_energy = env.initial_energy["rdkit"]
+
     # Reset initial states in actor
     actor.reset(state)
-    episode_returns = np.zeros(env.unwrapped.n_parallel)
     actor.eval()
     while len(result["eval/delta_energy"]) < eval_episodes:
         episode_timesteps = env.unwrapped.get_env_step()
@@ -80,22 +86,37 @@ def eval_policy_dft(actor, env, eval_episodes=10):
         select_action_result = actor.select_action(episode_timesteps)
         action = select_action_result["action"]
         actor_dones = select_action_result["done"]
+
         # Obser reward and next obs
-        state, rewards, dones, infos = env.step(action)
-        dones = [
-            done or (t + 1) > max_timestamps
-            for done, t in zip(dones, episode_timesteps)
-        ]
+        state, rewards, _, infos = env.step(action)
+        dones = [(t + 1) > max_timestamps for t in episode_timesteps]
         episode_returns += rewards
 
         envs_to_reset = []
         for i in range(env.unwrapped.n_parallel):
             if dones[i]:
                 envs_to_reset.append(i)
-                result["eval/delta_energy"].append(episode_returns[i])
-                result["eval/final_energy"].append(infos["final_energy"][i])
-                result["eval/final_rl_energy"].append(infos["final_rl_energy"][i])
-                result["eval/episode_len"].append(episode_timesteps[i])
+
+                # Optimization failure
+                if episode_returns[i] < 0:
+                    result["eval/pct_of_minimized_energy"].append(0.0)
+                    result["eval/delta_energy"].append(0.0)
+                    result["eval/final_energy"].append(initial_energy[i])
+                    result["eval/episode_len"].append(episode_timesteps[i])
+                else:
+                    # Get percentage of optimized energy if possible
+                    if env.unwrapped.optimized_energy[i]:
+                        optimized_delta_energy = (
+                            env.unwrapped.energy[i] - env.unwrapped.optimized_energy[i]
+                        )
+                        result["eval/pct_of_minimized_energy"].append(
+                            (episode_returns[i] / optimized_delta_energy).item()
+                        )
+                    else:
+                        result["eval/pct_of_minimized_energy"].append(0.0)
+                    result["eval/delta_energy"].append(episode_returns[i])
+                    result["eval/final_energy"].append(infos["final_energy"][i])
+                    result["eval/episode_len"].append(episode_timesteps[i])
                 episode_returns[i] = 0
 
         if len(envs_to_reset) > 0:
@@ -108,6 +129,11 @@ def eval_policy_dft(actor, env, eval_episodes=10):
             actor.reset(reset_states, indices=envs_to_reset)
     actor.train()
     result = {k: np.array(v).mean() for k, v in result.items()}
+    print(
+        "Full Evaluation time: {:.3f}, results: {}".format(
+            time.perf_counter() - start, result
+        )
+    )
     return result
 
 

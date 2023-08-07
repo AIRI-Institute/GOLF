@@ -6,14 +6,29 @@ from schnetpack.data.loader import _atoms_collate_fn
 from schnetpack.nn import scatter_add
 
 from AL.utils import unpad_state
+from env.moldynamics_env import env_fn
+from env.wrappers import RewardWrapper
 
 
-class ReplayBufferGD(object):
-    def __init__(self, device, max_size=int(1e6), atomrefs=None):
+class ReplayBuffer(object):
+    def __init__(
+        self,
+        device,
+        max_size=int(1e6),
+        atomrefs=None,
+        initial_RB=None,
+        initial_conf_pct=0.0,
+    ):
         self.device = device
         self.max_size = max_size
+        self.initial_RB = initial_RB
         self.ptr = 0
         self.size = 0
+
+        if self.initial_RB:
+            self.initial_conf_pct = initial_conf_pct
+        else:
+            self.initial_conf_pct = 0.0
 
         self.states = [None] * self.max_size
         self.energy = torch.empty((max_size, 1), dtype=torch.float32)
@@ -36,15 +51,24 @@ class ReplayBufferGD(object):
             self.size = min(self.size + 1, self.max_size)
 
     def sample(self, batch_size):
-        ind = np.random.choice(self.size, batch_size, replace=False)
-        states = [self.states[i] for i in ind]
+        new_samples_batch_size = int(batch_size * (1 - self.initial_conf_pct))
+        states, forces, energy = self.sample_wo_collate(new_samples_batch_size)
+
+        if self.initial_RB and self.initial_conf_pct:
+            initial_conf_batch_size = batch_size - new_samples_batch_size
+            init_states, init_forces, init_energy = self.initial_RB.sample_wo_collate(
+                initial_conf_batch_size
+            )
+            states = states + init_states
+            forces = forces + init_forces
+            energy = torch.cat((energy, init_energy), dim=0)
+
         state_batch = {
             key: value.to(self.device)
             for key, value in _atoms_collate_fn(states).items()
         }
-        forces = torch.cat([self.forces[i] for i in ind]).to(self.device)
+        forces = torch.cat(forces).to(self.device)
 
-        energy = self.energy[ind].to(self.device)
         if self.atomrefs is not None:
             # Get system index
             idx_m = state_batch[properties.idx_m]
@@ -59,3 +83,53 @@ class ReplayBufferGD(object):
             energy -= atomization_energy
 
         return state_batch, forces, energy
+
+    def sample_wo_collate(self, batch_size):
+        ind = np.random.choice(self.size, batch_size, replace=False)
+        states = [self.states[i] for i in ind]
+        forces = [self.forces[i] for i in ind]
+        energy = self.energy[ind].to(self.device)
+        return states, forces, energy
+
+
+def fill_initial_replay_buffer(device, args, atomrefs=None):
+    # Env kwargs
+    env_kwargs = {
+        "db_path": args.db_path,
+        "n_parallel": 1,
+        "timelimit": args.timelimit_train,
+        "sample_initial_conformations": False,
+        "num_initial_conformations": args.num_initial_conformations,
+    }
+    # Initialize env
+    env = env_fn(**env_kwargs)
+    if args.num_initial_conformations == -1:
+        total_confs = env.get_db_length()
+    else:
+        total_confs = args.num_initial_conformations
+
+    # Reward wrapper kwargs
+    reward_wrapper_kwargs = {
+        "dft": args.reward == "dft",
+        "n_threads": args.n_threads,
+        "minimize_on_every_step": args.minimize_on_every_step,
+        "molecules_xyz_prefix": args.molecules_xyz_prefix,
+        "terminate_on_negative_reward": args.terminate_on_negative_reward,
+        "max_num_negative_rewards": args.max_num_negative_rewards,
+    }
+    # Initialize reward wrapper
+    env = RewardWrapper(env, **reward_wrapper_kwargs)
+
+    initial_replay_buffer = ReplayBuffer(
+        device, max_size=total_confs, atomrefs=atomrefs
+    )
+
+    # Fill up the replay buffer
+    for _ in range(total_confs):
+        state = env.reset()
+        # Save initial state in replay buffer
+        energies = env.get_energies()
+        forces = env.get_forces()
+        initial_replay_buffer.add(state, forces, energies)
+
+    return initial_replay_buffer

@@ -15,6 +15,7 @@ from .moldynamics_env import MolecularDynamics
 from .xyz2mol import get_rdkit_energy, get_rdkit_force, parse_molecule, set_coordinates
 
 RDKIT_ENERGY_THRESH = 500
+KCALMOL2HARTREE = 627.5
 
 
 class RewardWrapper(gym.Wrapper):
@@ -37,6 +38,7 @@ class RewardWrapper(gym.Wrapper):
         dft=False,
         n_threads=1,
         minimize_on_every_step=False,
+        evaluation=False,
         molecules_xyz_prefix="",
         terminate_on_negative_reward=False,
         max_num_negative_rewards=1,
@@ -45,6 +47,7 @@ class RewardWrapper(gym.Wrapper):
         self.dft = dft
         self.n_threads = n_threads
         self.minimize_on_every_step = minimize_on_every_step
+        self.evaluation = evaluation
         self.molecules_xyz_prefix = molecules_xyz_prefix
         self.terminate_on_negative_reward = terminate_on_negative_reward
         self.max_num_negative_rewards = max_num_negative_rewards
@@ -153,16 +156,22 @@ class RewardWrapper(gym.Wrapper):
                         queue.append((self.molecule["dft"][idx], atoms_num[idx], idx))
                     else:
                         self.threshold_exceeded[idx] += 1
-                        rewards[idx] = rdkit_rewards[idx]
-                        self.force["dft"][idx] = self.force["rdkit"][idx]
+                        # kcal/mol/angstrom --> hartree/angstrom
+                        rewards[idx] = rdkit_rewards[idx] / KCALMOL2HARTREE
+                        self.force["dft"][idx] = (
+                            self.force["rdkit"][idx] / KCALMOL2HARTREE
+                        )
 
-            # Sort queue according to the molecule size
-            queue = sorted(queue, key=lambda x: x[1], reverse=True)
-            # TODO think about M=None, etc.
-            result = calculate_dft_energy_queue(queue, n_threads=self.n_threads)
-            for idx, _, energy, force in result:
-                rewards[idx] = self.initial_energy["dft"][idx] - energy
-                self.force["dft"][idx] = force
+            if len(queue) > 0:
+                # Sort queue according to the molecule size
+                queue = sorted(queue, key=lambda x: x[1], reverse=True)
+                # TODO think about M=None, etc.
+                result = calculate_dft_energy_queue(
+                    queue, self.n_threads, self.evaluation
+                )
+                for idx, _, energy, force in result:
+                    rewards[idx] = self.initial_energy["dft"][idx] - energy
+                    self.force["dft"][idx] = force
         else:
             rewards = rdkit_rewards
 
@@ -185,10 +194,10 @@ class RewardWrapper(gym.Wrapper):
                         self.initial_energy["dft"][idx] - rewards[idx]
                     )
 
-            # When agent encountered 'max_num_negative_rewards'
+            # When agent encounters 'max_num_negative_rewards'
             # terminate the episode
             if self.terminate_on_negative_reward:
-                if rewards[idx] <= 0:
+                if rewards[idx] < 0:
                     self.negative_rewards_counter[idx] += 1
                 if self.negative_rewards_counter[idx] >= self.max_num_negative_rewards:
                     dones[idx] = True
@@ -265,7 +274,7 @@ class RewardWrapper(gym.Wrapper):
             # Sort queue according to the molecule size
             queue = sorted(queue, key=lambda x: x[1], reverse=True)
             # TODO think about M=None, etc.
-            result = calculate_dft_energy_queue(queue, n_threads=self.n_threads)
+            result = calculate_dft_energy_queue(queue, self.n_threads, self.evaluation)
             for idx, _, energy, force in result:
                 self.initial_energy["dft"][idx] = energy
                 self.force["dft"][idx] = force
@@ -338,7 +347,7 @@ class RewardWrapper(gym.Wrapper):
             # Sort queue according to the molecule size
             queue = sorted(queue, key=lambda x: x[1], reverse=True)
             # TODO think about M=None, etc.
-            result = calculate_dft_energy_queue(queue, n_threads=self.n_threads)
+            result = calculate_dft_energy_queue(queue, self.n_threads, self.evaluation)
             for idx, _, energy, force in result:
                 self.initial_energy["dft"][idx] = energy
                 self.force["dft"][idx] = force

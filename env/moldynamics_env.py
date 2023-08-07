@@ -61,6 +61,7 @@ class MolecularDynamics(gym.Env):
         self.atoms = [None] * self.n_parallel
         self.smiles = [None] * self.n_parallel
         self.energy = [None] * self.n_parallel
+        self.optimized_energy = [None] * self.n_parallel
         self.force = [None] * self.n_parallel
         self.env_steps = [None] * self.n_parallel
         self.atoms_ids = [None] * self.n_parallel
@@ -144,12 +145,16 @@ class MolecularDynamics(gym.Env):
             # Check if row has Smiles
             if hasattr(row, "smiles"):
                 self.smiles[idx] = row.smiles
-                # energy in Hartrees
-                if "energy" in row.data:
-                    self.energy[idx] = row.data["energy"]
 
-            if hasattr(row, "forces"):
-                # forces in Hartees/ Angstrom
+            # energy in Hartrees
+            if hasattr(row.data, "energy"):
+                self.energy[idx] = row.data["energy"]
+
+            if hasattr(row.data, "optimal_energy"):
+                self.optimized_energy[idx] = row.data["optimal_energy"]
+
+            # forces in Hartees/ Angstrom
+            if hasattr(row.data, "forces"):
                 self.force[idx] = row.data["forces"]
 
             # Reset env_steps
