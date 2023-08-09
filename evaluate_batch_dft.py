@@ -70,31 +70,35 @@ class ConformationOptimizationStats:
             return None
 
         return (self.initial_energy_ground_truth - energy_ground_truth) / (
-                self.initial_energy_ground_truth - self.optimal_energy_ground_truth)
+            self.initial_energy_ground_truth - self.optimal_energy_ground_truth
+        )
 
     def to_dict(self):
-        result = {'conformation_id': int(self.conformation_id),
-                  'initial_energy_ground_truth': float(self.initial_energy_ground_truth),
-                  'optimal_energy_ground_truth': float(self.optimal_energy_ground_truth),
-                  'non_finite_action': bool(self.non_finite_action),
-                  'lbfgs_done': bool(self.lbfgs_done),
-                  'not_finite_action_step': int(self.non_finite_action_step),
-                  'lbfgs_done_step': int(self.lbfgs_done_step),
-                  }
+        result = {
+            "conformation_id": int(self.conformation_id),
+            "initial_energy_ground_truth": float(self.initial_energy_ground_truth),
+            "optimal_energy_ground_truth": float(self.optimal_energy_ground_truth),
+            "non_finite_action": bool(self.non_finite_action),
+            "lbfgs_done": bool(self.lbfgs_done),
+            "not_finite_action_step": int(self.non_finite_action_step),
+            "lbfgs_done_step": int(self.lbfgs_done_step),
+        }
 
         for step in sorted(self.step2stats.keys()):
             step_stats = self.step2stats[step]
-            result[f'n_iter@step:{step}'] = float(step_stats.n_iter)
+            result[f"n_iter@step:{step}"] = float(step_stats.n_iter)
             pct = self.pct(step_stats.energy_ground_truth)
             if pct is not None:
                 pct = float(pct)
-            result[f'pct_of_minimized_energy@step:{step}'] = pct
+            result[f"pct_of_minimized_energy@step:{step}"] = pct
 
         return result
 
 
-def log_conformation_optimization_stats(conformation_optimization_stats, evaluation_metrics_path):
-    with open(evaluation_metrics_path, 'a') as file_obj:
+def log_conformation_optimization_stats(
+    conformation_optimization_stats, evaluation_metrics_path
+):
+    with open(evaluation_metrics_path, "a") as file_obj:
         json.dump(conformation_optimization_stats.to_dict(), file_obj)
         file_obj.write("\r\n")
 
@@ -120,14 +124,20 @@ def reserve_db_ids(db_path, db_ids):
                 assert False, f"{n} conformations with the same db_id={db_id}!"
 
 
-def write_to_db(db_path, db_ids, atoms_list, smiles_list, initial_energies, optimal_energies):
+def write_to_db(
+    db_path, db_ids, atoms_list, smiles_list, initial_energies, optimal_energies
+):
     assert len(db_ids) == len(atoms_list)
     with connect(db_path) as conn:
-        for db_id, atoms, smiles, energy, optimal_energy in zip(db_ids, atoms_list, smiles_list, initial_energies,
-                                                                optimal_energies):
+        for db_id, atoms, smiles, energy, optimal_energy in zip(
+            db_ids, atoms_list, smiles_list, initial_energies, optimal_energies
+        ):
             conn.update(
-                id=db_id, atoms=atoms, delete_keys=["reserve_id"], smiles=smiles,
-                data={'energy': energy, 'optimal_energy': optimal_energy}
+                id=db_id,
+                atoms=atoms,
+                delete_keys=["reserve_id"],
+                smiles=smiles,
+                data={"energy": energy, "optimal_energy": optimal_energy},
             )
 
 
@@ -186,7 +196,7 @@ def read_metrics(path):
 
 
 def reconcile_results_db_and_evaluation_metrics(
-        results_db_path, evaluation_metrics_path
+    results_db_path, evaluation_metrics_path
 ):
     metrics = sorted(
         read_metrics(evaluation_metrics_path),
@@ -220,7 +230,7 @@ def reconcile_results_db_and_evaluation_metrics(
 
     assert metrics_ids[0] == db_ids[0]
     if len(metrics_ids) < len(db_ids):
-        db_ids_to_delete += set(db_ids[len(metrics_ids):])
+        db_ids_to_delete += set(db_ids[len(metrics_ids) :])
     elif len(metrics_ids) > len(db_ids):
         metrics_ids = metrics_ids[: len(db_ids)]
 
@@ -255,7 +265,7 @@ def make_env(args):
         "molecules_xyz_prefix": args.molecules_xyz_prefix,
         "terminate_on_negative_reward": args.terminate_on_negative_reward,
         "max_num_negative_rewards": args.max_num_negative_rewards,
-        "evaluation": True
+        "evaluation": True,
     }
 
     eval_env = env_fn(**env_kwargs)
@@ -272,7 +282,7 @@ def get_not_finished_mask(state, finished):
     )
     for i in range(n_molecules):
         if finished[i]:
-            not_finished_mask[n_atoms[i]: n_atoms[i + 1]] = 0
+            not_finished_mask[n_atoms[i] : n_atoms[i + 1]] = 0
 
     return np.expand_dims(not_finished_mask, axis=1)
 
@@ -284,10 +294,16 @@ def main(checkpoint_path, args, config):
         np.random.seed(0)
         torch.use_deterministic_algorithms(True)
 
-    dft_server_destinations = get_dft_server_destinations(args.n_threads, args.port_type == 'eval')
+    dft_server_destinations = get_dft_server_destinations(
+        args.n_threads, args.port_type == "eval"
+    )
     method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
-    executors = [concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context(method)) for _ in
-                 range(len(dft_server_destinations))]
+    executors = [
+        concurrent.futures.ProcessPoolExecutor(
+            max_workers=1, mp_context=mp.get_context(method)
+        )
+        for _ in range(len(dft_server_destinations))
+    ]
     futures = {}
     barrier = collections.Counter()
     eval_env = make_env(config)
@@ -316,15 +332,17 @@ def main(checkpoint_path, args, config):
     finished = np.zeros(shape=eval_env.n_parallel, dtype=bool)
     lbfgs_done_steps = np.full(shape=eval_env.n_parallel, fill_value=-1)
     early_stop_steps = list(sorted(args.eval_early_stop_steps))
-    early_stop_step_reached = {early_stop_step: np.full(shape=eval_env.n_parallel, fill_value=-1) for early_stop_step in
-                               early_stop_steps}
+    early_stop_step_reached = {
+        early_stop_step: np.full(shape=eval_env.n_parallel, fill_value=-1)
+        for early_stop_step in early_stop_steps
+    }
 
     stats = {}
     for i, conformation_id in enumerate(eval_env.atoms_ids):
         stats[conformation_id] = ConformationOptimizationStats(
             conformation_id=conformation_id,
             initial_energy_ground_truth=eval_env.energy[i][0],
-            optimal_energy_ground_truth=eval_env.optimal_energy[i][0]
+            optimal_energy_ground_truth=eval_env.optimal_energy[i][0],
         )
         barrier[conformation_id] += 1
 
@@ -334,8 +352,10 @@ def main(checkpoint_path, args, config):
     assert n_conf >= args.n_parallel
 
     start_time = time.perf_counter()
-    pbar_optimization = tqdm(total=n_conf, mininterval=10, desc='Optimized conformations')
-    pbar_pct = tqdm(total=n_conf, mininterval=10, desc='Evaluated conformations')
+    pbar_optimization = tqdm(
+        total=n_conf, mininterval=10, desc="Optimized conformations"
+    )
+    pbar_pct = tqdm(total=n_conf, mininterval=10, desc="Evaluated conformations")
     n_iters = np.zeros(shape=eval_env.n_parallel)
     global_conformation_index = 0
     while not np.all(finished).item():
@@ -378,17 +398,25 @@ def main(checkpoint_path, args, config):
                 break
 
             early_stop_step_mask = (
-                    ~finished
-                    & (steps >= early_stop_step)
-                    & (early_stop_step_reached[early_stop_step] == -1)
+                ~finished
+                & (steps >= early_stop_step)
+                & (early_stop_step_reached[early_stop_step] == -1)
             )
 
             for i in np.where(early_stop_step_mask)[0]:
                 early_stop_step_reached[early_stop_step][i] = 1
                 conformation_id = eval_env.atoms_ids[i]
-                step_stats = StepStats(n_iter=n_iters[i], energy=energies[i], force=forces[i])
+                step_stats = StepStats(
+                    n_iter=n_iters[i], energy=energies[i], force=forces[i]
+                )
                 stats[conformation_id].step2stats[early_stop_step] = step_stats
-                tasks.append((conformation_id, early_stop_step, eval_env.molecule["dft"][i].copy()))
+                tasks.append(
+                    (
+                        conformation_id,
+                        early_stop_step,
+                        eval_env.molecule["dft"][i].copy(),
+                    )
+                )
 
         # Handle lbfgs dones
         lbfgs_dones_mask = ~finished & lbfgs_dones & (lbfgs_done_steps == -1)
@@ -402,8 +430,13 @@ def main(checkpoint_path, args, config):
             conformation_id, step, molecule = task
             worker_id = global_conformation_index % len(dft_server_destinations)
             host, port = dft_server_destinations[worker_id]
-            future = executors[worker_id].submit(calculate_dft_energy_tcp_client, task, host, port,
-                                                 args.logging_tcp_client)
+            future = executors[worker_id].submit(
+                calculate_dft_energy_tcp_client,
+                task,
+                host,
+                port,
+                args.logging_tcp_client,
+            )
             futures[global_conformation_index] = future
             barrier[conformation_id] += 1
             global_conformation_index += 1
@@ -421,7 +454,9 @@ def main(checkpoint_path, args, config):
                 conformation_id = eval_env.atoms_ids[i]
                 barrier[conformation_id] -= 1
                 if barrier[conformation_id] == 0:
-                    log_conformation_optimization_stats(stats[conformation_id], args.evaluation_metrics_path)
+                    log_conformation_optimization_stats(
+                        stats[conformation_id], args.evaluation_metrics_path
+                    )
                     del stats[conformation_id]
                     del barrier[conformation_id]
                     pbar_pct.update(1)
@@ -436,13 +471,18 @@ def main(checkpoint_path, args, config):
             done_future_ids.add(future_id)
             conformation_id, step, energy, force = future.result()
             if energy is None:
-                print(f'DFT did not converged: conformation_id={conformation_id} step={step}', flush=True)
+                print(
+                    f"DFT did not converged: conformation_id={conformation_id} step={step}",
+                    flush=True,
+                )
             step_stats = stats[conformation_id].step2stats[step]
             step_stats.energy_ground_truth = energy
             step_stats.force_ground_truth = force
             barrier[conformation_id] -= 1
             if barrier[conformation_id] == 0:
-                log_conformation_optimization_stats(stats[conformation_id], args.evaluation_metrics_path)
+                log_conformation_optimization_stats(
+                    stats[conformation_id], args.evaluation_metrics_path
+                )
                 del stats[conformation_id]
                 del barrier[conformation_id]
                 pbar_pct.update(1)
@@ -456,7 +496,14 @@ def main(checkpoint_path, args, config):
             smiles_list = [eval_env.smiles[i] for i in done_envs_ids]
             initial_energies = [eval_env.energy[i] for i in done_envs_ids]
             optimal_energies = [eval_env.optimal_energy[i] for i in done_envs_ids]
-            write_to_db(args.results_db_path, atoms_ids, atoms_list, smiles_list, initial_energies, optimal_energies)
+            write_to_db(
+                args.results_db_path,
+                atoms_ids,
+                atoms_list,
+                smiles_list,
+                initial_energies,
+                optimal_energies,
+            )
 
         n_conf_processed_delta = min(
             len(done_envs_ids), n_conf - n_conf_processed_total
@@ -476,11 +523,11 @@ def main(checkpoint_path, args, config):
             stats[conformation_id] = ConformationOptimizationStats(
                 conformation_id=conformation_id,
                 initial_energy_ground_truth=eval_env.energy[i][0],
-                optimal_energy_ground_truth=eval_env.optimal_energy[i][0]
+                optimal_energy_ground_truth=eval_env.optimal_energy[i][0],
             )
             barrier[conformation_id] += 1
 
-        for i in done_envs_ids[n_conf - n_conf_processed_total:]:
+        for i in done_envs_ids[n_conf - n_conf_processed_total :]:
             finished[i] = True
 
     pbar_optimization.update(n_conf_processed_delta)
@@ -489,13 +536,18 @@ def main(checkpoint_path, args, config):
     for _, future in futures.items():
         conformation_id, step, energy, force = future.result()
         if energy is None:
-            print(f'DFT did not converged: conformation_id={conformation_id} step={step}', flush=True)
+            print(
+                f"DFT did not converged: conformation_id={conformation_id} step={step}",
+                flush=True,
+            )
         step_stats = stats[conformation_id].step2stats[step]
         step_stats.energy_ground_truth = energy
         step_stats.force_ground_truth = force
         barrier[conformation_id] -= 1
         if barrier[conformation_id] == 0:
-            log_conformation_optimization_stats(stats[conformation_id], args.evaluation_metrics_path)
+            log_conformation_optimization_stats(
+                stats[conformation_id], args.evaluation_metrics_path
+            )
             del stats[conformation_id]
             del barrier[conformation_id]
             pbar_pct.update(1)
@@ -506,7 +558,7 @@ def main(checkpoint_path, args, config):
         executor.shutdown(wait=False, cancel_futures=True)
 
     assert (
-            n_conf_processed_total == n_conf
+        n_conf_processed_total == n_conf
     ), f"Expected processed conformations: {n_conf}. Actual: {n_conf_processed_total}."
 
     print(
@@ -612,7 +664,7 @@ if __name__ == "__main__":
         "lion_beta1",
         "lion_beta2",
         "action_norm_limit",
-        "grad_threshold"
+        "grad_threshold",
     ]
     # AL args
     parser.add_argument(
@@ -718,9 +770,21 @@ if __name__ == "__main__":
     # Other args
     parser.add_argument("--project", type=str, help="Project name in wandb")
     parser.add_argument("--run_id", type=str, help="Run name in wandb project")
-    parser.add_argument("--port_type", choices=['train', 'eval'], default='eval', type=str, help="DFT server port")
-    parser.add_argument("--logging_tcp_client", default=False, choices=[True, False], metavar="True|False",
-                        type=str2bool, help="Whether to log tcp communication events")
+    parser.add_argument(
+        "--port_type",
+        choices=["train", "eval"],
+        default="eval",
+        type=str,
+        help="DFT server port",
+    )
+    parser.add_argument(
+        "--logging_tcp_client",
+        default=False,
+        choices=[True, False],
+        metavar="True|False",
+        type=str2bool,
+        help="Whether to log tcp communication events",
+    )
 
     args = parser.parse_args()
 
