@@ -1,134 +1,27 @@
-import concurrent.futures
-import io
+import traceback
+from datetime import datetime
+import os
 import struct
-import ase
-import ase.io
-import time
+
 import socket
-import psi4
-import numpy as np
-import multiprocessing as mp
 import pickle
+import subprocess
+import tempfile
 
-from psi4 import SCFConvergenceError
-from psi4.driver.p4util.exceptions import OptimizationConvergenceError
-
-# os.environ['PSI_SCRATCH'] = "/dev/shm/tmp"
-# psi4.set_options({ "CACHELEVEL": 0 })
-
-psi4.set_memory("8 GB")
-psi4.core.IOManager.shared_object().set_default_path("/dev/shm/")
-psi4.core.set_num_threads(4)
-psi4.core.set_output_file("/dev/null")
-
-HEADER = "units ang \n nocom \n noreorient \n"
-FUNCTIONAL_STRING = "wb97x-d/def2-svp"
-PSI4_BOHR2ANGSTROM = 0.52917720859
-EXECUTOR = None
 PORT_RANGE_BEGIN_TRAIN = 20000
 PORT_RANGE_BEGIN_EVAL = 30000
-
-
-def read_xyz_file_block(file, look_for_charge=True):
-    """ """
-
-    atomic_symbols = []
-    xyz_coordinates = []
-    charge = 0
-    title = ""
-
-    line = file.readline()
-    if not line:
-        return None
-    num_atoms = int(line)
-    line = file.readline()
-    if "charge=" in line:
-        charge = int(line.split("=")[1])
-
-    for _ in range(num_atoms):
-        line = file.readline()
-        atomic_symbol, x, y, z = line.split()[:4]
-        atomic_symbols.append(atomic_symbol)
-        xyz_coordinates.append([float(x), float(y), float(z)])
-
-    return atomic_symbols, xyz_coordinates, charge
-
-
-def read_xyz_file(filename, look_for_charge=True):
-    """ """
-    mol_data = []
-    with open(filename) as xyz_file:
-        while xyz_file:
-            current_data = read_xyz_file_block(xyz_file, look_for_charge)
-            if current_data:
-                mol_data.append(current_data)
-            else:
-                break
-
-    return mol_data
-
-
-def xyz2psi4mol(atoms, coordinates):
-    molecule_string = HEADER + "\n".join(
-        [
-            " ".join(
-                [
-                    atom,
-                ]
-                + list(map(str, x))
-            )
-            for atom, x in zip(atoms, coordinates)
-        ]
-    )
-    mol = psi4.geometry(molecule_string)
-    return mol
-
-
-def atoms2psi4mol(atoms):
-    atomic_numbers = [str(atom) for atom in atoms.get_atomic_numbers().tolist()]
-    coordinates = atoms.get_positions().tolist()
-    return xyz2psi4mol(atomic_numbers, coordinates)
-
-
-def get_dft_forces_energy(mol):
-    # Energy in Hartrees, force in Hatrees/Angstrom
-    try:
-        gradient, wfn = psi4.driver.gradient(
-            FUNCTIONAL_STRING, **{"molecule": mol, "return_wfn": True}
-        )
-        energy = wfn.energy()
-    except SCFConvergenceError as e:
-        # Set energy to some threshold if SOSCF does not converge
-        print("DFT optimization did not converge!")
-        return -10000.0
-    psi4.core.clean()
-    forces = -np.array(gradient) / PSI4_BOHR2ANGSTROM
-    return energy, forces
-
-
-def update_ase_atoms_positions(atoms, positions):
-    atoms.set_positions(positions)
-
-
-def update_psi4_geometry(molecule, positions):
-    psi4matrix = psi4.core.Matrix.from_array(positions / PSI4_BOHR2ANGSTROM)
-    molecule.set_geometry(psi4matrix)
-    molecule.update_geometry()
-
-
-def calculate_dft_energy_queue_old(queue, n_threads):
-    global EXECUTOR
-    if EXECUTOR is None:
-        method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
-        EXECUTOR = concurrent.futures.ProcessPoolExecutor(
-            max_workers=n_threads, mp_context=mp.get_context(method)
-        )
-
-    futures = [EXECUTOR.submit(calculate_dft_energy_item, task) for task in queue]
-    results = [future.result() for future in concurrent.futures.as_completed(futures)]
-    results = sorted(results, key=lambda x: x[0])
-
-    return results
+HOSTS = [
+        "192.168.19.21",
+        "192.168.19.22",
+        "192.168.19.23",
+        # "192.168.19.24",
+        "192.168.19.25",
+        "192.168.19.26",
+        "192.168.19.27",
+        "192.168.19.28",
+        "192.168.19.29",
+        "192.168.19.30",
+]
 
 
 def recvall(sock, count):
@@ -156,33 +49,63 @@ def recv_one_message(sock):
     return recvall(sock, length)
 
 
-def calculate_dft_energy_queue(queue, n_threads, evaluation=False):
-    sockets = []
+def log(conformation_id, message, path, logging):
+    if logging:
+        with open(path, 'a') as file_obj:
+            print(f'{get_time()} - conformation_id={conformation_id} {message}', file=file_obj)
 
+
+def calculate_dft_energy_tcp_client(task, host, port, logging=False):
+    path = f'client_{host}_{port}.out'
+    conformation_id, step, ase_atoms = task
+    try:
+        log(conformation_id, 'going to connect', path, logging)
+        sock = socket.socket()
+        sock.connect((host, port))
+        log(conformation_id, 'connected', path, logging)
+
+        ase_atoms = ase_atoms.todict()
+
+        task = (ase_atoms, step, conformation_id)
+        task = pickle.dumps(task)
+        send_one_message(sock, task)
+        log(conformation_id, 'send one message', path, logging)
+        result = recv_one_message(sock)
+        log(conformation_id, 'received response', path, logging)
+        idx, not_converged, energy, force = pickle.loads(result)
+        assert conformation_id == idx
+
+        return conformation_id, step, energy, force
+    except Exception as e:
+        description = traceback.format_exc()
+        log(conformation_id, description, path, logging)
+        return conformation_id, step, None, None
+
+
+def get_dft_server_destinations(n_threads, evaluation):
     # Different ports for train/eval to avoid "Connection refused errors"
     if evaluation:
         port_range_begin = PORT_RANGE_BEGIN_EVAL
     else:
         port_range_begin = PORT_RANGE_BEGIN_TRAIN
 
-    for host in [
-        "192.168.19.21",
-        "192.168.19.22",
-        "192.168.19.23",
-        # "192.168.19.24",
-        "192.168.19.25",
-        "192.168.19.26",
-        "192.168.19.27",
-        "192.168.19.28",
-        "192.168.19.29",
-        "192.168.19.30",
-    ]:
+    destinations = []
+    for host in HOSTS:
         for port in range(port_range_begin, port_range_begin + n_threads):
-            # print("connect", host, port)
+            destinations.append((host, port))
 
-            sock = socket.socket()
-            sock.connect((host, port))
-            sockets.append(sock)
+    return destinations
+
+
+def calculate_dft_energy_queue(queue, n_threads, evaluation=False):
+    sockets = []
+
+    for destination in get_dft_server_destinations(n_threads, evaluation):
+        # print("connect", host, port)
+
+        sock = socket.socket()
+        sock.connect(destination)
+        sockets.append(sock)
 
     results = []
     while len(queue) > 0:
@@ -218,32 +141,6 @@ def calculate_dft_energy_queue(queue, n_threads, evaluation=False):
     return results
 
 
-def calculate_dft_energy_item(task):
-    # Get molecule from the queue
-    ase_atoms, _, idx = task
-
-    ase_atoms = ase.Atoms.fromdict(ase_atoms)
-
-    print("task", idx)
-
-    t1 = time.time()
-
-    molecule = atoms2psi4mol(ase_atoms)
-
-    # Perform DFT minimization
-    # Energy in Hartree
-    not_converged = True
-    # Calculate DFT energy
-
-    energy, gradient = get_dft_forces_energy(molecule)
-
-    t = time.time() - t1
-
-    print("time", t)
-
-    return idx, not_converged, energy, gradient
-
-
 # Get correct hostname
 def get_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -259,11 +156,26 @@ def get_ip():
     return IP
 
 
+def get_time():
+    return datetime.now().strftime('%H:%M:%S')
+
+
 if __name__ == "__main__":
     import sys
 
     host = get_ip()
     port = int(sys.argv[1])
+
+    if len(sys.argv) >= 3:
+        timeout_seconds = sys.argv[2]
+    else:
+        timeout_seconds = 300
+
+    if len(sys.argv) >= 4:
+        dft_script_path = sys.argv[3]
+    else:
+        dir_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+        dft_script_path = os.path.join(dir_path, 'dft_worker.py')
 
     server_socket = socket.socket()
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -273,6 +185,7 @@ if __name__ == "__main__":
 
     print(port, "accept")
     conn, address = server_socket.accept()
+    total_processed = 0
 
     while True:
         data = recv_one_message(conn)
@@ -281,13 +194,41 @@ if __name__ == "__main__":
             conn, address = server_socket.accept()
             data = recv_one_message(conn)
 
-        print(port, "recv", len(data), "bytes from", address)
-
+        print(f'{get_time()} -', port, "recv", len(data), "bytes from", address, end=' ')
         task = pickle.loads(data)
+        conformation_id = task[2]
+        print('conformation_id', conformation_id, flush=True)
 
-        result = calculate_dft_energy_item(task)
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False) as file_obj:
+            pickle.dump(task, file_obj)
+            task_path = file_obj.name
+
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False) as file_obj:
+            result_path = file_obj.name
+
+        result = conformation_id, True, None, None
+        try:
+            completed_process = subprocess.run(
+                [sys.executable, dft_script_path, '--task_path', task_path, '--result_path', result_path],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout_seconds)
+
+            print(f'returncode={completed_process.returncode}\nWorker stdout:\n{completed_process.stdout}', flush=True)
+            if completed_process.returncode == 0:
+                with open(result_path, 'rb') as file_obj:
+                    result = pickle.load(file_obj)
+        except subprocess.TimeoutExpired as e:
+            print(e)
+            if e.stdout is not None:
+                print(f'Worker stdout:\n{e.stdout.decode("utf-8")}', flush=True)
+            if e.stderr is not None:
+                print(f'Worker stderr:\n{e.stderr.decode("utf-8")}', flush=True)
+
+        os.remove(task_path)
+        os.remove(result_path)
 
         result = pickle.dumps(result)
 
-        print(port, "send", len(result), "bytes to", address)
+        total_processed += 1
+        print(f'{get_time()} -', port, "going to send", len(result), "bytes to", address, flush=True,)
         send_one_message(conn, result)
+        print(f'{get_time()} - data sent, total processed:{total_processed}', flush=True,)

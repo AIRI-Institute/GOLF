@@ -6,11 +6,11 @@ import numpy as np
 from rdkit.Chem import AddHs, AllChem, Conformer, MolFromSmiles
 from schnetpack.data.loader import _atoms_collate_fn
 
-from .dft import (
-    calculate_dft_energy_queue,
+from .dft_worker import (
     get_dft_forces_energy,
     update_ase_atoms_positions,
 )
+from .dft import calculate_dft_energy_queue
 from .moldynamics_env import MolecularDynamics
 from .xyz2mol import get_rdkit_energy, get_rdkit_force, parse_molecule, set_coordinates
 
@@ -38,6 +38,7 @@ class RewardWrapper(gym.Wrapper):
         dft=False,
         n_threads=1,
         minimize_on_every_step=False,
+        minimize_on_done=True,
         evaluation=False,
         molecules_xyz_prefix="",
         terminate_on_negative_reward=False,
@@ -47,6 +48,7 @@ class RewardWrapper(gym.Wrapper):
         self.dft = dft
         self.n_threads = n_threads
         self.minimize_on_every_step = minimize_on_every_step
+        self.minimize_on_done = minimize_on_done
         self.evaluation = evaluation
         self.molecules_xyz_prefix = molecules_xyz_prefix
         self.terminate_on_negative_reward = terminate_on_negative_reward
@@ -132,7 +134,7 @@ class RewardWrapper(gym.Wrapper):
                 )
 
             # Calculate current rdkit reward for every trajectory
-            if self.minimize_on_every_step or dones[idx]:
+            if self.minimize_on_every_step or (self.minimize_on_done and dones[idx]):
                 (
                     not_converged[idx],
                     final_energy[idx],
@@ -146,7 +148,7 @@ class RewardWrapper(gym.Wrapper):
         if self.dft:
             queue = []
             for idx in range(self.n_parallel):
-                if self.minimize_on_every_step or dones[idx]:
+                if self.minimize_on_every_step or (self.minimize_on_done and dones[idx]):
                     # Rdkit reward lower than RDKIT_DELTA_THRESH indicates highly improbable
                     # conformations which are likely to cause an error in DFT calculation and/or
                     # significantly slow them down. To mitigate this we propose to replace DFT reward
