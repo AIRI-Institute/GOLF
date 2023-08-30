@@ -1,21 +1,249 @@
-import os
-from collections import defaultdict
-
 import gym
+import concurrent.futures
 import numpy as np
+import math
+import multiprocessing as mp
+import torch
+
 from rdkit.Chem import AddHs, AllChem, Conformer, MolFromSmiles
 from schnetpack.data.loader import _atoms_collate_fn
+from schnetpack.interfaces import AtomsConverter
+from schnetpack.transform import ASENeighborList
 
-from .dft_worker import (
-    get_dft_forces_energy,
-    update_ase_atoms_positions,
-)
-from .dft import calculate_dft_energy_queue
-from .moldynamics_env import MolecularDynamics
-from .xyz2mol import get_rdkit_energy, get_rdkit_force, parse_molecule, set_coordinates
+from .dft_worker import update_ase_atoms_positions
+from .dft import get_dft_server_destinations, calculate_dft_energy_tcp_client
+from .xyz2mol import get_rdkit_energy, get_rdkit_force, set_coordinates
 
 RDKIT_ENERGY_THRESH = 500
 KCALMOL2HARTREE = 627.5
+
+
+class BaseOracle:
+    def __init__(self, n_parallel, update_coordinates_fn):
+        self.n_parallel = n_parallel
+        self.update_coordinates_fn = update_coordinates_fn
+
+        self.initial_energies = np.zeros(self.n_parallel)
+        self.forces = [None] * self.n_parallel
+        self.molecules = [None] * self.n_parallel
+
+    def get_energies(self, indices):
+        if indices is None:
+            indices = np.arange(self.n_parallel)
+        return self.initial_energies[indices]
+
+    def get_forces(self, indices):
+        if indices is None:
+            indices = np.arange(self.n_parallel)
+        return [np.array(self.forces[i]) for i in indices]
+
+    def update_coordinates(self, positions):
+        assert (
+            len(positions) == self.n_parallel
+        ), f"Not enough values to update all molecules! Expected {self.n_parallel} but got {len(positions)}"
+        for i, position in enumerate(positions):
+            self.update_coordinates_fn(self.molecules[i], position)
+
+    def update_forces(self, forces, indices=None):
+        if indices is None:
+            indices = np.arange(self.n_parallel)
+        assert len(forces) == len(indices)
+        for i, force in zip(indices, forces):
+            self.forces[i] = force
+
+
+class RdkitOracle(BaseOracle):
+    def __init__(self, n_parallel, update_coordinates_fn):
+        super().__init__(n_parallel, update_coordinates_fn)
+
+    def get_energy(self, max_its=0, indices=None):
+        not_converged, energies, forces = (
+            np.zeros(self.n_parallel),
+            np.zeros(self.n_parallel),
+            [None] * self.n_parallel,
+        )
+        if not indices:
+            indices = range(self.n_parallel)
+        else:
+            indices = indices
+
+        for i in indices:
+            # Perform rdkit minimization
+            ff = AllChem.MMFFGetMoleculeForceField(
+                self.molecule[i],
+                AllChem.MMFFGetMoleculeProperties(self.molecule[i]),
+                confId=0,
+            )
+            ff.Initialize()
+            not_converged[i] = ff.Minimize(maxIts=max_its)
+            energies[i] = get_rdkit_energy(self.molecule[i])
+            forces[i] = get_rdkit_force(self.molecule[i])
+
+        return not_converged, energies, forces
+
+    def get_rewards(self, new_energies, indices=None):
+        if indices is None:
+            indices = np.arange(self.n_parallel)
+        assert len(new_energies) == len(indices)
+
+        new_energies_ = np.copy(self.initial_energies)
+        new_energies_[indices] = new_energies
+
+        rewards = self.initial_energy - new_energies_
+        self.initial_energies = new_energies_
+        return rewards
+
+    def initialize_molecules(self, indices, smiles_list, molecules, max_its):
+        for (i, smiles, molecule) in zip(indices, smiles_list, molecules):
+            # Calculate initial rdkit energy
+            if smiles is not None:
+                # Initialize molecule from Smiles
+                self.molecules[i] = MolFromSmiles(smiles)
+                self.molecules[i] = AddHs(self.molecules[i])
+                # Add random conformer
+                self.molecules[i].AddConformer(
+                    Conformer(len(molecule.get_atomic_numbers()))
+                )
+            else:
+                raise ValueError(
+                    "Unknown molecule type {}".format(str(molecule.symbols))
+                )
+            self.update_coordinates["rdkit"](
+                self.molecules[i], molecule.get_positions()
+            )
+        _, initial_energies, forces = self.get_energy(max_its, indices)
+
+        # Set initial energies for new molecules
+        self.initial_energies[indices] = initial_energies[indices]
+
+        # Set forces
+        for (i, force) in zip(indices, forces):
+            self.forces[i] = force
+
+
+class DFTOracle(BaseOracle):
+    def __init__(
+        self, n_parallel, update_coordinates_fn, n_threads, port_type, converter
+    ):
+        super().__init__(n_parallel, update_coordinates_fn)
+
+        self.dft_server_destinations = get_dft_server_destinations(
+            n_threads, port_type == "eval"
+        )
+        method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
+        self.executors = [
+            concurrent.futures.ProcessPoolExecutor(
+                max_workers=1, mp_context=mp.get_context(method)
+            )
+            for _ in range(len(self.dft_server_destinations))
+        ]
+        self.converter = converter
+        self.tasks = {}
+        self.number_processed_conformations = 0
+
+        self.task_queue_full_flag = False
+
+    def close_executors(self):
+        for executor in self.executors:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+    def get_data(self):
+        assert self.task_queue_full_flag, "The task queue has not filled up yet!"
+
+        # Wait for all computations to finish
+        results = self.wait_tasks()
+        assert len(results) == self.n_parallel
+
+        results = sorted(results, key=lambda x: x[0])
+        _, energies, forces, obs, initial_energies = zip(*results)
+
+        energies = np.array(energies)
+        forces = [np.array(force) for force in forces]
+        obs = _atoms_collate_fn(obs)
+        episode_total_delta_energies = np.array(initial_energies) - energies
+
+        self.task_queue_full_flag = False
+        return obs, energies, forces, episode_total_delta_energies
+
+    def initialize_molecules(self, indices, molecules, initial_energies, forces):
+        no_initial_energy_indices = []
+        for i, molecule, initial_energy, force in zip(
+            indices, molecules, initial_energies, forces
+        ):
+            self.molecules[i] = molecule.copy()
+            if initial_energy is not None:
+                self.initial_energies[i] = initial_energy
+                self.forces[i] = force
+            else:
+                no_initial_energy_indices.append(i)
+
+        # Calculate initial DFT energy and forces if it's not provided
+        if no_initial_energy_indices:
+            self.submit_tasks(no_initial_energy_indices)
+            # Make sure there were no unfinished tasks
+            assert len(self.tasks) == len(indices)
+
+            results = self.wait_tasks()
+            assert len(results) == len(indices)
+
+            # Update initial energies and forces
+            for result in results:
+                i, energy, force = result[:3]
+                self.initial_energies[i] = energy
+                self.forces[i] = force
+
+    def submit_tasks(self, indices):
+        for i in indices:
+            # Replace early_stop_steps with 0
+            new_task = (i, 0, self.molecules[i].copy())
+
+            # Select worker and submit task
+            worker_id = self.number_processed_conformations % len(
+                self.dft_server_destinations
+            )
+            host, port = self.dft_server_destinations[worker_id]
+            future = self.executors[worker_id].submit(
+                calculate_dft_energy_tcp_client,
+                new_task,
+                host,
+                port,
+                False,
+            )
+
+            # Store information about conformation
+            self.tasks[self.number_processed_conformations] = {
+                "future": future,
+                "initial_energy": self.initial_energies[i],
+                "obs": self.converter(self.molecules[i]),
+            }
+            self.number_processed_conformations += 1
+
+            # Check if the task queue is full
+            if len(self.tasks) >= self.n_parallel:
+                self.task_queue_full_flag = True
+                break
+
+    def wait_tasks(self):
+        results = []
+
+        # Wait for all active tasks to finish
+        for task in self.tasks.values():
+            future = task["future"]
+            obs = task["obs"]
+            initial_energy = task["initial_energy"]
+            i, _, energy, force = future.result()
+            if energy is None:
+                print(
+                    f"DFT did not converged for {self.molecules[i].symbols}, id: {i}",
+                    flush=True,
+                )
+            results.append((i, energy, force, obs, initial_energy))
+
+        # Delete all finished tasks
+        for key in self.tasks.keys():
+            del self.tasks[key]
+
+        return results
 
 
 class RewardWrapper(gym.Wrapper):
@@ -54,351 +282,139 @@ class RewardWrapper(gym.Wrapper):
         self.terminate_on_negative_reward = terminate_on_negative_reward
         self.max_num_negative_rewards = max_num_negative_rewards
 
-        self.update_coordinates = {
-            "rdkit": set_coordinates,
-            "dft": update_ase_atoms_positions,
-        }
-        self.get_energy = {"rdkit": get_rdkit_energy, "dft": get_dft_forces_energy}
-        self.get_force = {
-            "rdkit": get_rdkit_force,
-            "dft": None,
-        }
-
-        # Check parent class to name the reward correctly
-        if isinstance(env, MolecularDynamics):
-            self.reward_name = "env_reward"
-        else:
-            self.reward_name = "unknown_reward"
+        # Initialize environemnt
         super().__init__(env)
-
-        # Initialize dictionaries
         self.n_parallel = self.env.n_parallel
-        self.initial_energy = {
-            "rdkit": [None] * self.n_parallel,
-            "dft": [None] * self.n_parallel,
-        }
-        self.force = {
-            "rdkit": [None] * self.n_parallel,
-            "dft": [None] * self.n_parallel,
-        }
-        self.molecule = {
-            "rdkit": [None] * self.n_parallel,
-            "dft": [None] * self.n_parallel,
-        }
-        self.threshold_exceeded = [0.0 for _ in range(self.n_parallel)]
-        self.negative_rewards_counter = [0 for _ in range(self.n_parallel)]
-        self.molecules = {}
-        self.parse_molecules()
 
-    def parse_molecules(self):
-        # Parse rdkit molecules
-        self.molecules["rdkit"] = {}
-        for formula, path in RewardWrapper.molecules_xyz.items():
-            molecule = parse_molecule(os.path.join(self.molecules_xyz_prefix, path))
-            # Check if the provided molecule is valid
-            try:
-                self.get_energy["rdkit"](molecule)
-            except AttributeError:
-                raise ValueError("Provided molucule was not parsed correctly")
-            self.molecules["rdkit"][formula] = molecule
+        # Initialize rdkit oracle
+        self.rdkit_oracle = RdkitOracle(
+            n_parallel=self.n_parallel, update_coordinates_fn=set_coordinates
+        )
+
+        # Initialize DFT oracle
+        converter = AtomsConverter(
+            neighbor_list=ASENeighborList(cutoff=math.inf),
+            dtype=torch.float32,
+            device=torch.device("cpu"),
+        )
+        self.dft_oracle = DFTOracle(
+            n_parallel=self.n_parallel,
+            update_coordinates_fn=update_ase_atoms_positions,
+            n_threads=self.n_threads,
+            port_type="train",
+            converter=converter,
+        )
+
+        self.negative_rewards_counter = np.zeros(self.n_parallel)
 
     def step(self, actions):
         obs, env_rewards, dones, info = super().step(actions)
+        dones = np.stack(dones)
 
         # Put rewards from the environment into info
-        info = dict(info, **{self.reward_name: env_rewards})
-
-        # Get sizes of molecules
-        atoms_num = self.get_atoms_num()
-        env_steps = self.get_env_step()
-
-        # Initialize reward arrays
-        rewards = np.zeros(self.n_parallel)
-        rdkit_rewards = np.zeros(self.n_parallel)
-        final_energy = np.zeros(self.n_parallel)
-        not_converged = np.zeros(self.n_parallel)
-        threshold_exceeded_pct = np.zeros(self.n_parallel)
-
-        # Initialize statistics for finished trajectories
-        stats_done = defaultdict(lambda: [None] * self.n_parallel)
+        info = dict(info, **{"env_reward": env_rewards})
 
         # Rdkit rewards
-        for idx in range(self.n_parallel):
-            # Update current coordinates
-            self.update_coordinates["rdkit"](
-                self.molecule["rdkit"][idx], self.env.atoms[idx].get_positions()
-            )
-            if self.dft:
-                self.update_coordinates["dft"](
-                    self.molecule["dft"][idx], self.env.atoms[idx].get_positions()
-                )
+        new_positions = [molecule.get_positions() for molecule in self.env.atoms]
+        self.rdkit_oracle.update_coordinates(new_positions)
+        if self.dft:
+            self.dft_oracle.update_coordinates(new_positions)
 
-            # Calculate current rdkit reward for every trajectory
-            if self.minimize_on_every_step or (self.minimize_on_done and dones[idx]):
-                (
-                    not_converged[idx],
-                    final_energy[idx],
-                    self.force["rdkit"][idx],
-                ) = self.minimize_rdkit(idx)
-                rdkit_rewards[idx] = (
-                    self.initial_energy["rdkit"][idx] - final_energy[idx]
-                )
+        # Calculate rdkit energies and forces
+        calc_rdkit_energy_indices = np.where(
+            self.minimize_on_every_step | (self.minimize_on_done & dones)
+        )
+        _, new_energies, forces = self.rdkit_oracle.get_energy(
+            calc_rdkit_energy_indices
+        )
+
+        # Update current energies and forces. Calculate reward
+        self.rdkit_oracle.update_forces(forces, calc_rdkit_energy_indices)
+        rdkit_rewards = self.rdkit_oracle.get_rewards(
+            new_energies, calc_rdkit_energy_indices
+        )
+
+        # When agent encounters 'max_num_negative_rewards' terminate the episode
+        self.negative_rewards_counter[rdkit_rewards < 0] += 1
+        dones[self.negative_rewards_counter >= self.max_num_negative_rewards] = True
+
+        # Log final energies of molecules
+        info["final_energy"] = new_energies
 
         # DFT rewards
         if self.dft:
-            queue = []
-            for idx in range(self.n_parallel):
-                if self.minimize_on_every_step or (self.minimize_on_done and dones[idx]):
-                    # Rdkit reward lower than RDKIT_DELTA_THRESH indicates highly improbable
-                    # conformations which are likely to cause an error in DFT calculation and/or
-                    # significantly slow them down. To mitigate this we propose to replace DFT reward
-                    # in such states with rdkit reward. Note that rdkit reward is strongly
-                    # correlated with DFT reward and should not intefere with the training.
-                    if final_energy[idx] < RDKIT_ENERGY_THRESH:
-                        queue.append((self.molecule["dft"][idx], atoms_num[idx], idx))
-                    else:
-                        self.threshold_exceeded[idx] += 1
-                        # kcal/mol/angstrom --> hartree/angstrom
-                        rewards[idx] = rdkit_rewards[idx] / KCALMOL2HARTREE
-                        self.force["dft"][idx] = (
-                            self.force["rdkit"][idx] / KCALMOL2HARTREE
-                        )
+            # Conformations whose energy w.r.t. to Rdkit's MMFF is higher than
+            # RDKIT_ENERGY_THRESH are highly improbable and likely to cause
+            # an error in DFT calculation and/or significantly
+            # slow them down. To mitigate this we propose to replace the DFT reward
+            # in such states with the Rdkit reward, as they are strongly correlated in such states.
+            rdkit_energy_thresh_exceeded = new_energies >= RDKIT_ENERGY_THRESH
 
-            if len(queue) > 0:
-                # Sort queue according to the molecule size
-                queue = sorted(queue, key=lambda x: x[1], reverse=True)
-                # TODO think about M=None, etc.
-                result = calculate_dft_energy_queue(
-                    queue, self.n_threads, self.evaluation
-                )
-                for idx, _, energy, force in result:
-                    rewards[idx] = self.initial_energy["dft"][idx] - energy
-                    self.force["dft"][idx] = force
-        else:
-            rewards = rdkit_rewards
+            # Calculate energy and forces with DFT only for terminal states.
+            # Skip conformations with energy higher than RDKIT_ENERGY_THRESH
+            calculate_dft_energy_env_ids = dones & ~rdkit_energy_thresh_exceeded
+            self.dft_oracle.submit_tasks(calculate_dft_energy_env_ids)
 
-        # Dones and info
-        for idx in range(self.n_parallel):
-            # If minimize_on_every step update initial energy
-            if self.minimize_on_every_step:
-                # initial_energy = final_energy
-                self.initial_energy["rdkit"][idx] -= rdkit_rewards[idx]
-                # FIXME ?
-                # At the moment the wrapper is guaranteed to work correctly
-                # only with done_when_not_improved=True. In case of greedy=True
-                # we might get final_energy > RDKIT_ENERGY_THRESH on steps
-                # [t, ..., t + T - 1] and then get final_energy > RDKIT_ENERGY_THRESH on
-                # step t + T (although this is highly unlikely, it is possible).
-                # Then the initial DFT energy would be calculated from the
-                # rdkit reward but the final energy would come from DFT.
-                if self.dft:
-                    self.initial_energy["dft"][idx] = (
-                        self.initial_energy["dft"][idx] - rewards[idx]
-                    )
-
-            # When agent encounters 'max_num_negative_rewards'
-            # terminate the episode
-            if self.terminate_on_negative_reward:
-                if rewards[idx] < 0:
-                    self.negative_rewards_counter[idx] += 1
-                if self.negative_rewards_counter[idx] >= self.max_num_negative_rewards:
-                    dones[idx] = True
-
-            # Log final energy of the molecule
-            stats_done["final_energy"][idx] = final_energy[idx]
-            stats_done["not_converged"][idx] = not_converged[idx]
-
-            # Log percentage of times in which treshold was  exceeded
-            if self.dft:
-                threshold_exceeded_pct[idx] = (
-                    self.threshold_exceeded[idx] / env_steps[idx]
-                )
-            else:
-                threshold_exceeded_pct[idx] = 0
-            stats_done["threshold_exceeded_pct"][idx] = threshold_exceeded_pct[idx]
-            stats_done["final_rl_energy"][idx] = final_energy[idx]
-
-        # Compute mean of stats over finished trajectories and update info
-        info = dict(info, **stats_done)
-
-        return obs, rewards, np.stack(dones), info
+        return obs, rdkit_rewards, dones, info
 
     def reset(self, indices=None):
         obs = self.env.reset(indices=indices)
         if indices is None:
             indices = np.arange(self.n_parallel)
 
+        # Reset negative rewards counter
+        self.negative_rewards_counter[indices] = 0
+
         # Get sizes of molecules
-        atoms_num = self.get_atoms_num()
+        smiles_list = [self.env.smiles[i] for i in indices]
+        molecules = [self.env.atoms[i].copy() for i in indices]
+        self.rdkit_oracle.initialize_molecules(indices, smiles_list, molecules)
 
-        for idx in indices:
-            # Reset negative rewards counter
-            self.negative_rewards_counter[idx] = 0
-
-            # Calculate initial rdkit energy
-            if self.env.smiles[idx] is not None:
-                # Initialize molecule from Smiles
-                self.molecule["rdkit"][idx] = MolFromSmiles(self.env.smiles[idx])
-                self.molecule["rdkit"][idx] = AddHs(self.molecule["rdkit"][idx])
-                # Add random conformer
-                self.molecule["rdkit"][idx].AddConformer(Conformer(atoms_num[idx]))
-            elif str(self.env.atoms[idx].symbols) in self.molecules["rdkit"]:
-                self.molecule["rdkit"][idx] = self.molecules["rdkit"][
-                    str(self.env.atoms[idx].symbols)
-                ]
-            else:
-                raise ValueError(
-                    "Unknown molecule type {}".format(str(self.env.atoms[idx].symbols))
-                )
-            self.update_coordinates["rdkit"](
-                self.molecule["rdkit"][idx], self.env.atoms[idx].get_positions()
+        if self.dft:
+            dft_initial_energies = [self.env.energy[i] for i in indices]
+            dft_forces = [self.env.force[i] for i in indices]
+            self.dft_oracle.initialize_molecules(
+                indices, molecules, dft_initial_energies, dft_forces
             )
-            (
-                _,
-                self.initial_energy["rdkit"][idx],
-                self.force["rdkit"][idx],
-            ) = self.minimize_rdkit(idx)
-            # Calculate initial dft energy
-            if self.dft:
-                queue = []
-                self.threshold_exceeded[idx] = 0
-                # psi4.core.Molecule object cannot be stored in the MP Queue.
-                # Instead store ase.Atoms and transform into psi4 format later.
-                self.molecule["dft"][idx] = self.env.atoms[idx].copy()
-                if self.env.energy[idx] is not None:
-                    self.initial_energy["dft"][idx] = self.env.energy[idx]
-                    self.force["dft"][idx] = self.env.force[idx]
-                else:
-                    queue.append((self.molecule["dft"][idx], atoms_num[idx], idx))
-
-        # Calculate initial dft energy if it is not provided
-        if self.dft and len(queue) > 0:
-            # Sort queue according to the molecule size
-            queue = sorted(queue, key=lambda x: x[1], reverse=True)
-            # TODO think about M=None, etc.
-            result = calculate_dft_energy_queue(queue, self.n_threads, self.evaluation)
-            for idx, _, energy, force in result:
-                self.initial_energy["dft"][idx] = energy
-                self.force["dft"][idx] = force
 
         return obs
 
     def set_initial_positions(
-        self, atoms_list, smiles_list, energy_list, force_list, max_its=0
+        self, molecules, smiles_list, energy_list, force_list, max_its=0
     ):
         super().reset(increment_conf_idx=False)
+        indices = np.arage(self.n_parallel)
 
-        # Set molecules and get observation
+        # Reset negative rewards counter
+        self.negative_rewards_counter.fill(0.0)
+
         obs_list = []
-        for idx, (atoms, smiles, energy, force) in enumerate(
-            zip(atoms_list, smiles_list, energy_list, force_list)
-        ):
-            self.env.atoms[idx] = atoms.copy()
-            obs_list.append(self.env.converter(self.env.atoms[idx]))
+        # Set molecules and get observation
+        for i, molecule in enumerate(molecules):
+            self.env.atoms[i] = molecule.copy()
+            obs_list.append(self.env.converter(molecule))
 
-            # Reset negative rewards counter
-            self.negative_rewards_counter[idx] = 0
+        self.rdkit_oracle.initialize_molecules(indices, smiles_list, molecules)
 
-            # Calculate initial rdkit energy
-            if smiles is not None:
-                # Initialize molecule from Smiles
-                self.molecule["rdkit"][idx] = MolFromSmiles(smiles)
-                self.molecule["rdkit"][idx] = AddHs(self.molecule["rdkit"][idx])
-                # Add random conformer
-                self.molecule["rdkit"][idx].AddConformer(
-                    Conformer(len(atoms.get_atomic_numbers()))
-                )
-            elif str(self.env.atoms[idx].symbols) in self.molecules["rdkit"]:
-                self.molecule["rdkit"][idx] = self.molecules["rdkit"][
-                    str(self.env.atoms[idx].symbols)
-                ]
-            else:
-                raise ValueError(
-                    "Unknown molecule type {}".format(str(self.env.atoms[idx].symbols))
-                )
-            self.update_coordinates["rdkit"](
-                self.molecule["rdkit"][idx], self.env.atoms[idx].get_positions()
+        if self.dft:
+            self.dft_oracle.initialize_molecules(
+                indices, molecules, energy_list, force_list
             )
-            (
-                _,
-                self.initial_energy["rdkit"][idx],
-                self.force["rdkit"][idx],
-            ) = self.minimize_rdkit(idx, max_its)
-
-            # Calculate initial dft energy
-            if self.dft:
-                queue = []
-                self.threshold_exceeded[idx] = 0
-                # psi4.core.Molecule object cannot be stored in the MP Queue.
-                # Instead store ase.Atoms and transform into psi4 format later.
-                self.molecule["dft"][idx] = self.env.atoms[idx].copy()
-                if energy is not None and force is not None:
-                    self.initial_energy["dft"][idx] = energy
-                    self.force["dft"][idx] = force
-                else:
-                    queue.append(
-                        (
-                            self.molecule["dft"][idx],
-                            len(atoms.get_atomic_numbers()),
-                            idx,
-                        )
-                    )
-
-        # Calculate initial dft energy if it is not provided
-        if self.dft and len(queue) > 0:
-            # Sort queue according to the molecule size
-            queue = sorted(queue, key=lambda x: x[1], reverse=True)
-            # TODO think about M=None, etc.
-            result = calculate_dft_energy_queue(queue, self.n_threads, self.evaluation)
-            for idx, _, energy, force in result:
-                self.initial_energy["dft"][idx] = energy
-                self.force["dft"][idx] = force
 
         obs = _atoms_collate_fn(obs_list)
         return obs
-
-    def minimize_rdkit(self, idx, max_its=0):
-        # Perform rdkit minimization
-        ff = AllChem.MMFFGetMoleculeForceField(
-            self.molecule["rdkit"][idx],
-            AllChem.MMFFGetMoleculeProperties(self.molecule["rdkit"][idx]),
-            confId=0,
-        )
-        ff.Initialize()
-        not_converged = ff.Minimize(maxIts=max_its)
-        energy = self.get_energy["rdkit"](self.molecule["rdkit"][idx])
-        force = self.get_force["rdkit"](self.molecule["rdkit"][idx])
-
-        return not_converged, energy, force
-
-    def get_atoms_num(self):
-        cumsum_atoms_num = np.asarray(self.get_atoms_num_cumsum())
-        return (cumsum_atoms_num[1:] - cumsum_atoms_num[:-1]).tolist()
-
-    def get_env_step(self):
-        return self.env.get_env_step()
 
     def update_timelimit(self, tl):
         return self.env.update_timelimit(tl)
 
     def get_forces(self, indices=None):
-        if indices is None:
-            indices = np.arange(self.n_parallel)
         if self.dft:
-            reward_name = "dft"
+            return self.dft_oracle.get_forces(indices)
         else:
-            reward_name = "rdkit"
-        return [
-            np.array(self.force[reward_name][ind], dtype=np.float32) for ind in indices
-        ]
+            return self.rdkit_oracle.get_forces(indices)
 
     def get_energies(self, indices=None):
-        if indices is None:
-            indices = np.arange(self.n_parallel)
         if self.dft:
-            reward_name = "dft"
+            return self.dft_oracle.get_energies(indices)
         else:
-            reward_name = "rdkit"
-        return np.array(
-            [self.initial_energy[reward_name][idx] for idx in indices], dtype=np.float32
-        )
+            return self.rdkit_oracle.get_energies(indices)

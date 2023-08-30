@@ -17,7 +17,7 @@ from AL.AL_trainer import AL
 from AL.eval import eval_policy_dft, eval_policy_rdkit
 from AL.make_policies import make_policies
 from AL.make_saver import make_saver
-from AL.replay_buffer import ReplayBufferGD, fill_replay_buffer
+from AL.replay_buffer import ReplayBuffer, fill_initial_replay_buffer
 from AL.utils import calculate_action_norm, recollate_batch
 from env.make_envs import make_envs
 from utils.arguments import get_args
@@ -42,23 +42,29 @@ def main(args, experiment_folder):
     # Initialize envs
     env, eval_env = make_envs(args)
 
-    # Initialize replay buffer
+    # Initialize replay buffer.
+    atomrefs = None
+    initial_replay_buffer = None
+    # First, initialize a RB with initial conformations
     if args.reward == "dft":
+        # Read atomization energy from the database
+        with connect(args.db_path) as conn:
+            if "atomrefs" in conn.metadata and args.subtract_atomization_energy:
+                atomrefs = conn.metadata["atomrefs"]["energy"]
         assert (
-            args.subtract_atomization_energy
+            args.subtract_atomization_energy and atomrefs
         ), "Attempting to train with no atomization energy subtraction\
             will likely result in the divergence of the model"
-    with connect(args.db_path) as conn:
-        if "atomrefs" in conn.metadata and args.subtract_atomization_energy:
-            atomrefs = conn.metadata["atomrefs"]["energy"]
-        else:
-            atomrefs = None
-    replay_buffer = ReplayBufferGD(
-        device=DEVICE, max_size=args.replay_buffer_size, atomrefs=atomrefs
+        # Initialize a fixed replay buffer with conformations from the database
+        initial_replay_buffer = fill_initial_replay_buffer(DEVICE, args, atomrefs)
+
+    replay_buffer = ReplayBuffer(
+        device=DEVICE,
+        max_size=args.replay_buffer_size,
+        atomrefs=atomrefs,
+        initial_RB=initial_replay_buffer,
+        initial_conf_pct=args.initial_conf_pct,
     )
-    # Fill up the replay buffer with initial conformations
-    fill_replay_buffer(replay_buffer, args)
-    print("Initial replay buffer size: {:d}".format(replay_buffer.size))
 
     # Inititalize policy and eval policy
     policy, eval_policy = make_policies(env, eval_env, args)

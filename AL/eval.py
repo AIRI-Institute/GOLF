@@ -94,7 +94,6 @@ def eval_policy_dft(actor, env, eval_episodes=10):
                 envs_to_reset.append(i)
                 result["eval/delta_energy"].append(episode_returns[i])
                 result["eval/final_energy"].append(infos["final_energy"][i])
-                result["eval/final_rl_energy"].append(infos["final_rl_energy"][i])
                 result["eval/episode_len"].append(episode_timesteps[i])
                 episode_returns[i] = 0
 

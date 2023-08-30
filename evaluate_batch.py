@@ -303,7 +303,7 @@ def main(checkpoint_path, args, config):
     not_finite_action_energies = np.zeros(shape=eval_env.n_parallel)
     while not np.all(finished).item():
         # Get current timesteps
-        episode_timesteps = eval_env.get_env_step()
+        episode_timesteps = eval_env.unwrapped.get_env_step()
         steps = np.asarray(episode_timesteps, dtype=np.float32)
 
         # Select next action
@@ -412,7 +412,7 @@ def main(checkpoint_path, args, config):
         dones = ~is_finite_action | np.asarray(dones)
         returns += rewards
         n_iters += np.asarray(n_iters_dones)
-        steps = np.asarray(eval_env.get_env_step(), dtype=np.float32)
+        steps = np.asarray(eval_env.unwrapped.get_env_step(), dtype=np.float32)
 
         # Handle lbfgs dones
         lbfgs_dones_mask = ~finished & lbfgs_dones & (lbfgs_done_steps == -1)

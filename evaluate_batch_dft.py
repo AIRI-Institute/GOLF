@@ -360,7 +360,7 @@ def main(checkpoint_path, args, config):
     global_conformation_index = 0
     while not np.all(finished).item():
         # Get current timesteps
-        episode_timesteps = eval_env.get_env_step()
+        episode_timesteps = eval_env.unwrapped.get_env_step()
 
         # Select next action
         select_action_result = eval_policy.select_action(episode_timesteps)
@@ -388,7 +388,7 @@ def main(checkpoint_path, args, config):
         state, rewards, dones, info = eval_env.step(actions)
         dones = ~is_finite_action | np.asarray(dones)
         n_iters += np.asarray(n_iters_dones)
-        steps = np.asarray(eval_env.get_env_step(), dtype=np.float32)
+        steps = np.asarray(eval_env.unwrapped.get_env_step(), dtype=np.float32)
 
         tasks = []
 
