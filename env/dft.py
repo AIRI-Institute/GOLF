@@ -108,7 +108,6 @@ def calculate_dft_energy_queue(queue, n_threads, evaluation=False):
         sockets.append(sock)
 
     results = []
-    print("QUEUE LEN: ", len(queue))
     while len(queue) > 0:
         waitlist = []
 

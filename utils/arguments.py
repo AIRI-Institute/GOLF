@@ -260,6 +260,12 @@ def get_args():
         "--replay_buffer_size", default=int(1e5), type=int, help="Size of replay buffer"
     )
     parser.add_argument(
+        "--initial_conf_pct",
+        default=0.0,
+        type=float,
+        help="Percentage of conformations from the initial database in each batch",
+    )
+    parser.add_argument(
         "--max_timesteps",
         default=1e6,
         type=int,
