@@ -80,17 +80,24 @@ def eval_policy_dft(actor, env, eval_episodes=10):
     # Reset initial states in actor
     actor.reset(state)
     actor.eval()
-    while len(result["eval/delta_energy"]) < eval_episodes:
+    while len(result["eval/dft_delta_energy"]) < eval_episodes:
         episode_timesteps = env.unwrapped.get_env_step()
         # TODO incorporate actor dones into DFT evaluation
         select_action_result = actor.select_action(episode_timesteps)
         action = select_action_result["action"]
-        actor_dones = select_action_result["done"]
+        # actor_dones = select_action_result["done"]
 
         # Obser reward and next obs
-        state, rewards, _, infos = env.step(action)
+        state, rdkit_rewards, _, infos = env.step(action)
         dones = [(t + 1) > max_timestamps for t in episode_timesteps]
-        episode_returns += rewards
+        episode_returns += rdkit_rewards
+
+        # If task queue is full wait for all tasks to finish
+        if env.dft_oracle.task_queue_full_flag:
+            _, _, _, episode_total_delta_energies = env.dft_oracle.get_data()
+            result["eval/dft_delta_energy"].extend(
+                episode_total_delta_energies.tolist()
+            )
 
         envs_to_reset = []
         for i in range(env.unwrapped.n_parallel):
@@ -121,12 +128,11 @@ def eval_policy_dft(actor, env, eval_episodes=10):
 
         if len(envs_to_reset) > 0:
             reset_states = env.reset(indices=envs_to_reset)
-
             # Recollate state_batch after resets as atomic numbers might have changed.
             state = recollate_batch(state, envs_to_reset, reset_states)
-
             # Reset initial states in policy
             actor.reset(reset_states, indices=envs_to_reset)
+
     actor.train()
     result = {k: np.array(v).mean() for k, v in result.items()}
     print(

@@ -24,6 +24,7 @@ class ReplayBuffer(object):
         self.initial_RB = initial_RB
         self.ptr = 0
         self.size = 0
+        self.replay_buffer_full = False
 
         if self.initial_RB:
             self.initial_conf_pct = initial_conf_pct
@@ -48,7 +49,10 @@ class ReplayBuffer(object):
             self.energy[self.ptr] = energies[i]
             self.forces[self.ptr] = torch.from_numpy(forces[i])
             self.ptr = (self.ptr + 1) % self.max_size
-            self.size = min(self.size + 1, self.max_size)
+            # self.size = min(self.size + 1, self.max_size)
+            self.size = self.size + 1
+
+        self.replay_buffer_full = self.size >= self.max_size
 
     def sample(self, batch_size):
         new_samples_batch_size = int(batch_size * (1 - self.initial_conf_pct))

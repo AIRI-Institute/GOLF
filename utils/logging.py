@@ -39,14 +39,14 @@ class Logger:
         with open(experiment_folder / "config.json", "w") as config_file:
             json.dump(config.__dict__, config_file)
 
-        self._keep_n_episodes = 10
+        if config.__dict__.reward == "dft":
+            self._keep_n_episodes = config.__dict__.n_parallel
+        else:
+            self._keep_n_episodes = 10
         self.exploration_episode_lengths = deque(maxlen=self._keep_n_episodes)
-        self.exploration_episode_returns = deque(maxlen=self._keep_n_episodes)
-        self.exploration_episode_mean_Q = deque(maxlen=self._keep_n_episodes)
+        self.exploration_episode_rdkit_returns = deque(maxlen=self._keep_n_episodes)
+        self.exploration_episode_dft_returns = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_final_energy = deque(maxlen=self._keep_n_episodes)
-        self.exploration_episode_final_rl_energy = deque(maxlen=self._keep_n_episodes)
-        self.exploration_not_converged = deque(maxlen=self._keep_n_episodes)
-        self.exploration_threshold_exceeded_pct = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_number = 0
 
         self.use_wandb = "wandb" in sys.modules and os.environ.get("WANDB_API_KEY")
@@ -60,19 +60,15 @@ class Logger:
         for name, d in zip(
             [
                 "episode length",
-                "episode return",
+                "episode rdkit return",
+                "episode dft return",
                 "episode final energy",
-                "episode final rl energy",
-                "episode not converged",
-                "episode threshold exceeded pct",
             ],
             [
                 self.exploration_episode_lengths,
-                self.exploration_episode_returns,
+                self.exploration_episode_rdkit_returns,
+                self.exploration_episode_dft_returns,
                 self.exploration_episode_final_energy,
-                self.exploration_episode_final_rl_energy,
-                self.exploration_not_converged,
-                self.exploration_threshold_exceeded_pct,
             ],
         ):
             if len(d) == 0:
@@ -93,16 +89,13 @@ class Logger:
     def update_evaluation_statistics(
         self,
         episode_length,
-        episode_return,
+        episode_rdkit_return,
         episode_final_energy,
-        episode_final_rl_energy,
-        threshold_exceeded_pct,
-        not_converged,
     ):
         self.exploration_episode_number += 1
         self.exploration_episode_lengths.append(episode_length)
-        self.exploration_episode_returns.append(episode_return)
+        self.exploration_episode_rdkit_returns.append(episode_rdkit_return)
         self.exploration_episode_final_energy.append(episode_final_energy)
-        self.exploration_episode_final_rl_energy.append(episode_final_rl_energy)
-        self.exploration_threshold_exceeded_pct.append(threshold_exceeded_pct)
-        self.exploration_not_converged.append(not_converged)
+
+    def update_dft_return_statistics(self, episode_dft_return):
+        self.exploration_episode_dft_returns.append(episode_dft_return)

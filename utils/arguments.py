@@ -266,10 +266,17 @@ def get_args():
         help="Percentage of conformations from the initial database in each batch",
     )
     parser.add_argument(
-        "--max_timesteps",
+        "--max_oracle_steps",
         default=1e6,
         type=int,
-        help="Max time steps to run environment",
+        help="Max number of oracle calls",
+    )
+    parser.add_argument(
+        "--utd_ratio",
+        default=1,
+        type=int,
+        help="Number of NN updates per each data sample in replay buffer.\
+              Total number of training steps = utd_ratio * max_oracle_steps",
     )
     parser.add_argument(
         "--subtract_atomization_energy",

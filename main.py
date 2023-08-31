@@ -55,12 +55,13 @@ def main(args, experiment_folder):
             args.subtract_atomization_energy and atomrefs
         ), "Attempting to train with no atomization energy subtraction\
             will likely result in the divergence of the model"
-        # Initialize a fixed replay buffer with conformations from the database
-        initial_replay_buffer = fill_initial_replay_buffer(DEVICE, args, atomrefs)
+
+    # Initialize a fixed replay buffer with conformations from the database
+    initial_replay_buffer = fill_initial_replay_buffer(DEVICE, args, atomrefs)
 
     replay_buffer = ReplayBuffer(
         device=DEVICE,
-        max_size=args.replay_buffer_size,
+        max_size=args.max_oracle_steps,
         atomrefs=atomrefs,
         initial_RB=initial_replay_buffer,
         initial_conf_pct=args.initial_conf_pct,
@@ -87,7 +88,7 @@ def main(args, experiment_folder):
         lr_scheduler=args.lr_scheduler,
         energy_loss_coef=args.energy_loss_coef,
         force_loss_coef=args.force_loss_coef,
-        total_steps=args.max_timesteps,
+        total_steps=args.max_oracle_steps,
         optimizer_name=args.optimizer,
     )
 
@@ -109,9 +110,13 @@ def main(args, experiment_folder):
             trainer.light_load(args.load_baseline)
 
     policy.train()
-    max_timesteps = int(args.max_timesteps) // args.n_parallel
 
-    for t in range(start_iter, max_timesteps):
+    # Set training flag to False (for dft reward only)
+    train_model_flag = False
+
+    # Train until the number of conformations in
+    # replay buffer is less than max_oracle_steps
+    while not replay_buffer.replay_buffer_full:
         start = time.perf_counter()
         update_condition = replay_buffer.size >= args.batch_size
 
@@ -132,23 +137,33 @@ def main(args, experiment_folder):
 
             next_state, rewards, dones, info = env.step(actions)
 
-            # Save data to replay buffer
-            prev_start = time.perf_counter()
-            experience_saver(next_state, rewards, dones)
-            print(
-                "experience save time: {:.4f}".format(time.perf_counter() - prev_start)
-            )
+            if args.reward == "dft":
+                # If task queue is full wait for all tasks to finish and store data to RB
+                if env.dft_oracle.task_queue_full_flag:
+                    (
+                        states,
+                        energies,
+                        forces,
+                        episode_total_delta_energies,
+                    ) = env.dft_oracle.get_data()
+                    replay_buffer.add(states, forces, energies)
+
+                    assert len(episode_returns) == len(episode_total_delta_energies)
+                    logger.update_dft_return_statistics(episode_total_delta_energies)
+                    train_model_flag = True
+            else:
+                experience_saver(next_state, rewards, dones)
+                episode_returns += rewards
 
             # Move to next state
             state = next_state
-            episode_returns += rewards
         else:
             dones = np.stack([True for _ in range(args.n_parallel)])
 
-        # Train agent after collecting sufficient data
-        prev_start = time.perf_counter()
-        if update_condition:
-            for update_num in range(args.n_parallel):
+        if update_condition and (args.reward != "dft" or train_model_flag):
+            # Train agent after collecting sufficient data
+            prev_start = time.perf_counter()
+            for update_num in range(args.n_parallel * args.utd_ratio):
                 step_metrics = trainer.update(replay_buffer)
                 new_start = time.perf_counter()
                 print(
@@ -157,6 +172,7 @@ def main(args, experiment_folder):
                     )
                 )
                 prev_start = new_start
+            train_model_flag = False
         else:
             step_metrics = dict()
 
@@ -170,10 +186,10 @@ def main(args, experiment_folder):
             # Calculate average number of pairs of atoms too close together
             # in env before and after processing
             step_metrics["Molecule/num_bad_pairs_before"] = info[
-                "total_bad_pairs_before_process"
+                "total_bad_pairs_before_processing"
             ]
             step_metrics["Molecule/num_bad_pairs_after"] = info[
-                "total_bad_pairs_after_process"
+                "total_bad_pairs_after_processing"
             ]
             # Update training statistics
             for i, done in enumerate(dones):
@@ -182,9 +198,6 @@ def main(args, experiment_folder):
                         episode_timesteps[i] + 1,
                         episode_returns[i].item(),
                         info["final_energy"][i],
-                        info["final_rl_energy"][i],
-                        info["threshold_exceeded_pct"][i],
-                        info["not_converged"][i],
                     )
                     episode_returns[i] = 0
 
@@ -203,12 +216,13 @@ def main(args, experiment_folder):
         print("Full iteration time: {:.4f}".format(time.perf_counter() - start))
 
         # Evaluate episode
-        if (t + 1) % math.ceil(args.eval_freq / float(args.n_parallel)) == 0:
+        if (replay_buffer.size // args.n_parallel) % math.ceil(
+            args.eval_freq / float(args.n_parallel)
+        ) == 0:
             # Update eval policy
-            # if args.actor != "rdkit":
-            #    eval_policy.actor = copy.deepcopy(policy.actor)
             eval_policy.actor = copy.deepcopy(policy.actor)
-            step_metrics["Total_timesteps"] = (t + 1) * args.n_parallel
+            step_metrics["Total_timesteps"] = replay_buffer.size
+            step_metrics["Total_training_steps"] = replay_buffer.size * args.utd_ratio
             step_metrics["FPS"] = args.n_parallel / (time.perf_counter() - start)
             if not args.store_only_initial_conformations or args.reward == "rdkit":
                 step_metrics.update(
@@ -222,7 +236,7 @@ def main(args, experiment_folder):
             logger.log(step_metrics)
 
         # Save checkpoints
-        if (t + 1) % (
+        if (replay_buffer.size // args.n_parallel) % (
             args.full_checkpoint_freq // args.n_parallel
         ) == 0 and args.save_checkpoints:
             # Remove previous checkpoint
@@ -231,7 +245,7 @@ def main(args, experiment_folder):
                 os.remove(cp_file)
 
             # Save new checkpoint
-            save_t = (t + 1) * args.n_parallel
+            save_t = replay_buffer.size
             trainer_save_name = f"{experiment_folder}/full_cp_iter_{save_t}"
             trainer.save(trainer_save_name)
             with open(
@@ -239,10 +253,10 @@ def main(args, experiment_folder):
             ) as outF:
                 pickle.dump(replay_buffer, outF)
 
-        if (t + 1) % (
+        if (replay_buffer.size // args.n_parallel) % (
             args.light_checkpoint_freq // args.n_parallel
         ) == 0 and args.save_checkpoints:
-            save_t = (t + 1) * args.n_parallel
+            save_t = replay_buffer.size
             trainer_save_name = f"{experiment_folder}/light_cp_iter_{save_t}"
             trainer.light_save(trainer_save_name)
 

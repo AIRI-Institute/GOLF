@@ -103,8 +103,8 @@ class MolecularDynamics(gym.Env):
             obs.append(self.converter(self.atoms[idx]))
 
         # Add info about bad pairs
-        info["total_bad_pairs_before_process"] = self.total_num_bad_pairs_before
-        info["total_bad_pairs_after_process"] = self.total_num_bad_pairs_after
+        info["total_bad_pairs_before_processing"] = self.total_num_bad_pairs_before
+        info["total_bad_pairs_after_processing"] = self.total_num_bad_pairs_after
 
         # Collate observations into a batch
         obs = _atoms_collate_fn(obs)
