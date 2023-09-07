@@ -56,28 +56,27 @@ class RdkitOracle(BaseOracle):
     def __init__(self, n_parallel, update_coordinates_fn):
         super().__init__(n_parallel, update_coordinates_fn)
 
-    def get_energy(self, max_its=0, indices=None):
-        not_converged, energies, forces = (
-            np.zeros(self.n_parallel),
-            np.zeros(self.n_parallel),
-            [None] * self.n_parallel,
-        )
-        if not indices:
-            indices = range(self.n_parallel)
-        else:
-            indices = indices
+    def calculate_energies_forces(self, max_its=0, indices=None):
+        if indices is None:
+            indices = np.arange(self.n_parallel)
 
-        for i in indices:
+        not_converged, energies, forces = (
+            np.zeros(len(indices)),
+            np.zeros(len(indices)),
+            [None] * len(indices),
+        )
+
+        for i, idx in enumerate(indices):
             # Perform rdkit minimization
             ff = AllChem.MMFFGetMoleculeForceField(
-                self.molecule[i],
-                AllChem.MMFFGetMoleculeProperties(self.molecule[i]),
+                self.molecules[idx],
+                AllChem.MMFFGetMoleculeProperties(self.molecules[idx]),
                 confId=0,
             )
             ff.Initialize()
             not_converged[i] = ff.Minimize(maxIts=max_its)
-            energies[i] = get_rdkit_energy(self.molecule[i])
-            forces[i] = get_rdkit_force(self.molecule[i])
+            energies[i] = get_rdkit_energy(self.molecules[idx])
+            forces[i] = get_rdkit_force(self.molecules[idx])
 
         return not_converged, energies, forces
 
@@ -89,12 +88,12 @@ class RdkitOracle(BaseOracle):
         new_energies_ = np.copy(self.initial_energies)
         new_energies_[indices] = new_energies
 
-        rewards = self.initial_energy - new_energies_
+        rewards = self.initial_energies - new_energies_
         self.initial_energies = new_energies_
         return rewards
 
-    def initialize_molecules(self, indices, smiles_list, molecules, max_its):
-        for (i, smiles, molecule) in zip(indices, smiles_list, molecules):
+    def initialize_molecules(self, indices, smiles_list, molecules, max_its=0):
+        for i, smiles, molecule in zip(indices, smiles_list, molecules):
             # Calculate initial rdkit energy
             if smiles is not None:
                 # Initialize molecule from Smiles
@@ -108,16 +107,14 @@ class RdkitOracle(BaseOracle):
                 raise ValueError(
                     "Unknown molecule type {}".format(str(molecule.symbols))
                 )
-            self.update_coordinates["rdkit"](
-                self.molecules[i], molecule.get_positions()
-            )
-        _, initial_energies, forces = self.get_energy(max_its, indices)
+            self.update_coordinates_fn(self.molecules[i], molecule.get_positions())
+        _, initial_energies, forces = self.calculate_energies_forces(max_its, indices)
 
         # Set initial energies for new molecules
-        self.initial_energies[indices] = initial_energies[indices]
+        self.initial_energies[indices] = initial_energies
 
         # Set forces
-        for (i, force) in zip(indices, forces):
+        for i, force in zip(indices, forces):
             self.forces[i] = force
 
 
@@ -154,7 +151,6 @@ class DFTOracle(BaseOracle):
         results = self.wait_tasks()
         assert len(results) == self.n_parallel
 
-        results = sorted(results, key=lambda x: x[0])
         _, energies, forces, obs, initial_energies = zip(*results)
 
         energies = np.array(energies)
@@ -193,6 +189,7 @@ class DFTOracle(BaseOracle):
                 self.forces[i] = force
 
     def submit_tasks(self, indices):
+        self.submitted_indices = indices
         for i in indices:
             # Replace early_stop_steps with 0
             new_task = (i, 0, self.molecules[i].copy())
@@ -226,8 +223,10 @@ class DFTOracle(BaseOracle):
     def wait_tasks(self):
         results = []
 
+        done_task_ids = []
         # Wait for all active tasks to finish
-        for task in self.tasks.values():
+        for key, task in self.tasks.items():
+            done_task_ids.append(key)
             future = task["future"]
             obs = task["obs"]
             initial_energy = task["initial_energy"]
@@ -237,10 +236,11 @@ class DFTOracle(BaseOracle):
                     f"DFT did not converged for {self.molecules[i].symbols}, id: {i}",
                     flush=True,
                 )
+                energy = initial_energy
             results.append((i, energy, force, obs, initial_energy))
 
         # Delete all finished tasks
-        for key in self.tasks.keys():
+        for key in done_task_ids:
             del self.tasks[key]
 
         return results
@@ -323,9 +323,10 @@ class RewardWrapper(gym.Wrapper):
         # Calculate rdkit energies and forces
         calc_rdkit_energy_indices = np.where(
             self.minimize_on_every_step | (self.minimize_on_done & dones)
-        )
-        _, new_energies, forces = self.rdkit_oracle.get_energy(
-            calc_rdkit_energy_indices
+        )[0]
+
+        _, new_energies, forces = self.rdkit_oracle.calculate_energies_forces(
+            indices=calc_rdkit_energy_indices
         )
 
         # Update current energies and forces. Calculate reward
@@ -339,7 +340,7 @@ class RewardWrapper(gym.Wrapper):
         dones[self.negative_rewards_counter >= self.max_num_negative_rewards] = True
 
         # Log final energies of molecules
-        info["final_energy"] = new_energies
+        info["final_energy"] = self.rdkit_oracle.initial_energies
 
         # DFT rewards
         if self.dft:
@@ -348,11 +349,17 @@ class RewardWrapper(gym.Wrapper):
             # an error in DFT calculation and/or significantly
             # slow them down. To mitigate this we propose to replace the DFT reward
             # in such states with the Rdkit reward, as they are strongly correlated in such states.
-            rdkit_energy_thresh_exceeded = new_energies >= RDKIT_ENERGY_THRESH
+            rdkit_energy_thresh_exceeded = (
+                self.rdkit_oracle.initial_energies >= RDKIT_ENERGY_THRESH
+            )
 
             # Calculate energy and forces with DFT only for terminal states.
             # Skip conformations with energy higher than RDKIT_ENERGY_THRESH
-            calculate_dft_energy_env_ids = dones & ~rdkit_energy_thresh_exceeded
+            calculate_dft_energy_env_ids = np.where(
+                dones & ~rdkit_energy_thresh_exceeded
+            )[0]
+            if len(calculate_dft_energy_env_ids) > 0:
+                info["calculate_dft_energy_env_ids"] = calculate_dft_energy_env_ids
             self.dft_oracle.submit_tasks(calculate_dft_energy_env_ids)
 
         return obs, rdkit_rewards, dones, info
@@ -383,7 +390,7 @@ class RewardWrapper(gym.Wrapper):
         self, molecules, smiles_list, energy_list, force_list, max_its=0
     ):
         super().reset(increment_conf_idx=False)
-        indices = np.arage(self.n_parallel)
+        indices = np.arange(self.n_parallel)
 
         # Reset negative rewards counter
         self.negative_rewards_counter.fill(0.0)
@@ -394,7 +401,7 @@ class RewardWrapper(gym.Wrapper):
             self.env.atoms[i] = molecule.copy()
             obs_list.append(self.env.converter(molecule))
 
-        self.rdkit_oracle.initialize_molecules(indices, smiles_list, molecules)
+        self.rdkit_oracle.initialize_molecules(indices, smiles_list, molecules, max_its)
 
         if self.dft:
             self.dft_oracle.initialize_molecules(

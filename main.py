@@ -57,7 +57,9 @@ def main(args, experiment_folder):
             will likely result in the divergence of the model"
 
     # Initialize a fixed replay buffer with conformations from the database
+    print("Filling replay buffer with initial conformations...")
     initial_replay_buffer = fill_initial_replay_buffer(DEVICE, args, atomrefs)
+    print(f"Done! RB size: {initial_replay_buffer.size}")
 
     replay_buffer = ReplayBuffer(
         device=DEVICE,
@@ -88,7 +90,7 @@ def main(args, experiment_folder):
         lr_scheduler=args.lr_scheduler,
         energy_loss_coef=args.energy_loss_coef,
         force_loss_coef=args.force_loss_coef,
-        total_steps=args.max_oracle_steps,
+        total_steps=args.max_oracle_steps * args.utd_ratio,
         optimizer_name=args.optimizer,
     )
 
@@ -113,6 +115,14 @@ def main(args, experiment_folder):
 
     # Set training flag to False (for dft reward only)
     train_model_flag = False
+
+    # Set evaluation/save flags to False (for dft reward only).
+    # Flag is set to True every time new experience is added
+    # to replay buffer. This is done to avoid multiple
+    # evaluations of the same model
+    eval_model_flag = False
+    full_save_flag = False
+    light_save_flag = False
 
     # Train until the number of conformations in
     # replay buffer is less than max_oracle_steps
@@ -150,7 +160,12 @@ def main(args, experiment_folder):
 
                     assert len(episode_returns) == len(episode_total_delta_energies)
                     logger.update_dft_return_statistics(episode_total_delta_energies)
+
+                    # After new data has been added to replay buffer reset all flags
                     train_model_flag = True
+                    eval_model_flag = True
+                    full_save_flag = True
+                    light_save_flag = True
             else:
                 experience_saver(next_state, rewards, dones)
                 episode_returns += rewards
@@ -216,9 +231,10 @@ def main(args, experiment_folder):
         print("Full iteration time: {:.4f}".format(time.perf_counter() - start))
 
         # Evaluate episode
-        if (replay_buffer.size // args.n_parallel) % math.ceil(
-            args.eval_freq / float(args.n_parallel)
-        ) == 0:
+        if (args.reward != "dft" or eval_model_flag) and (
+            replay_buffer.size // args.n_parallel
+        ) % math.ceil(args.eval_freq / float(args.n_parallel)) == 0:
+            print(f"Evaluation at step {replay_buffer.size}...")
             # Update eval policy
             eval_policy.actor = copy.deepcopy(policy.actor)
             step_metrics["Total_timesteps"] = replay_buffer.size
@@ -235,10 +251,17 @@ def main(args, experiment_folder):
                 )
             logger.log(step_metrics)
 
+            # Prevent evaluations until new data is added to replay buffer
+            eval_model_flag = False
+
         # Save checkpoints
-        if (replay_buffer.size // args.n_parallel) % (
-            args.full_checkpoint_freq // args.n_parallel
-        ) == 0 and args.save_checkpoints:
+        if (
+            (args.reward != "dft" or full_save_flag)
+            and (replay_buffer.size // args.n_parallel)
+            % (args.full_checkpoint_freq // args.n_parallel)
+            == 0
+            and args.save_checkpoints
+        ):
             # Remove previous checkpoint
             old_checkpoint_files = glob.glob(f"{experiment_folder}/full_cp_iter*")
             for cp_file in old_checkpoint_files:
@@ -253,12 +276,22 @@ def main(args, experiment_folder):
             ) as outF:
                 pickle.dump(replay_buffer, outF)
 
-        if (replay_buffer.size // args.n_parallel) % (
-            args.light_checkpoint_freq // args.n_parallel
-        ) == 0 and args.save_checkpoints:
+            # Prevent checkpoint saving until new data is added to replay buffer
+            full_save_flag = False
+
+        if (
+            (args.reward != "dft" or light_save_flag)
+            and (replay_buffer.size // args.n_parallel)
+            % (args.light_checkpoint_freq // args.n_parallel)
+            == 0
+            and args.save_checkpoints
+        ):
             save_t = replay_buffer.size
             trainer_save_name = f"{experiment_folder}/light_cp_iter_{save_t}"
             trainer.light_save(trainer_save_name)
+
+            # Prevent checkpoint saving until new data is added to replay buffer
+            light_save_flag = False
 
 
 if __name__ == "__main__":

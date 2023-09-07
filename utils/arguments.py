@@ -238,7 +238,7 @@ def get_args():
         "--lr_scheduler",
         default=None,
         type=none_or_str,
-        choices=[None, "OneCycleLR", "StepLR"],
+        choices=[None, "OneCycleLR", "CosineAnnealing", "StepLR"],
         help="LR scheduler",
     )
     parser.add_argument(

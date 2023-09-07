@@ -47,7 +47,7 @@ class ReplayBuffer(object):
         for i in range(len(energies)):
             self.states[self.ptr] = individual_states[i]
             self.energy[self.ptr] = energies[i]
-            self.forces[self.ptr] = torch.from_numpy(forces[i])
+            self.forces[self.ptr] = torch.tensor(forces[i], dtype=torch.float32)
             self.ptr = (self.ptr + 1) % self.max_size
             # self.size = min(self.size + 1, self.max_size)
             self.size = self.size + 1
@@ -129,6 +129,7 @@ def fill_initial_replay_buffer(device, args, atomrefs=None):
     )
 
     # Fill up the replay buffer
+    # for _ in range(100):
     for _ in range(total_confs):
         state = env.reset()
         # Save initial state in replay buffer

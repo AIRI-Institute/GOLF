@@ -39,8 +39,8 @@ class Logger:
         with open(experiment_folder / "config.json", "w") as config_file:
             json.dump(config.__dict__, config_file)
 
-        if config.__dict__.reward == "dft":
-            self._keep_n_episodes = config.__dict__.n_parallel
+        if config.__dict__["reward"] == "dft":
+            self._keep_n_episodes = config.__dict__["n_parallel"]
         else:
             self._keep_n_episodes = 10
         self.exploration_episode_lengths = deque(maxlen=self._keep_n_episodes)

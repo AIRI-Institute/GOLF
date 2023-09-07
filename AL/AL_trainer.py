@@ -72,6 +72,8 @@ class AL(object):
         metrics["force_loss"] = force_loss.item()
         metrics["energy_loss_contrib"] = energy_loss.item() * self.energy_loss_coef
         metrics["force_loss_contrib"] = force_loss.item() * self.force_loss_coef
+        if self.use_lr_scheduler:
+            metrics["lr"] = self.lr_scheduler.get_last_lr()[0]
 
         if not torch.all(torch.isfinite(loss)):
             print(f"Non finite values in loss")

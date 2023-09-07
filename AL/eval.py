@@ -71,15 +71,39 @@ def eval_policy_dft(actor, env, eval_episodes=10):
     start = time.perf_counter()
     max_timestamps = env.unwrapped.TL
     result = defaultdict(list)
-    episode_returns = np.zeros(env.unwrapped.n_parallel)
+    episode_returns = np.zeros(env.n_parallel)
+    dft_pct_of_minimized_energy = []
+
+    # Reset env and actor
     state = env.reset()
-
-    # Get initial final energies in case of an optimization failure
-    initial_energy = env.initial_energy["rdkit"]
-
-    # Reset initial states in actor
     actor.reset(state)
     actor.eval()
+
+    # Calculate optimal delta energy DFT
+    optimized_delta_energy_dft = np.zeros(env.n_parallel)
+    for i in range(env.n_parallel):
+        optimized_delta_energy_dft[i] = (
+            env.unwrapped.energy[i] - env.unwrapped.optimized_energy[i]
+        )
+
+    # Calculate optimal delta energy Rdkit
+    initial_energy_rdkit = env.rdkit_oracle.initial_energies
+
+    # First save all the data
+    molecules = [molecule.copy() for molecule in env.unwrapped.atoms]
+    smiles = env.unwrapped.smiles.copy()
+    dft_initial_energies = env.unwrapped.energy.copy()
+    dft_forces = env.unwrapped.force.copy()
+
+    # Get optimial rdkit energy and calculate delta
+    _, optimal_energy_rdkit, _ = env.rdkit_oracle.calculate_energies_forces(
+        max_its=5000
+    )
+    optimized_delta_energy_rdkit = initial_energy_rdkit - optimal_energy_rdkit
+
+    # Reset the environment again
+    env.set_initial_positions(molecules, smiles, dft_initial_energies, dft_forces)
+
     while len(result["eval/dft_delta_energy"]) < eval_episodes:
         episode_timesteps = env.unwrapped.get_env_step()
         # TODO incorporate actor dones into DFT evaluation
@@ -88,50 +112,88 @@ def eval_policy_dft(actor, env, eval_episodes=10):
         # actor_dones = select_action_result["done"]
 
         # Obser reward and next obs
-        state, rdkit_rewards, _, infos = env.step(action)
+        state, rdkit_rewards, _, info = env.step(action)
         dones = [(t + 1) > max_timestamps for t in episode_timesteps]
         episode_returns += rdkit_rewards
+
+        if "calculate_dft_energy_env_ids" in info:
+            dft_pct_of_minimized_energy.extend(
+                optimized_delta_energy_dft[
+                    info["calculate_dft_energy_env_ids"]
+                ].tolist()[: env.n_parallel - len(dft_pct_of_minimized_energy)]
+            )
 
         # If task queue is full wait for all tasks to finish
         if env.dft_oracle.task_queue_full_flag:
             _, _, _, episode_total_delta_energies = env.dft_oracle.get_data()
+            # Log total delta energy and pct of optimized energy
             result["eval/dft_delta_energy"].extend(
                 episode_total_delta_energies.tolist()
             )
+            dft_pct_of_minimized_energy = episode_total_delta_energies / np.array(
+                dft_pct_of_minimized_energy
+            )
+            result["eval/dft_pct_of_minimized_energy"].extend(
+                dft_pct_of_minimized_energy.tolist()
+            )
 
-        envs_to_reset = []
-        for i in range(env.unwrapped.n_parallel):
-            if dones[i]:
-                envs_to_reset.append(i)
+        # All trajectories terminate at the same time
+        if np.all(dones):
+            rdkit_pct_of_minimized_energy = (
+                episode_returns / optimized_delta_energy_rdkit
+            )
+            rdkit_delta_energy = episode_returns
+            final_energies = info["final_energy"]
 
-                # Optimization failure
-                if episode_returns[i] < 0:
-                    result["eval/pct_of_minimized_energy"].append(0.0)
-                    result["eval/delta_energy"].append(0.0)
-                    result["eval/final_energy"].append(initial_energy[i])
-                    result["eval/episode_len"].append(episode_timesteps[i])
-                else:
-                    # Get percentage of optimized energy if possible
-                    if env.unwrapped.optimized_energy[i]:
-                        optimized_delta_energy = (
-                            env.unwrapped.energy[i] - env.unwrapped.optimized_energy[i]
-                        )
-                        result["eval/pct_of_minimized_energy"].append(
-                            (episode_returns[i] / optimized_delta_energy).item()
-                        )
-                    else:
-                        result["eval/pct_of_minimized_energy"].append(0.0)
-                    result["eval/delta_energy"].append(episode_returns[i])
-                    result["eval/final_energy"].append(infos["final_energy"][i])
-                    result["eval/episode_len"].append(episode_timesteps[i])
-                episode_returns[i] = 0
+            # Optimization failure
+            optimization_failure_mask = episode_returns < 0
+            rdkit_pct_of_minimized_energy[optimization_failure_mask] = 0.0
+            rdkit_delta_energy[optimization_failure_mask] = 0.0
+            final_energies[optimization_failure_mask] = initial_energy_rdkit[
+                optimization_failure_mask
+            ]
 
-        if len(envs_to_reset) > 0:
-            reset_states = env.reset(indices=envs_to_reset)
-            # Recollate state_batch after resets as atomic numbers might have changed.
-            state = recollate_batch(state, envs_to_reset, reset_states)
-            # Reset initial states in policy
-            actor.reset(reset_states, indices=envs_to_reset)
+            # Log results
+            result["eval/rdkit_pct_of_minimized_energy"].extend(
+                rdkit_pct_of_minimized_energy.tolist()
+            )
+            result["eval/rdkit_delta_energy"].extend(rdkit_delta_energy.tolist())
+            result["eval/final_energy"].extend(final_energies.tolist())
+            result["eval/episode_len"].extend(episode_timesteps)
+
+            # Reset episode returns
+            episode_returns = np.zeros(env.n_parallel)
+
+            # Reset env and actor
+            state = env.reset()
+            actor.reset(state)
+            actor.eval()
+
+            # Update optimal delta energy DFT
+            for i in range(env.n_parallel):
+                optimized_delta_energy_dft[i] = (
+                    env.unwrapped.energy[i] - env.unwrapped.optimized_energy[i]
+                )
+
+            # Update optimal delta energy Rdkit
+            initial_energy_rdkit = env.rdkit_oracle.initial_energies
+
+            # First save all the data
+            molecules = [molecule.copy() for molecule in env.unwrapped.atoms]
+            smiles = env.unwrapped.smiles.copy()
+            dft_initial_energies = env.unwrapped.energy.copy()
+            dft_forces = env.unwrapped.force.copy()
+
+            # Get optimial rdkit energy and calculate delta
+            _, optimal_energy_rdkit, _ = env.rdkit_oracle.calculate_energies_forces(
+                max_its=5000
+            )
+            optimized_delta_energy_rdkit = initial_energy_rdkit - optimal_energy_rdkit
+
+            # Reset the environment again
+            env.set_initial_positions(
+                molecules, smiles, dft_initial_energies, dft_forces
+            )
 
     actor.train()
     result = {k: np.array(v).mean() for k, v in result.items()}
