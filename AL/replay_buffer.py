@@ -10,6 +10,9 @@ from env.moldynamics_env import env_fn
 from env.wrappers import RewardWrapper
 
 
+NORM_THRESHOLD = 10.5
+
+
 class ReplayBuffer(object):
     def __init__(
         self,
@@ -42,9 +45,11 @@ class ReplayBuffer(object):
 
     def add(self, states, forces, energies):
         energies = torch.tensor(energies, dtype=torch.float32)
+        force_norms = np.array([np.linalg.norm(force) for force in forces])
         individual_states = unpad_state(states)
-        # Update replay buffer
-        for i in range(len(energies)):
+        # Exclude conformations with forces that have a high norm
+        # from the replay buffer
+        for i in np.where(force_norms < NORM_THRESHOLD)[0]:
             self.states[self.ptr] = individual_states[i]
             self.energy[self.ptr] = energies[i]
             self.forces[self.ptr] = torch.tensor(forces[i], dtype=torch.float32)

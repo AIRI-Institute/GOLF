@@ -101,13 +101,9 @@ def main(args, experiment_folder):
     episode_returns = np.zeros(args.n_parallel)
 
     if args.load_model is not None:
-        start_iter = (
-            int(args.load_model.split("/")[-1].split("_")[-1]) // args.n_parallel + 1
-        )
         trainer.load(args.load_model)
         replay_buffer = pickle.load(open(f"{args.load_model}_replay", "rb"))
     else:
-        start_iter = 0
         if args.load_baseline is not None:
             trainer.light_load(args.load_baseline)
 
@@ -175,7 +171,9 @@ def main(args, experiment_folder):
         else:
             dones = np.stack([True for _ in range(args.n_parallel)])
 
-        if update_condition and (args.reward != "dft" or train_model_flag):
+        if (
+            update_condition and (args.reward != "dft" or train_model_flag)
+        ) or args.store_only_initial_conformations:
             # Train agent after collecting sufficient data
             prev_start = time.perf_counter()
             for update_num in range(args.n_parallel * args.utd_ratio):
@@ -187,7 +185,14 @@ def main(args, experiment_folder):
                     )
                 )
                 prev_start = new_start
+
+            # Reset flag
             train_model_flag = False
+
+            # Increase replay buffer size without adding any data
+            # so that the training is done for the correct amount of steps
+            if args.store_only_initial_conformations:
+                replay_buffer.size += args.n_parallel
         else:
             step_metrics = dict()
 
@@ -217,23 +222,28 @@ def main(args, experiment_folder):
                     episode_returns[i] = 0
 
         # If the episode is terminated
-        envs_to_reset = [i for i, done in enumerate(dones) if done]
+        if not args.store_only_initial_conformations:
+            envs_to_reset = [i for i, done in enumerate(dones) if done]
 
-        # Recollate state_batch after resets.
-        # Execute only if at least one env has reset.
-        if len(envs_to_reset) > 0:
-            reset_states = env.reset(indices=envs_to_reset)
-            state = recollate_batch(state, envs_to_reset, reset_states)
-            # Reset initial states in policy
-            policy.reset(reset_states, indices=envs_to_reset)
+            # Recollate state_batch after resets.
+            # Execute only if at least one env has reset.
+            if len(envs_to_reset) > 0:
+                reset_states = env.reset(indices=envs_to_reset)
+                state = recollate_batch(state, envs_to_reset, reset_states)
+                # Reset initial states in policy
+                policy.reset(reset_states, indices=envs_to_reset)
 
         # Print iteration time
         print("Full iteration time: {:.4f}".format(time.perf_counter() - start))
 
         # Evaluate episode
-        if (args.reward != "dft" or eval_model_flag) and (
-            replay_buffer.size // args.n_parallel
-        ) % math.ceil(args.eval_freq / float(args.n_parallel)) == 0:
+        if (
+            args.reward != "dft"
+            or eval_model_flag
+            or args.store_only_initial_conformations
+        ) and (replay_buffer.size // args.n_parallel) % math.ceil(
+            args.eval_freq / float(args.n_parallel)
+        ) == 0:
             print(f"Evaluation at step {replay_buffer.size}...")
             # Update eval policy
             eval_policy.actor = copy.deepcopy(policy.actor)
@@ -256,7 +266,11 @@ def main(args, experiment_folder):
 
         # Save checkpoints
         if (
-            (args.reward != "dft" or full_save_flag)
+            (
+                args.reward != "dft"
+                or full_save_flag
+                or args.store_only_initial_conformations
+            )
             and (replay_buffer.size // args.n_parallel)
             % (args.full_checkpoint_freq // args.n_parallel)
             == 0
@@ -271,16 +285,23 @@ def main(args, experiment_folder):
             save_t = replay_buffer.size
             trainer_save_name = f"{experiment_folder}/full_cp_iter_{save_t}"
             trainer.save(trainer_save_name)
-            with open(
-                f"{experiment_folder}/full_cp_iter_{save_t}_replay", "wb"
-            ) as outF:
-                pickle.dump(replay_buffer, outF)
+
+            # Do not save the RB if no new data is generated
+            if not args.store_only_initial_conformations:
+                with open(
+                    f"{experiment_folder}/full_cp_iter_{save_t}_replay", "wb"
+                ) as outF:
+                    pickle.dump(replay_buffer, outF)
 
             # Prevent checkpoint saving until new data is added to replay buffer
             full_save_flag = False
 
         if (
-            (args.reward != "dft" or light_save_flag)
+            (
+                args.reward != "dft"
+                or light_save_flag
+                or args.store_only_initial_conformations
+            )
             and (replay_buffer.size // args.n_parallel)
             % (args.light_checkpoint_freq // args.n_parallel)
             == 0
@@ -304,6 +325,7 @@ if __name__ == "__main__":
     # Check hyperparameters
     if args.store_only_initial_conformations:
         assert args.timelimit_train == 1
+        assert args.initial_conf_pct == 1.0
 
     if args.reward == "rdkit":
         assert not args.subtract_atomization_energy

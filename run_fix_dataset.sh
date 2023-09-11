@@ -1,6 +1,6 @@
 #! /bin/bash -ex
 
-cuda=$1
+cuda=$1get
 
 CUDA_VISIBLE_DEVICES=$cuda \
 python main.py --n_parallel 216 \
@@ -9,7 +9,7 @@ python main.py --n_parallel 216 \
 --eval_db_path env/data/test_4k_mff_optimized.db \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
---timelimit_train 100 \
+--timelimit_train 1 \
 --timelimit_eval 50 \
 --terminate_on_negative_reward True \
 --max_num_negative_rewards 1 \
@@ -27,7 +27,7 @@ python main.py --n_parallel 216 \
 --conf_opt_lr_scheduler Constant \
 --experience_saver reward_threshold \
 --grad_missmatch_threshold 1.0 \
---store_only_initial_conformations False \
+--store_only_initial_conformations True \
 --max_iter 5 \
 --lbfgs_device cpu \
 --momentum 0.0 \
@@ -41,7 +41,7 @@ python main.py --n_parallel 216 \
 --energy_loss_coef 0.01 \
 --force_loss_coef 0.99 \
 --replay_buffer_size 1000000 \
---initial_conf_pct 0.1 \
+--initial_conf_pct 1.0 \
 --max_oracle_steps 150000 \
 --utd_ratio 5 \
 --subtract_atomization_energy True \
