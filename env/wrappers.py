@@ -41,6 +41,8 @@ class BaseOracle:
         assert (
             len(positions) == self.n_parallel
         ), f"Not enough values to update all molecules! Expected {self.n_parallel} but got {len(positions)}"
+
+        # Update current molecules
         for i, position in enumerate(positions):
             self.update_coordinates_fn(self.molecules[i], position)
 
@@ -124,6 +126,7 @@ class DFTOracle(BaseOracle):
     ):
         super().__init__(n_parallel, update_coordinates_fn)
 
+        self.previous_molecules = [None] * self.n_parallel
         self.dft_server_destinations = get_dft_server_destinations(
             n_threads, port_type == "eval"
         )
@@ -139,6 +142,14 @@ class DFTOracle(BaseOracle):
         self.number_processed_conformations = 0
 
         self.task_queue_full_flag = False
+
+    def update_coordinates(self, positions):
+        # Update previous molecules
+        for i, mol in enumerate(self.molecules):
+            self.previous_molecules[i] = mol.copy()
+
+        # Update current molecules
+        super().update_coordinates(positions)
 
     def close_executors(self):
         for executor in self.executors:
@@ -167,6 +178,7 @@ class DFTOracle(BaseOracle):
             indices, molecules, initial_energies, forces
         ):
             self.molecules[i] = molecule.copy()
+            self.previous_molecules[i] = molecule.copy()
             if initial_energy is not None:
                 self.initial_energies[i] = initial_energy
                 self.forces[i] = force
@@ -192,7 +204,7 @@ class DFTOracle(BaseOracle):
         self.submitted_indices = indices
         for i in indices:
             # Replace early_stop_steps with 0
-            new_task = (i, 0, self.molecules[i].copy())
+            new_task = (i, 0, self.previous_molecules[i].copy())
 
             # Select worker and submit task
             worker_id = self.number_processed_conformations % len(
@@ -211,7 +223,7 @@ class DFTOracle(BaseOracle):
             self.tasks[self.number_processed_conformations] = {
                 "future": future,
                 "initial_energy": self.initial_energies[i],
-                "obs": self.converter(self.molecules[i]),
+                "obs": self.converter(self.previous_molecules[i]),
             }
             self.number_processed_conformations += 1
 
@@ -247,19 +259,6 @@ class DFTOracle(BaseOracle):
 
 
 class RewardWrapper(gym.Wrapper):
-    molecules_xyz = {
-        "C7O3C2OH8": "aspirin.xyz",
-        "N2C12H10": "azobenzene.xyz",
-        "C6H6": "benzene.xyz",
-        "C2OH6": "ethanol.xyz",
-        "C3O2H4": "malonaldehyde.xyz",
-        "C10H8": "naphthalene.xyz",
-        "C2ONC4OC2H9": "paracetamol.xyz",
-        "C3OC4O2H6": "salicylic_acid.xyz",
-        "C7H8": "toluene.xyz",
-        "C2NCNCO2H4": "uracil.xyz",
-    }
-
     def __init__(
         self,
         env,
@@ -268,7 +267,6 @@ class RewardWrapper(gym.Wrapper):
         minimize_on_every_step=False,
         minimize_on_done=True,
         evaluation=False,
-        molecules_xyz_prefix="",
         terminate_on_negative_reward=False,
         max_num_negative_rewards=1,
     ):
@@ -278,7 +276,6 @@ class RewardWrapper(gym.Wrapper):
         self.minimize_on_every_step = minimize_on_every_step
         self.minimize_on_done = minimize_on_done
         self.evaluation = evaluation
-        self.molecules_xyz_prefix = molecules_xyz_prefix
         self.terminate_on_negative_reward = terminate_on_negative_reward
         self.max_num_negative_rewards = max_num_negative_rewards
 

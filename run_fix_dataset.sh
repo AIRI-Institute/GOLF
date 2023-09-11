@@ -5,7 +5,7 @@ cuda=$1get
 CUDA_VISIBLE_DEVICES=$cuda \
 python main.py --n_parallel 216 \
 --n_threads 24 \
---db_path env/data/train_4k_mff_with_forces_wooutlier.db \
+--db_path ../data/train_4k_mff_trajectories_50k.db \
 --eval_db_path env/data/test_4k_mff_optimized.db \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
@@ -49,7 +49,7 @@ python main.py --n_parallel 216 \
 --eval_freq 1080 \
 --n_eval_runs 64 \
 --eval_termination_mode fixed_length \
---exp_name efficient_DFT_LBFGS \
+--exp_name fixed_dataset_DFT \
 --full_checkpoint_freq 10000 \
 --light_checkpoint_freq 50000 \
 --save_checkpoints True \
