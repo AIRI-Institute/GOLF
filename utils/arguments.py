@@ -98,12 +98,6 @@ def get_args():
         type=str2bool,
         help="Whether to minimize conformation with rdkit on every step",
     )
-    parser.add_argument(
-        "--molecules_xyz_prefix",
-        type=str,
-        default="",
-        help="Path to env/ folder. For cluster compatability",
-    )
 
     # Backbone args
     parser.add_argument(

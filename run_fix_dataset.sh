@@ -5,7 +5,7 @@ cuda=$1get
 CUDA_VISIBLE_DEVICES=$cuda \
 python main.py --n_parallel 216 \
 --n_threads 24 \
---db_path ../data/train_4k_mff_trajectories_50k.db \
+--db_path env/data/train_4k_mff_with_forces_wooutlier.db \
 --eval_db_path env/data/test_4k_mff_optimized.db \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
@@ -15,7 +15,6 @@ python main.py --n_parallel 216 \
 --max_num_negative_rewards 1 \
 --reward dft \
 --minimize_on_every_step True \
---molecules_xyz_prefix env/molecules_xyz \
 --backbone painn \
 --n_interactions 3 \
 --cutoff 5.0 \

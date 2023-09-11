@@ -237,9 +237,13 @@ def main(args, experiment_folder):
         print("Full iteration time: {:.4f}".format(time.perf_counter() - start))
 
         # Evaluate episode
-        if (args.reward != "dft" or eval_model_flag) and (
-            replay_buffer.size // args.n_parallel
-        ) % math.ceil(args.eval_freq / float(args.n_parallel)) == 0:
+        if (
+            args.reward != "dft"
+            or eval_model_flag
+            or args.store_only_initial_conformations
+        ) and (replay_buffer.size // args.n_parallel) % math.ceil(
+            args.eval_freq / float(args.n_parallel)
+        ) == 0:
             print(f"Evaluation at step {replay_buffer.size}...")
             # Update eval policy
             eval_policy.actor = copy.deepcopy(policy.actor)
