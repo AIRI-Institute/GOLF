@@ -149,7 +149,11 @@ class MolecularDynamics(gym.Env):
 
             # energy in Hartrees
             if hasattr(row.data, "energy"):
-                self.energy[idx] = row.data["energy"]
+                if isinstance(row.data["energy"], list):
+                    assert len(row.data["energy"]) == 1
+                    self.energy[idx] = row.data["energy"][0]
+                else:
+                    self.energy[idx] = row.data["energy"]
 
             if hasattr(row.data, "optimal_energy"):
                 self.optimized_energy[idx] = row.data["optimal_energy"]
