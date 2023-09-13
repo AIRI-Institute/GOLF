@@ -63,7 +63,8 @@ def main(args, experiment_folder):
 
     replay_buffer = ReplayBuffer(
         device=DEVICE,
-        max_size=args.max_oracle_steps,
+        max_size=args.replay_buffer_size,
+        max_total_conformations=args.max_oracle_steps,
         atomrefs=atomrefs,
         initial_RB=initial_replay_buffer,
         initial_conf_pct=args.initial_conf_pct,
@@ -193,11 +194,14 @@ def main(args, experiment_folder):
             # so that the training is done for the correct amount of steps
             if args.store_only_initial_conformations:
                 replay_buffer.size += args.n_parallel
+                replay_buffer.replay_buffer_full = (
+                    replay_buffer.size >= replay_buffer.max_total_conformations
+                )
         else:
             step_metrics = dict()
 
         step_metrics["Timestamp"] = str(datetime.datetime.now())
-        step_metrics["RB_size"] = replay_buffer.size
+        step_metrics["RB_size"] = min(replay_buffer.size, replay_buffer.max_size)
 
         if not args.store_only_initial_conformations:
             step_metrics["Action_norm"] = calculate_action_norm(

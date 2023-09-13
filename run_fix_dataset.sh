@@ -5,7 +5,7 @@ cuda=$1get
 CUDA_VISIBLE_DEVICES=$cuda \
 python main.py --n_parallel 216 \
 --n_threads 24 \
---db_path env/data/train_4k_mff_with_forces_wooutlier.db \
+--db_path ../data/train_4f_mff_trajectories_10k.db \
 --eval_db_path env/data/test_4k_mff_optimized.db \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \

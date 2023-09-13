@@ -17,13 +17,15 @@ class ReplayBuffer(object):
     def __init__(
         self,
         device,
-        max_size=int(1e6),
+        max_size,
+        max_total_conformations,
         atomrefs=None,
         initial_RB=None,
         initial_conf_pct=0.0,
     ):
         self.device = device
         self.max_size = max_size
+        self.max_total_conformations = max_total_conformations
         self.initial_RB = initial_RB
         self.ptr = 0
         self.size = 0
@@ -57,7 +59,7 @@ class ReplayBuffer(object):
             # self.size = min(self.size + 1, self.max_size)
             self.size = self.size + 1
 
-        self.replay_buffer_full = self.size >= self.max_size
+        self.replay_buffer_full = self.size >= self.max_total_conformations
 
     def sample(self, batch_size):
         new_samples_batch_size = int(batch_size * (1 - self.initial_conf_pct))
@@ -94,7 +96,7 @@ class ReplayBuffer(object):
         return state_batch, forces, energy
 
     def sample_wo_collate(self, batch_size):
-        ind = np.random.choice(self.size, batch_size, replace=False)
+        ind = np.random.choice(min(self.size, self.max_size), batch_size, replace=False)
         states = [self.states[i] for i in ind]
         forces = [self.forces[i] for i in ind]
         energy = self.energy[ind].to(self.device)
@@ -129,7 +131,10 @@ def fill_initial_replay_buffer(device, args, atomrefs=None):
     env = RewardWrapper(env, **reward_wrapper_kwargs)
 
     initial_replay_buffer = ReplayBuffer(
-        device, max_size=total_confs, atomrefs=atomrefs
+        device,
+        max_size=total_confs,
+        max_total_conformations=total_confs,
+        atomrefs=atomrefs,
     )
 
     # Fill up the replay buffer

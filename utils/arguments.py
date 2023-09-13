@@ -251,9 +251,6 @@ def get_args():
         help="Weight for the forces part of the backbone loss",
     )
     parser.add_argument(
-        "--replay_buffer_size", default=int(1e5), type=int, help="Size of replay buffer"
-    )
-    parser.add_argument(
         "--initial_conf_pct",
         default=0.0,
         type=float,
@@ -264,6 +261,12 @@ def get_args():
         default=1e6,
         type=int,
         help="Max number of oracle calls",
+    )
+    parser.add_argument(
+        "--replay_buffer_size",
+        default=1e5,
+        type=int,
+        help="Max capacity of the replay buffer",
     )
     parser.add_argument(
         "--utd_ratio",

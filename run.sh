@@ -3,7 +3,7 @@
 cuda=$1
 
 CUDA_VISIBLE_DEVICES=$cuda \
-python main.py --n_parallel 216 \
+python main.py --n_parallel 240 \
 --n_threads 24 \
 --db_path env/data/train_4k_mff_with_forces_wooutlier.db \
 --eval_db_path env/data/test_4k_mff_optimized.db \
@@ -15,7 +15,6 @@ python main.py --n_parallel 216 \
 --max_num_negative_rewards 1 \
 --reward dft \
 --minimize_on_every_step True \
---molecules_xyz_prefix env/molecules_xyz \
 --backbone painn \
 --n_interactions 3 \
 --cutoff 5.0 \
@@ -40,13 +39,13 @@ python main.py --n_parallel 216 \
 --clip_value 1.0 \
 --energy_loss_coef 0.01 \
 --force_loss_coef 0.99 \
---replay_buffer_size 1000000 \
+--replay_buffer_size 10000 \
 --initial_conf_pct 0.1 \
 --max_oracle_steps 150000 \
 --utd_ratio 5 \
 --subtract_atomization_energy True \
 --action_norm_limit 1.0 \
---eval_freq 1080 \
+--eval_freq 1200 \
 --n_eval_runs 64 \
 --eval_termination_mode fixed_length \
 --exp_name efficient_DFT_LBFGS \
