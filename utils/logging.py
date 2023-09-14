@@ -24,17 +24,31 @@ class Logger:
         # If training is restarted truncate metrics file
         # to the last checkpoint
         self.metrics_file = experiment_folder / "metrics.json"
-        if config.load_model is not None:
+        if config.load_model:
+            # Load config file from checkpoint to correctly estimate eval_freq
+            with open(experiment_folder / "config.json", "r") as old_config_file:
+                old_config = json.load(old_config_file)
             with open(self.metrics_file, "rb") as f:
                 lines = f.readlines()
-            true_eval_freq = config.n_parallel * (config.eval_freq // config.n_parallel)
+            true_eval_freq = old_config["n_parallel"] * (
+                old_config["eval_freq"] // old_config["n_parallel"]
+            )
             checkpoint_iter = (
                 int(config.load_model.split("/")[-1].split("_")[-1]) // true_eval_freq
             )
             N = len(lines) - checkpoint_iter
             with open(self.metrics_file, "wb") as f:
-                f.writelines(lines[:-N])
-        self.metrics_file.touch()
+                if N > 0:
+                    f.writelines(lines[:-N])
+                elif N == 0:
+                    f.writelines(lines)
+                else:
+                    warnings.warn(
+                        "Checkpoint iteration is older that the latest record in 'metrics.json'."
+                    )
+                    f.writelines(lines)
+        else:
+            self.metrics_file.touch()
 
         with open(experiment_folder / "config.json", "w") as config_file:
             json.dump(config.__dict__, config_file)

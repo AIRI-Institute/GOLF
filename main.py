@@ -56,18 +56,29 @@ def main(args, experiment_folder):
         ), "Attempting to train with no atomization energy subtraction\
             will likely result in the divergence of the model"
 
-    # Initialize a fixed replay buffer with conformations from the database
-    print("Filling replay buffer with initial conformations...")
-    initial_replay_buffer = fill_initial_replay_buffer(DEVICE, args, atomrefs)
-    print(f"Done! RB size: {initial_replay_buffer.size}")
-
-    replay_buffer = ReplayBuffer(
-        device=DEVICE,
-        max_size=args.replay_buffer_size,
-        max_total_conformations=args.max_oracle_steps,
-        atomrefs=atomrefs,
-        initial_RB=initial_replay_buffer,
-        initial_conf_pct=args.initial_conf_pct,
+    if args.load_model:
+        replay_buffer = pickle.load(open(f"{args.load_model}_replay", "rb"))
+        # For compatability
+        if not hasattr(replay_buffer, "max_total_conformations"):
+            replay_buffer.max_total_conformations = args.max_oracle_steps
+    else:
+        # Initialize a fixed replay buffer with conformations from the database
+        print("Filling replay buffer with initial conformations...")
+        initial_replay_buffer = fill_initial_replay_buffer(DEVICE, args, atomrefs)
+        print(f"Done! RB size: {initial_replay_buffer.size}")
+        replay_buffer = ReplayBuffer(
+            device=DEVICE,
+            max_size=args.replay_buffer_size,
+            max_total_conformations=args.max_oracle_steps,
+            atomrefs=atomrefs,
+            initial_RB=initial_replay_buffer,
+            initial_conf_pct=args.initial_conf_pct,
+        )
+    # TMP
+    print(
+        replay_buffer.size,
+        replay_buffer.max_size,
+        replay_buffer.max_total_conformations,
     )
 
     # Inititalize policy and eval policy
@@ -94,19 +105,17 @@ def main(args, experiment_folder):
         total_steps=args.max_oracle_steps * args.utd_ratio,
         optimizer_name=args.optimizer,
     )
+    if args.load_model:
+        trainer.load(args.load_model)
+    else:
+        if args.load_baseline:
+            trainer.light_load(args.load_baseline)
 
     state = env.reset()
     # Set initial states in Policy
     policy.reset(state)
 
     episode_returns = np.zeros(args.n_parallel)
-
-    if args.load_model is not None:
-        trainer.load(args.load_model)
-        replay_buffer = pickle.load(open(f"{args.load_model}_replay", "rb"))
-    else:
-        if args.load_baseline is not None:
-            trainer.light_load(args.load_baseline)
 
     policy.train()
 
