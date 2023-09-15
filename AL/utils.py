@@ -51,12 +51,14 @@ def get_lr_scheduler(scheduler_type, optimizer, **kwargs):
             max_lr=10 * kwargs["initial_lr"],
             final_div_factor=kwargs["final_div_factor"],
             total_steps=kwargs["total_steps"],
+            last_epoch=kwargs["last_epoch"],
         )
     elif scheduler_type == "CosineAnnealing":
         return torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
             T_max=kwargs["total_steps"],
             eta_min=kwargs["initial_lr"] / kwargs["final_div_factor"],
+            last_epoch=kwargs["last_epoch"],
         )
     elif scheduler_type == "StepLR":
         return torch.optim.lr_scheduler.StepLR(

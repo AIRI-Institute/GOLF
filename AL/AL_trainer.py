@@ -23,19 +23,28 @@ class AL(object):
         lr_scheduler=None,
         energy_loss_coef=0.01,
         force_loss_coef=0.99,
+        load_model=None,
         total_steps=0,
+        utd_ratio=1,
         optimizer_name="adam",
     ):
         self.actor = policy.actor
         self.optimizer = get_optimizer_class(optimizer_name)(
             self.actor.parameters(), lr=lr
         )
+        if load_model:
+            self.load(load_model)
+            last_epoch = int(load_model.split("/")[-1].split("_")[-1]) * utd_ratio
+        else:
+            last_epoch = -1
+
         self.use_lr_scheduler = lr_scheduler is not None
         if self.use_lr_scheduler:
             lr_kwargs = {
                 "gamma": 0.1,
                 "total_steps": total_steps,
                 "final_div_factor": 1e3,
+                "last_epoch": last_epoch,
             }
             lr_kwargs["initial_lr"] = lr
             self.lr_scheduler = get_lr_scheduler(

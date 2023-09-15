@@ -56,7 +56,7 @@ def main(args, experiment_folder):
         ), "Attempting to train with no atomization energy subtraction\
             will likely result in the divergence of the model"
 
-    if args.load_model:
+    if args.load_model and not args.store_only_initial_conformations:
         replay_buffer = pickle.load(open(f"{args.load_model}_replay", "rb"))
         # For compatability
         if not hasattr(replay_buffer, "max_total_conformations"):
@@ -74,6 +74,10 @@ def main(args, experiment_folder):
             initial_RB=initial_replay_buffer,
             initial_conf_pct=args.initial_conf_pct,
         )
+
+    if args.load_model and args.store_only_initial_conformations:
+        # Explicitly set RB size to the checkpoint iteration
+        replay_buffer.size = int(args.load_model.split("/")[-1].split("_")[-1])
     # TMP
     print(
         replay_buffer.size,
@@ -102,14 +106,13 @@ def main(args, experiment_folder):
         lr_scheduler=args.lr_scheduler,
         energy_loss_coef=args.energy_loss_coef,
         force_loss_coef=args.force_loss_coef,
+        load_model=args.load_model,
         total_steps=args.max_oracle_steps * args.utd_ratio,
+        utd_ratio=args.utd_ratio,
         optimizer_name=args.optimizer,
     )
-    if args.load_model:
-        trainer.load(args.load_model)
-    else:
-        if args.load_baseline:
-            trainer.light_load(args.load_baseline)
+    if args.load_baseline:
+        trainer.light_load(args.load_baseline)
 
     state = env.reset()
     # Set initial states in Policy
@@ -189,11 +192,11 @@ def main(args, experiment_folder):
             for update_num in range(args.n_parallel * args.utd_ratio):
                 step_metrics = trainer.update(replay_buffer)
                 new_start = time.perf_counter()
-                print(
-                    "policy.train {} time: {:.4f}".format(
-                        update_num, new_start - prev_start
-                    )
-                )
+                # print(
+                #     "policy.train {} time: {:.4f}".format(
+                #         update_num, new_start - prev_start
+                #     )
+                # )
                 prev_start = new_start
 
             # Reset flag
