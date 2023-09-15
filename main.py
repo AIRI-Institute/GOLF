@@ -78,12 +78,6 @@ def main(args, experiment_folder):
     if args.load_model and args.store_only_initial_conformations:
         # Explicitly set RB size to the checkpoint iteration
         replay_buffer.size = int(args.load_model.split("/")[-1].split("_")[-1])
-    # TMP
-    print(
-        replay_buffer.size,
-        replay_buffer.max_size,
-        replay_buffer.max_total_conformations,
-    )
 
     # Inititalize policy and eval policy
     policy, eval_policy = make_policies(env, eval_env, args)
