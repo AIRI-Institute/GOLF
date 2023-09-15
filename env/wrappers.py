@@ -160,7 +160,7 @@ class DFTOracle(BaseOracle):
 
         # Wait for all computations to finish
         results = self.wait_tasks()
-        assert len(results) == self.n_parallel
+        assert len(results) > 0
 
         _, energies, forces, obs, initial_energies = zip(*results)
 

@@ -324,6 +324,22 @@ def main(args, experiment_folder):
             # Prevent checkpoint saving until new data is added to replay buffer
             light_save_flag = False
 
+    # Save final model
+    # Remove previous checkpoint
+    old_checkpoint_files = glob.glob(f"{experiment_folder}/full_cp_iter*")
+    for cp_file in old_checkpoint_files:
+        os.remove(cp_file)
+
+    # Save new checkpoint
+    save_t = replay_buffer.size
+    trainer_save_name = f"{experiment_folder}/full_cp_iter_{save_t}"
+    trainer.save(trainer_save_name)
+
+    # Do not save the RB if no new data is generated
+    if not args.store_only_initial_conformations:
+        with open(f"{experiment_folder}/full_cp_iter_{save_t}_replay", "wb") as outF:
+            pickle.dump(replay_buffer, outF)
+
 
 if __name__ == "__main__":
     args = get_args()
