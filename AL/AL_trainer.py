@@ -122,6 +122,7 @@ class AL(object):
         self.optimizer.load_state_dict(
             torch.load(f"{filename}_optimizer", map_location=DEVICE)
         )
+        self.optimizer.param_groups[0]["capturable"] = True
 
     def light_load(self, filename):
         self.actor.load_state_dict(torch.load(f"{filename}_actor", map_location=DEVICE))
