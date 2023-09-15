@@ -248,7 +248,7 @@ class DFTOracle(BaseOracle):
                     f"DFT did not converged for {self.molecules[i].symbols}, id: {i}",
                     flush=True,
                 )
-                energy = initial_energy
+                continue
             results.append((i, energy, force, obs, initial_energy))
 
         # Delete all finished tasks
