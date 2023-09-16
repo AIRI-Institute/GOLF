@@ -125,7 +125,7 @@ def eval_policy_dft(actor, env, eval_episodes=10):
 
         # If task queue is full wait for all tasks to finish
         if env.dft_oracle.task_queue_full_flag:
-            _, _, _, episode_total_delta_energies = env.dft_oracle.get_data()
+            _, _, _, episode_total_delta_energies = env.dft_oracle.get_data(eval=True)
             # Log total delta energy and pct of optimized energy
             result["eval/dft_delta_energy"].extend(
                 episode_total_delta_energies.tolist()

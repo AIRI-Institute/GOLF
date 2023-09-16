@@ -14,7 +14,7 @@ from .dft_worker import update_ase_atoms_positions
 from .dft import get_dft_server_destinations, calculate_dft_energy_tcp_client
 from .xyz2mol import get_rdkit_energy, get_rdkit_force, set_coordinates
 
-RDKIT_ENERGY_THRESH = 500
+RDKIT_ENERGY_THRESH = 300
 KCALMOL2HARTREE = 627.5
 
 
@@ -155,12 +155,15 @@ class DFTOracle(BaseOracle):
         for executor in self.executors:
             executor.shutdown(wait=False, cancel_futures=True)
 
-    def get_data(self):
+    def get_data(self, eval=False):
         assert self.task_queue_full_flag, "The task queue has not filled up yet!"
 
         # Wait for all computations to finish
-        results = self.wait_tasks()
-        assert len(results) > 0
+        results = self.wait_tasks(eval=eval)
+        if eval:
+            assert len(results) == self.n_parallel
+        else:
+            assert len(results) > 0
 
         _, energies, forces, obs, initial_energies = zip(*results)
 
@@ -232,7 +235,7 @@ class DFTOracle(BaseOracle):
                 self.task_queue_full_flag = True
                 break
 
-    def wait_tasks(self):
+    def wait_tasks(self, eval=False):
         results = []
 
         done_task_ids = []
@@ -248,7 +251,12 @@ class DFTOracle(BaseOracle):
                     f"DFT did not converged for {self.molecules[i].symbols}, id: {i}",
                     flush=True,
                 )
-                continue
+                # If eval is True return initial_energy to correctly detect optimization failures,
+                # else skip the conformation to avoid adding incorrect forces to RB.
+                if eval:
+                    energy = initial_energy
+                else:
+                    continue
             results.append((i, energy, force, obs, initial_energy))
 
         # Delete all finished tasks
