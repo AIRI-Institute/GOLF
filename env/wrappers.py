@@ -361,7 +361,7 @@ class RewardWrapper(gym.Wrapper):
             # Calculate energy and forces with DFT only for terminal states.
             # Skip conformations with energy higher than RDKIT_ENERGY_THRESH
             calculate_dft_energy_env_ids = np.where(
-                dones & ~rdkit_energy_thresh_exceeded
+                self.minimize_on_done & dones & ~rdkit_energy_thresh_exceeded
             )[0]
             if len(calculate_dft_energy_env_ids) > 0:
                 info["calculate_dft_energy_env_ids"] = calculate_dft_energy_env_ids

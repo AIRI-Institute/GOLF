@@ -161,7 +161,6 @@ def main(args, experiment_folder):
                     ) = env.dft_oracle.get_data()
                     replay_buffer.add(states, forces, energies)
 
-                    assert len(episode_returns) == len(episode_total_delta_energies)
                     logger.update_dft_return_statistics(episode_total_delta_energies)
 
                     # After new data has been added to replay buffer reset all flags

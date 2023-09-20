@@ -11,6 +11,15 @@ def str2bool(s):
         return s
 
 
+def check_positive(value):
+    int_value = int(value)
+    if int_value <= 0:
+        raise argparse.ArgumentTypeError(
+            f"{int_value} is an invalid positive int value"
+        )
+    return int_value
+
+
 def none_or_str(value):
     if value == "None":
         return None
@@ -79,7 +88,7 @@ def get_args():
     parser.add_argument(
         "--max_num_negative_rewards",
         default=1,
-        type=int,
+        type=check_positive,
         help="Max number of negative rewards to terminate the episode",
     )
 

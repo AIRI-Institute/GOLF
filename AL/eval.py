@@ -83,7 +83,7 @@ def eval_policy_dft(actor, env, eval_episodes=10):
     optimized_delta_energy_dft = np.zeros(env.n_parallel)
     for i in range(env.n_parallel):
         optimized_delta_energy_dft[i] = (
-            env.unwrapped.energy[i] - env.unwrapped.optimized_energy[i]
+            env.unwrapped.energy[i] - env.unwrapped.optimal_energy[i]
         )
 
     # Calculate optimal delta energy Rdkit
@@ -172,7 +172,7 @@ def eval_policy_dft(actor, env, eval_episodes=10):
             # Update optimal delta energy DFT
             for i in range(env.n_parallel):
                 optimized_delta_energy_dft[i] = (
-                    env.unwrapped.energy[i] - env.unwrapped.optimized_energy[i]
+                    env.unwrapped.energy[i] - env.unwrapped.optimal_energy[i]
                 )
 
             # Update optimal delta energy Rdkit

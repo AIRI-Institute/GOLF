@@ -61,11 +61,10 @@ class MolecularDynamics(gym.Env):
         self.atoms = [None] * self.n_parallel
         self.smiles = [None] * self.n_parallel
         self.energy = [None] * self.n_parallel
-        self.optimized_energy = [None] * self.n_parallel
+        self.optimal_energy = [None] * self.n_parallel
         self.force = [None] * self.n_parallel
         self.env_steps = [None] * self.n_parallel
         self.atoms_ids = [None] * self.n_parallel
-        self.optimal_energy = [None] * self.n_parallel
 
         self.total_num_bad_pairs_before = 0
         self.total_num_bad_pairs_after = 0
@@ -147,23 +146,31 @@ class MolecularDynamics(gym.Env):
             if hasattr(row, "smiles"):
                 self.smiles[idx] = row.smiles
 
-            # energy in Hartrees
+            # Energy and optimal_energy in Hartrees.
+            # Energies and optimal energies can sometimes be stored in different formats.
             if hasattr(row.data, "energy"):
                 if isinstance(row.data["energy"], list):
                     assert len(row.data["energy"]) == 1
                     self.energy[idx] = row.data["energy"][0]
+                elif isinstance(row.data["energy"], np.ndarray):
+                    assert len(row.data["energy"]) == 1
+                    self.energy[idx] = row.data["energy"].item()
                 else:
                     self.energy[idx] = row.data["energy"]
 
             if hasattr(row.data, "optimal_energy"):
-                self.optimized_energy[idx] = row.data["optimal_energy"]
+                if isinstance(row.data["optimal_energy"], list):
+                    assert len(row.data["optimal_energy"]) == 1
+                    self.optimal_energy[idx] = row.data["optimal_energy"][0]
+                elif isinstance(row.data["optimal_energy"], np.ndarray):
+                    assert len(row.data["optimal_energy"]) == 1
+                    self.optimal_energy[idx] = row.data["optimal_energy"].item()
+                else:
+                    self.optimal_energy[idx] = row.data["optimal_energy"]
 
             # forces in Hartees/ Angstrom
             if hasattr(row.data, "forces"):
                 self.force[idx] = row.data["forces"]
-
-            if hasattr(row.data, "optimal_energy"):
-                self.optimal_energy[idx] = row.data["optimal_energy"]
 
             # Reset env_steps
             self.env_steps[idx] = 0

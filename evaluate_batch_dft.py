@@ -35,7 +35,7 @@ from AL.utils import recollate_batch, get_atoms_indices_range
 from AL import DEVICE
 from env.moldynamics_env import env_fn
 from env.wrappers import RewardWrapper
-from utils.arguments import str2bool
+from utils.arguments import str2bool, check_positive
 
 
 class Config:
@@ -129,7 +129,7 @@ def write_to_db(
 ):
     assert len(db_ids) == len(atoms_list)
     with connect(db_path) as conn:
-        for db_id, atoms, smiles, energy, optimal_energy in zip(
+        for db_id, atoms, smiles, initial_energy, optimal_energy in zip(
             db_ids, atoms_list, smiles_list, initial_energies, optimal_energies
         ):
             conn.update(
@@ -137,8 +137,17 @@ def write_to_db(
                 atoms=atoms,
                 delete_keys=["reserve_id"],
                 smiles=smiles,
-                data={"energy": energy, "optimal_energy": optimal_energy},
+                data={
+                    "initial_energy": initial_energy,
+                    "optimal_energy": optimal_energy,
+                },
             )
+
+
+def update_data_in_db(db_path, db_id, energy, force):
+    if energy:
+        with connect(db_path) as conn:
+            conn.update(id=db_id, data={"final_energy": energy, "final_forces": force})
 
 
 def aggregate2string(stats, pct_min_threshold, pct_max_threshold, digits=3):
@@ -262,7 +271,6 @@ def make_env(args):
         "n_threads": args.n_threads,
         "minimize_on_every_step": args.minimize_on_every_step,
         "minimize_on_done": False,
-        "molecules_xyz_prefix": args.molecules_xyz_prefix,
         "terminate_on_negative_reward": args.terminate_on_negative_reward,
         "max_num_negative_rewards": args.max_num_negative_rewards,
         "evaluation": True,
@@ -341,8 +349,8 @@ def main(checkpoint_path, args, config):
     for i, conformation_id in enumerate(eval_env.atoms_ids):
         stats[conformation_id] = ConformationOptimizationStats(
             conformation_id=conformation_id,
-            initial_energy_ground_truth=eval_env.energy[i][0],
-            optimal_energy_ground_truth=eval_env.optimal_energy[i][0],
+            initial_energy_ground_truth=eval_env.energy[i],
+            optimal_energy_ground_truth=eval_env.optimal_energy[i],
         )
         barrier[conformation_id] += 1
 
@@ -386,7 +394,7 @@ def main(checkpoint_path, args, config):
 
         actions *= get_not_finished_mask(state, ~is_finite_action | finished)
         state, rewards, dones, info = eval_env.step(actions)
-        dones = ~is_finite_action | np.asarray(dones)
+        dones = ~is_finite_action | dones
         n_iters += np.asarray(n_iters_dones)
         steps = np.asarray(eval_env.unwrapped.get_env_step(), dtype=np.float32)
 
@@ -414,7 +422,7 @@ def main(checkpoint_path, args, config):
                     (
                         conformation_id,
                         early_stop_step,
-                        eval_env.molecule["dft"][i].copy(),
+                        eval_env.dft_oracle.molecules[i].copy(),
                     )
                 )
 
@@ -479,7 +487,11 @@ def main(checkpoint_path, args, config):
             step_stats.energy_ground_truth = energy
             step_stats.force_ground_truth = force
             barrier[conformation_id] -= 1
+
+            # Evaluation finished for molecule
             if barrier[conformation_id] == 0:
+                # Write energy and forces for the final conformation to db
+                update_data_in_db(args.results_db_path, conformation_id, energy, force)
                 log_conformation_optimization_stats(
                     stats[conformation_id], args.evaluation_metrics_path
                 )
@@ -522,8 +534,8 @@ def main(checkpoint_path, args, config):
             conformation_id = eval_env.atoms_ids[i]
             stats[conformation_id] = ConformationOptimizationStats(
                 conformation_id=conformation_id,
-                initial_energy_ground_truth=eval_env.energy[i][0],
-                optimal_energy_ground_truth=eval_env.optimal_energy[i][0],
+                initial_energy_ground_truth=eval_env.energy[i],
+                optimal_energy_ground_truth=eval_env.optimal_energy[i],
             )
             barrier[conformation_id] += 1
 
@@ -545,6 +557,7 @@ def main(checkpoint_path, args, config):
         step_stats.force_ground_truth = force
         barrier[conformation_id] -= 1
         if barrier[conformation_id] == 0:
+            update_data_in_db(args.results_db_path, conformation_id, energy, force)
             log_conformation_optimization_stats(
                 stats[conformation_id], args.evaluation_metrics_path
             )
@@ -747,7 +760,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_num_negative_rewards",
         default=1,
-        type=int,
+        type=check_positive,
         help="Max number of negative rewards to terminate the episode",
     )
 
@@ -811,7 +824,6 @@ if __name__ == "__main__":
 
     config["db_path"] = "/".join(args.eval_db_path.split("/")[-3:])
     config["eval_db_path"] = "/".join(args.eval_db_path.split("/")[-3:])
-    config["molecules_xyz_prefix"] = "env/molecules_xyz"
     config["n_parallel"] = args.n_parallel
     config["timelimit"] = args.timelimit + 1
     config["n_threads"] = args.n_threads
