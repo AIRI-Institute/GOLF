@@ -91,6 +91,24 @@ class ConformationOptimizationStats:
             if pct is not None:
                 pct = float(pct)
             result[f"pct_of_minimized_energy@step:{step}"] = pct
+            result[f"energy@step:{step}"] = float(step_stats.energy)
+            if step_stats.energy_ground_truth is None:
+                result[f"energy_gt@step:{step}"] = None
+                result[f"energy_mse@step:{step}"] = None
+            else:
+                result[f"energy_gt@step:{step}"] = float(step_stats.energy_ground_truth)
+                result[f"energy_mse@step:{step}"] = float((step_stats.energy - step_stats.energy_ground_truth) ** 2)
+
+            if step_stats.force_ground_truth is None:
+                result[f"force_mse@step:{step}"] = None
+                result[f"force_norm@step:{step}"] = None
+            else:
+                result[f"force_mse@step:{step}"] = float(np.mean(
+                    (step_stats.force - step_stats.force_ground_truth) ** 2
+                ))
+                result[f"force_norm@step:{step}"] = float(np.mean(
+                    np.linalg.norm(step_stats.force_ground_truth, ord="fro")
+                ))
 
         return result
 
@@ -325,6 +343,15 @@ def main(checkpoint_path, args, config):
         eval_policy.actor.to(DEVICE)
         eval_policy.actor.eval()
 
+    atomrefs = None
+    with connect(args.eval_db_path) as conn:
+        if "atomrefs" in conn.metadata and args.subtract_atomization_energy:
+            atomrefs = np.array(conn.metadata["atomrefs"]["energy"])
+    assert (
+            args.subtract_atomization_energy and atomrefs is not None
+    ), "Attempting to train with no atomization energy subtraction\
+        will likely result in the divergence of the model"
+
     state = eval_env.reset()
     if args.resume:
         metrics_ids = set(
@@ -414,8 +441,11 @@ def main(checkpoint_path, args, config):
             for i in np.where(early_stop_step_mask)[0]:
                 early_stop_step_reached[early_stop_step][i] = 1
                 conformation_id = eval_env.atoms_ids[i]
+                energy = energies[i]
+                if args.subtract_atomization_energy:
+                    energy += atomrefs[eval_env.unwrapped.atoms[i].get_atomic_numbers()].sum()
                 step_stats = StepStats(
-                    n_iter=n_iters[i], energy=energies[i], force=forces[i]
+                    n_iter=n_iters[i], energy=energy, force=forces[i]
                 )
                 stats[conformation_id].step2stats[early_stop_step] = step_stats
                 tasks.append(
@@ -645,6 +675,14 @@ if __name__ == "__main__":
         type=str2bool,
         help="Set deterministic mode for PyTorch",
     )
+    parser.add_argument(
+        "--subtract_atomization_energy",
+        default=False,
+        choices=[True, False],
+        metavar="True|False",
+        type=str2bool,
+        help="Subtract atomization energy from the DFT energy for training",
+    )
 
     # Env args
     parser.add_argument(
@@ -834,6 +872,7 @@ if __name__ == "__main__":
     config["sample_initial_conformations"] = False
     config["num_initial_conformations"] = -1
     config["deterministic"] = args.deterministic
+    config["subtract_atomization_energy"] = args.subtract_atomization_energy
     for argument in policy_arguments:
         value = getattr(args, argument, None)
         if value is not None:
