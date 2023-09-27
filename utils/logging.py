@@ -112,4 +112,5 @@ class Logger:
         self.exploration_episode_final_energy.append(episode_final_energy)
 
     def update_dft_return_statistics(self, episode_dft_return):
-        self.exploration_episode_dft_returns.append(episode_dft_return)
+        for val in episode_dft_return:
+            self.exploration_episode_dft_returns.append(val)
