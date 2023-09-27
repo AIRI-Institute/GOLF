@@ -12,6 +12,8 @@ import pickle
 from psi4 import SCFConvergenceError
 from psi4.driver.p4util.exceptions import OptimizationConvergenceError
 
+from AL import PSI4_BOHR2ANGSTROM
+
 # os.environ['PSI_SCRATCH'] = "/dev/shm/tmp"
 # psi4.set_options({ "CACHELEVEL": 0 })
 
@@ -22,7 +24,6 @@ psi4.core.set_output_file("/dev/null")
 
 HEADER = "units ang \n nocom \n noreorient \n"
 FUNCTIONAL_STRING = "wb97x-d/def2-svp"
-PSI4_BOHR2ANGSTROM = 0.52917720859
 
 
 def read_xyz_file_block(file, look_for_charge=True):
@@ -142,14 +143,14 @@ def calculate_dft_energy_item(task):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--task_path', type=str, required=True)
-    parser.add_argument('--result_path', type=str, required=True)
+    parser.add_argument("--task_path", type=str, required=True)
+    parser.add_argument("--result_path", type=str, required=True)
     args = parser.parse_args()
 
-    with open(args.task_path, 'rb') as file_obj:
+    with open(args.task_path, "rb") as file_obj:
         task = pickle.load(file_obj)
 
     result = calculate_dft_energy_item(task)
 
-    with open(args.result_path, 'wb') as file_obj:
+    with open(args.result_path, "wb") as file_obj:
         pickle.dump(result, file_obj)
