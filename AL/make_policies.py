@@ -1,5 +1,5 @@
 import schnetpack
-from torch.optim import SGD
+from torch.optim import SGD, Adam
 
 from AL import DEVICE
 from AL.AL_actor import (
@@ -53,9 +53,6 @@ def make_policies(env, eval_env, args):
                 },
             }
         )
-        policy = ignore_extra_args(LBFGSConformationOptimizer)(
-            actor=actor, **policy_args
-        ).to(DEVICE)
     elif args.conformation_optimizer == "GD":
         policy_args.update(
             {
@@ -66,9 +63,6 @@ def make_policies(env, eval_env, args):
                 },
             }
         )
-        policy = ignore_extra_args(ConformationOptimizer)(
-            actor=actor, **policy_args
-        ).to(DEVICE)
     elif args.conformation_optimizer == "Lion":
         policy_args.update(
             {
@@ -79,11 +73,21 @@ def make_policies(env, eval_env, args):
                 },
             }
         )
-        policy = ignore_extra_args(ConformationOptimizer)(
+    elif args.conformation_optimizer == "Adam":
+        policy_args.update(
+            {"optimizer": Adam, "optimizer_kwargs": {"lr": args.conf_opt_lr}}
+        )
+    else:
+        raise NotImplemented("Unknowm policy type: {}!".format(args.policy))
+
+    if args.conformation_optimizer == "LBFGS":
+        policy = ignore_extra_args(LBFGSConformationOptimizer)(
             actor=actor, **policy_args
         ).to(DEVICE)
     else:
-        raise NotImplemented("Unknowm policy type: {}!".format(args.policy))
+        policy = ignore_extra_args(ConformationOptimizer)(
+            actor=actor, **policy_args
+        ).to(DEVICE)
 
     # Initialize eval policy
     if args.reward == "rdkit":
@@ -101,11 +105,9 @@ def make_policies(env, eval_env, args):
         eval_policy = ignore_extra_args(LBFGSConformationOptimizer)(
             actor=eval_actor, **policy_args
         ).to(DEVICE)
-    elif args.conformation_optimizer == "GD" or args.conformation_optimizer == "Lion":
+    else:
         eval_policy = ignore_extra_args(ConformationOptimizer)(
             actor=eval_actor, **policy_args
         ).to(DEVICE)
-    else:
-        raise NotImplemented("Unknowm policy type: {}!".format(args.policy))
 
     return policy, eval_policy

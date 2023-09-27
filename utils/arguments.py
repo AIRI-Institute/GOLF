@@ -149,7 +149,7 @@ def get_args():
         "--conformation_optimizer",
         default="LBFGS",
         type=str,
-        choices=["GD", "Lion", "LBFGS"],
+        choices=["GD", "Lion", "LBFGS", "Adam"],
         help="Conformation optimizer type",
     )
     parser.add_argument(
