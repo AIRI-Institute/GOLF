@@ -158,6 +158,10 @@ class MolecularDynamics(gym.Env):
                 else:
                     self.energy[idx] = row.data["energy"]
 
+            # In case the database is the result of optimization
+            if hasattr(row.data, "initial_energy"):
+                self.energy[idx] = row.data["initial_energy"]
+
             if hasattr(row.data, "optimal_energy"):
                 if isinstance(row.data["optimal_energy"], list):
                     assert len(row.data["optimal_energy"]) == 1
@@ -171,6 +175,9 @@ class MolecularDynamics(gym.Env):
             # forces in Hartees/ Angstrom
             if hasattr(row.data, "forces"):
                 self.force[idx] = row.data["forces"]
+            elif hasattr(row.data, "final_forces"):
+                # In case the database is the result of optimization
+                self.force[idx] = row.data["final_forces"]
 
             # Reset env_steps
             self.env_steps[idx] = 0
