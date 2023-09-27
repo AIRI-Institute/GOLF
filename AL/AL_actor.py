@@ -18,6 +18,8 @@ from AL.utils import (
 from utils.utils import ignore_extra_args
 from AL.optim import lbfgs
 
+KCALMOL_2_HARTREE = 627.5
+
 EPS = 1e-8
 
 backbones = {
@@ -117,33 +119,45 @@ class RdkitActor(nn.Module):
         else:
             opt_ids = active_optimizers_ids
 
-        # Update atoms inside env
-        energy = np.zeros(len(opt_ids))
-        forces = [None] * len(opt_ids)
+        # print(opt_ids)
 
+        # Update atoms inside env
         current_coordinates = [
-            self.env.env.atoms[idx].get_positions() for idx in opt_ids
+            self.env.unwrapped.atoms[idx].get_positions() for idx in opt_ids
         ]
+        # print("current coordinates: ")
+        # for coord in current_coordinates:
+        #     print(coord.shape)
+
         new_coordinates = torch.split(
             state_dict[properties.R].detach().cpu(),
             state_dict[properties.n_atoms].tolist(),
         )
+        assert len(new_coordinates) == len(opt_ids)
+        new_coordinates = [
+            np.float64(new_coordinates[i].numpy()) for i in range(len(opt_ids))
+        ]
+        # print("new coordinates")
+        # for coord in new_coordinates:
+        #     print(coord.shape)
+        # print("mol size inside the env")
+        # for mol in self.env.rdkit_oracle.molecules:
+        #     print(mol.GetNumAtoms())
+        # Update coordinates inside env
+        self.env.rdkit_oracle.update_coordinates(new_coordinates, indices=opt_ids)
+        _, energies, forces = self.env.rdkit_oracle.calculate_energies_forces(
+            indices=opt_ids
+        )
 
-        for i, idx in enumerate(opt_ids):
-            # Update coordinates inside env
-            self.env.update_coordinates["rdkit"](
-                self.env.molecule["rdkit"][idx],
-                np.float64(new_coordinates[i].numpy()),
-            )
-            _, energy[i], forces[i] = self.env.minimize_rdkit(idx)
-            forces[i] = torch.Tensor(forces[i])
+        # Restore original coordinates
+        self.env.rdkit_oracle.update_coordinates(current_coordinates, indices=opt_ids)
 
-            # Restore original coordinates
-            self.env.update_coordinates["rdkit"](
-                self.env.molecule["rdkit"][idx], current_coordinates[i]
-            )
+        # Forces in (kcal/mol)/angstrom. Transform into hartree/angstrom.
+        forces = torch.cat(
+            [torch.tensor(force / KCALMOL_2_HARTREE) for force in forces]
+        )
 
-        return {"anti_gradient": torch.cat(forces), "energy": torch.tensor(energy)}
+        return {"anti_gradient": forces, "energy": torch.tensor(energies)}
 
 
 class ConformationOptimizer(nn.Module):
@@ -223,7 +237,9 @@ class ConformationOptimizer(nn.Module):
             self.states[idx][properties.R].detach().clone() - prev_positions[idx]
             for idx in range(self.n_parallel)
         ]
-        is_finite_action = [torch.isfinite(action).all().unsqueeze(dim=0) for action in actions]
+        is_finite_action = [
+            torch.isfinite(action).all().unsqueeze(dim=0) for action in actions
+        ]
         return {
             "action": torch.cat(actions, dim=0),
             "energy": energy.detach(),

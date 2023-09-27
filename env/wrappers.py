@@ -37,13 +37,15 @@ class BaseOracle:
             indices = np.arange(self.n_parallel)
         return [np.array(self.forces[i]) for i in indices]
 
-    def update_coordinates(self, positions):
-        assert (
-            len(positions) == self.n_parallel
+    def update_coordinates(self, positions, indices=None):
+        if indices is None:
+            indices = np.arange(self.n_parallel)
+        assert len(positions) == len(
+            indices
         ), f"Not enough values to update all molecules! Expected {self.n_parallel} but got {len(positions)}"
 
         # Update current molecules
-        for i, position in enumerate(positions):
+        for i, position in zip(indices, positions):
             self.update_coordinates_fn(self.molecules[i], position)
 
     def update_forces(self, forces, indices=None):
@@ -143,13 +145,16 @@ class DFTOracle(BaseOracle):
 
         self.task_queue_full_flag = False
 
-    def update_coordinates(self, positions):
+    def update_coordinates(self, positions, indices=None):
+        if indices is None:
+            indices = np.arange(self.n_parallel)
+
         # Update previous molecules
-        for i, mol in enumerate(self.molecules):
-            self.previous_molecules[i] = mol.copy()
+        for i in indices:
+            self.previous_molecules[i] = self.molecules[i].copy()
 
         # Update current molecules
-        super().update_coordinates(positions)
+        super().update_coordinates(positions, indices)
 
     def close_executors(self):
         for executor in self.executors:
@@ -258,6 +263,9 @@ class DFTOracle(BaseOracle):
                 else:
                     continue
             results.append((i, energy, force, obs, initial_energy))
+
+        if not eval:
+            print(f"Total conformations added: {len(results)}")
 
         # Delete all finished tasks
         for key in done_task_ids:

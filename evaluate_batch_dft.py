@@ -97,18 +97,20 @@ class ConformationOptimizationStats:
                 result[f"energy_mse@step:{step}"] = None
             else:
                 result[f"energy_gt@step:{step}"] = float(step_stats.energy_ground_truth)
-                result[f"energy_mse@step:{step}"] = float((step_stats.energy - step_stats.energy_ground_truth) ** 2)
+                result[f"energy_mse@step:{step}"] = float(
+                    (step_stats.energy - step_stats.energy_ground_truth) ** 2
+                )
 
             if step_stats.force_ground_truth is None:
                 result[f"force_mse@step:{step}"] = None
                 result[f"force_norm@step:{step}"] = None
             else:
-                result[f"force_mse@step:{step}"] = float(np.mean(
-                    (step_stats.force - step_stats.force_ground_truth) ** 2
-                ))
-                result[f"force_norm@step:{step}"] = float(np.mean(
-                    np.linalg.norm(step_stats.force_ground_truth, ord="fro")
-                ))
+                result[f"force_mse@step:{step}"] = float(
+                    np.mean((step_stats.force - step_stats.force_ground_truth) ** 2)
+                )
+                result[f"force_norm@step:{step}"] = float(
+                    np.mean(np.linalg.norm(step_stats.force_ground_truth, ord="fro"))
+                )
 
         return result
 
@@ -348,7 +350,7 @@ def main(checkpoint_path, args, config):
         if "atomrefs" in conn.metadata and args.subtract_atomization_energy:
             atomrefs = np.array(conn.metadata["atomrefs"]["energy"])
     assert (
-            args.subtract_atomization_energy and atomrefs is not None
+        args.subtract_atomization_energy and atomrefs is not None
     ), "Attempting to train with no atomization energy subtraction\
         will likely result in the divergence of the model"
 
@@ -374,10 +376,13 @@ def main(checkpoint_path, args, config):
 
     stats = {}
     for i, conformation_id in enumerate(eval_env.atoms_ids):
+        optimal_energy = eval_env.energy[i] + 1e-4
+        if eval_env.optimal_energy[i]:
+            optimal_energy = eval_env.optimal_energy[i]
         stats[conformation_id] = ConformationOptimizationStats(
             conformation_id=conformation_id,
             initial_energy_ground_truth=eval_env.energy[i],
-            optimal_energy_ground_truth=eval_env.optimal_energy[i],
+            optimal_energy_ground_truth=optimal_energy,
         )
         barrier[conformation_id] += 1
 
@@ -443,7 +448,9 @@ def main(checkpoint_path, args, config):
                 conformation_id = eval_env.atoms_ids[i]
                 energy = energies[i]
                 if args.subtract_atomization_energy:
-                    energy += atomrefs[eval_env.unwrapped.atoms[i].get_atomic_numbers()].sum()
+                    energy += atomrefs[
+                        eval_env.unwrapped.atoms[i].get_atomic_numbers()
+                    ].sum()
                 step_stats = StepStats(
                     n_iter=n_iters[i], energy=energy, force=forces[i]
                 )
@@ -562,10 +569,13 @@ def main(checkpoint_path, args, config):
 
         for i in envs_to_reset:
             conformation_id = eval_env.atoms_ids[i]
+            optimal_energy = eval_env.energy[i] + 1e-4
+            if eval_env.optimal_energy[i]:
+                optimal_energy = eval_env.optimal_energy[i]
             stats[conformation_id] = ConformationOptimizationStats(
                 conformation_id=conformation_id,
                 initial_energy_ground_truth=eval_env.energy[i],
-                optimal_energy_ground_truth=eval_env.optimal_energy[i],
+                optimal_energy_ground_truth=optimal_energy,
             )
             barrier[conformation_id] += 1
 
@@ -677,7 +687,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--subtract_atomization_energy",
-        default=False,
+        default=True,
         choices=[True, False],
         metavar="True|False",
         type=str2bool,
