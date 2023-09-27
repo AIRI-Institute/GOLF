@@ -157,9 +157,8 @@ class MolecularDynamics(gym.Env):
                     self.energy[idx] = row.data["energy"].item()
                 else:
                     self.energy[idx] = row.data["energy"]
-
             # In case the database is the result of optimization
-            if hasattr(row.data, "initial_energy"):
+            elif hasattr(row.data, "initial_energy"):
                 self.energy[idx] = row.data["initial_energy"]
 
             if hasattr(row.data, "optimal_energy"):
