@@ -149,6 +149,7 @@ def main(args, experiment_folder):
                 continue
 
             next_state, rewards, dones, info = env.step(actions)
+            episode_returns += rewards
 
             if args.reward == "dft":
                 # If task queue is full wait for all tasks to finish and store data to RB
@@ -170,7 +171,6 @@ def main(args, experiment_folder):
                     light_save_flag = True
             else:
                 experience_saver(next_state, rewards, dones)
-                episode_returns += rewards
 
             # Move to next state
             state = next_state
