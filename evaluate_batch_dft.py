@@ -430,6 +430,10 @@ def main(checkpoint_path, args, config):
         n_iters += np.asarray(n_iters_dones)
         steps = np.asarray(eval_env.unwrapped.get_env_step(), dtype=np.float32)
 
+        if args.evaluate_initial_conformations:
+            steps = np.zeros(args.n_parallel, dtype=np.float32)
+            dones = np.ones(args.n_parallel, dtype=bool)
+
         tasks = []
 
         # Handle different time limits
@@ -846,6 +850,14 @@ if __name__ == "__main__":
         type=str2bool,
         help="Whether to log tcp communication events",
     )
+    parser.add_argument(
+        "--evaluate_initial_conformations",
+        default=False,
+        choices=[True, False],
+        metavar="True|False",
+        type=str2bool,
+        help="Only evaluate initial conformations in the database.",
+    )
 
     args = parser.parse_args()
 
@@ -891,5 +903,10 @@ if __name__ == "__main__":
     config = Config(**config)
     if len(args.eval_early_stop_steps) == 0:
         args.eval_early_stop_steps = list(range(args.timelimit + 1))
+
+    if args.evaluate_initial_conformations:
+        assert (
+            len(args.eval_early_stop_steps) == 1 and args.eval_early_stop_steps[0] == 0
+        )
 
     main(checkpoint_path, args, config)
