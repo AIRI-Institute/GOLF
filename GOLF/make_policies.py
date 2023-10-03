@@ -1,19 +1,19 @@
 import schnetpack
 from torch.optim import SGD, Adam
 
-from AL import DEVICE
-from AL.AL_actor import (
+from GOLF import DEVICE
+from GOLF.GOLF_actor import (
     Actor,
     RdkitActor,
     ConformationOptimizer,
     LBFGSConformationOptimizer,
 )
-from AL.utils import get_cutoff_by_string
-from AL.optim.lion_pytorch import Lion
+from GOLF.utils import get_cutoff_by_string
+from GOLF.optim.lion_pytorch import Lion
 from utils.utils import ignore_extra_args
 
 actors = {
-    "AL": ignore_extra_args(Actor),
+    "GOLF": ignore_extra_args(Actor),
     "rdkit": ignore_extra_args(RdkitActor),
 }
 

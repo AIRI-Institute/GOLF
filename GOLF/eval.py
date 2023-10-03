@@ -3,8 +3,8 @@ import time
 
 from collections import defaultdict
 
-from AL import DEVICE
-from AL.utils import recollate_batch
+from GOLF import DEVICE
+from GOLF.utils import recollate_batch
 
 CONVERGENCE_THRESHOLD = 1e-5
 

@@ -21,7 +21,7 @@ from ase import Atoms
 from ase.db import connect
 from schnetpack import properties
 
-from AL.make_policies import make_policies
+from GOLF.make_policies import make_policies
 from env.dft import calculate_dft_energy_tcp_client, get_dft_server_destinations
 
 try:
@@ -31,8 +31,8 @@ except ImportError:
 
 from tqdm import tqdm
 
-from AL.utils import recollate_batch, get_atoms_indices_range
-from AL import DEVICE
+from GOLF.utils import recollate_batch, get_atoms_indices_range
+from GOLF import DEVICE
 from env.moldynamics_env import env_fn
 from env.wrappers import RewardWrapper
 from utils.arguments import str2bool, check_positive
@@ -665,6 +665,14 @@ if __name__ == "__main__":
         help="Evaluate at multiple time steps during episode",
     )
     parser.add_argument(
+        "--evaluate_all_steps",
+        default=False,
+        choices=[True, False],
+        metavar="True|False",
+        type=str2bool,
+        help="Evaluate energy and forces on all steps",
+    )
+    parser.add_argument(
         "--results_db",
         type=str,
         default="results.db",
@@ -731,11 +739,11 @@ if __name__ == "__main__":
         "action_norm_limit",
         "grad_threshold",
     ]
-    # AL args
+    # GOLF args
     parser.add_argument(
         "--actor",
         type=str,
-        choices=["AL", "rdkit"],
+        choices=["GOLF", "rdkit"],
         help="Actor type. Rdkit can be used for evaluation only",
     )
     parser.add_argument(
@@ -901,7 +909,8 @@ if __name__ == "__main__":
             config[argument] = value
 
     config = Config(**config)
-    if len(args.eval_early_stop_steps) == 0:
+
+    if len(args.eval_early_stop_steps) == 0 and args.evaluate_all_steps:
         args.eval_early_stop_steps = list(range(args.timelimit + 1))
 
     if args.evaluate_initial_conformations:

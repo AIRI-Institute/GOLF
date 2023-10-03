@@ -3,8 +3,8 @@ import schnetpack.nn as snn
 import torch
 from schnetpack import properties
 
-from AL import DEVICE
-from AL.optim.lion_pytorch import Lion
+from GOLF import DEVICE
+from GOLF.optim.lion_pytorch import Lion
 
 
 class LRCosineAnnealing:

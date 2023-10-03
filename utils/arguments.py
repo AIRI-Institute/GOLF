@@ -137,12 +137,12 @@ def get_args():
         help="Number of features to describe atomic environments inside backbone",
     )
 
-    # AL args
+    # GOLF args
     parser.add_argument(
         "--actor",
-        default="AL",
+        default="GOLF",
         type=str,
-        choices=["AL", "rdkit"],
+        choices=["GOLF", "rdkit"],
         help="Actor type. Rdkit can be used for evaluation only",
     )
     parser.add_argument(

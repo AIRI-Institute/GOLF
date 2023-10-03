@@ -12,13 +12,13 @@ from ase.db import connect
 import numpy as np
 import torch
 
-from AL import DEVICE
-from AL.AL_trainer import AL
-from AL.eval import eval_policy_dft, eval_policy_rdkit
-from AL.make_policies import make_policies
-from AL.make_saver import make_saver
-from AL.replay_buffer import ReplayBuffer, fill_initial_replay_buffer
-from AL.utils import calculate_action_norm, recollate_batch
+from GOLF import DEVICE
+from GOLF.GOLF_trainer import GOLF
+from GOLF.eval import eval_policy_dft, eval_policy_rdkit
+from GOLF.make_policies import make_policies
+from GOLF.make_saver import make_saver
+from GOLF.replay_buffer import ReplayBuffer, fill_initial_replay_buffer
+from GOLF.utils import calculate_action_norm, recollate_batch
 from env.make_envs import make_envs
 from utils.arguments import get_args
 from utils.logging import Logger
@@ -92,7 +92,7 @@ def main(args, experiment_folder):
     )
 
     # Initialize trainer
-    trainer = AL(
+    trainer = GOLF(
         policy=policy,
         lr=args.lr,
         batch_size=args.batch_size,

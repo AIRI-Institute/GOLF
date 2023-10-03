@@ -8,15 +8,15 @@ import torch.nn as nn
 from schnetpack import properties
 from torch.linalg import vector_norm
 
-from AL import DEVICE
-from AL.utils import (
+from GOLF import DEVICE
+from GOLF.utils import (
     get_conformation_lr_scheduler,
     get_atoms_indices_range,
     unpad_state,
     _atoms_collate_fn,
 )
 from utils.utils import ignore_extra_args
-from AL.optim import lbfgs
+from GOLF.optim import lbfgs
 
 KCALMOL_2_HARTREE = 627.5
 

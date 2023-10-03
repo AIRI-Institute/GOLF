@@ -6,7 +6,7 @@ from schnetpack import properties
 from schnetpack.data.loader import _atoms_collate_fn
 from schnetpack.nn import scatter_add
 
-from AL.utils import unpad_state
+from GOLF.utils import unpad_state
 
 
 class BaseSaver:

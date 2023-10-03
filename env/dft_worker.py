@@ -12,7 +12,7 @@ import pickle
 from psi4 import SCFConvergenceError
 from psi4.driver.p4util.exceptions import OptimizationConvergenceError
 
-from AL import PSI4_BOHR2ANGSTROM
+from GOLF import PSI4_BOHR2ANGSTROM
 
 # os.environ['PSI_SCRATCH'] = "/dev/shm/tmp"
 # psi4.set_options({ "CACHELEVEL": 0 })

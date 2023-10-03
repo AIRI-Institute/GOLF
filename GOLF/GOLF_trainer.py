@@ -5,15 +5,15 @@ from schnetpack import properties
 from schnetpack.nn import scatter_add
 from torch.nn.functional import mse_loss
 
-from AL import DEVICE
-from AL.utils import (
+from GOLF import DEVICE
+from GOLF.utils import (
     calculate_gradient_norm,
     get_lr_scheduler,
     get_optimizer_class,
 )
 
 
-class AL(object):
+class GOLF(object):
     def __init__(
         self,
         policy,

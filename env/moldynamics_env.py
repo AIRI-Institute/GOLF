@@ -12,7 +12,7 @@ from schnetpack.data.loader import _atoms_collate_fn
 from schnetpack.interfaces import AtomsConverter
 from schnetpack.transform import ASENeighborList
 
-from AL import DEVICE
+from GOLF import DEVICE
 
 np.seterr(all="ignore")
 warnings.filterwarnings("ignore", category=DeprecationWarning)

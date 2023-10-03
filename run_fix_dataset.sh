@@ -20,7 +20,7 @@ python main.py --n_parallel 216 \
 --cutoff 5.0 \
 --n_rbf 50 \
 --n_atom_basis 128 \
---actor AL \
+--actor GOLF \
 --conformation_optimizer LBFGS \
 --conf_opt_lr 1.0 \
 --conf_opt_lr_scheduler Constant \
