@@ -1,15 +1,13 @@
 from GOLF.experience_saver import (
     RewardThresholdSaver,
-    InitialAndLastSaver,
-    GradientMissmatchSaver,
+    LastConformationSaver,
 )
 from utils.utils import ignore_extra_args
 
 
 savers = {
     "reward_threshold": ignore_extra_args(RewardThresholdSaver),
-    "initial_and_last": ignore_extra_args(InitialAndLastSaver),
-    "gradient_missmatch": ignore_extra_args(GradientMissmatchSaver),
+    "last": ignore_extra_args(LastConformationSaver),
 }
 
 
@@ -24,5 +22,4 @@ def make_saver(args, env, replay_buffer, actor, reward_thresh):
         replay_buffer=replay_buffer,
         reward_threshold=thresh,
         actor=actor,
-        gradient_dif_threshold=args.grad_missmatch_threshold,
     )

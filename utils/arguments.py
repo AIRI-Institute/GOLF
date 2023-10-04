@@ -167,14 +167,8 @@ def get_args():
     parser.add_argument(
         "--experience_saver",
         default="reward_threshold",
-        choices=["reward_threshold", "initial_and_last", "gradient_missmatch"],
+        choices=["reward_threshold", "last"],
         help="How to save experience to replay buffer",
-    )
-    parser.add_argument(
-        "--grad_missmatch_threshold",
-        default=1.0,
-        type=float,
-        help="Save states where predicted forces deviates from GT forces by threshold (in terms of MSE)",
     )
     parser.add_argument(
         "--store_only_initial_conformations",
