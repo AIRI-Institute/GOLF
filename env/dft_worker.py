@@ -12,15 +12,15 @@ import pickle
 from psi4 import SCFConvergenceError
 from psi4.driver.p4util.exceptions import OptimizationConvergenceError
 
-from GOLF import PSI4_BOHR2ANGSTROM
-
 # os.environ['PSI_SCRATCH'] = "/dev/shm/tmp"
 # psi4.set_options({ "CACHELEVEL": 0 })
+PSI4_BOHR2ANGSTROM = 0.52917720859
 
 psi4.set_memory("8 GB")
 psi4.core.IOManager.shared_object().set_default_path("/dev/shm/")
 psi4.core.set_num_threads(4)
 psi4.core.set_output_file("/dev/null")
+psi4.set_options({'geom_maxiter': 200})
 
 HEADER = "units ang \n nocom \n noreorient \n"
 FUNCTIONAL_STRING = "wb97x-d/def2-svp"
@@ -104,6 +104,21 @@ def get_dft_forces_energy(mol):
     finally:
         psi4.core.clean()
 
+def get_dft_optimization(mol):
+    # Energy in Hartrees, force in Hatrees/Angstrom
+    try:
+        gradient, history = psi4.driver.optimize(
+            FUNCTIONAL_STRING, **{"molecule": mol, "return_history": True}
+        )
+        return history
+    except OptimizationConvergenceError as e:
+        # Set energy to some threshold if SOSCF does not converge
+        description = traceback.format_exc()
+        print(f"DFT optimization did not converge!\n{description}", file=sys.stderr)
+        return None
+    finally:
+        psi4.core.clean()
+
 
 def update_ase_atoms_positions(atoms, positions):
     atoms.set_positions(positions)
@@ -114,6 +129,31 @@ def update_psi4_geometry(molecule, positions):
     molecule.set_geometry(psi4matrix)
     molecule.update_geometry()
 
+
+def calculate_dft_optimization_item(task):
+    # Get molecule from the queue
+    ase_atoms, _, idx = task
+
+    ase_atoms = ase.Atoms.fromdict(ase_atoms)
+
+    print("task", idx)
+
+    t1 = time.time()
+
+    molecule = atoms2psi4mol(ase_atoms)
+
+    # Perform DFT minimization
+    # Energy in Hartree
+    # Calculate DFT energy
+
+    history = get_dft_optimization(molecule)
+    not_converged = history is None
+
+    t = time.time() - t1
+
+    print("time", t)
+
+    return idx, not_converged, history
 
 def calculate_dft_energy_item(task):
     # Get molecule from the queue
@@ -131,7 +171,7 @@ def calculate_dft_energy_item(task):
     # Energy in Hartree
     # Calculate DFT energy
 
-    energy, gradient = get_dft_forces_energy(molecule)
+    history = get_dft_forces_energy(molecule)
     not_converged = energy is None
 
     t = time.time() - t1
@@ -150,7 +190,7 @@ if __name__ == "__main__":
     with open(args.task_path, "rb") as file_obj:
         task = pickle.load(file_obj)
 
-    result = calculate_dft_energy_item(task)
+    result = calculate_dft_optimization_item(task)
 
     with open(args.result_path, "wb") as file_obj:
         pickle.dump(result, file_obj)

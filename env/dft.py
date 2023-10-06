@@ -21,7 +21,18 @@ HOSTS = [
     "192.168.19.28",
     "192.168.19.29",
     "192.168.19.30",
+    "192.168.19.31",
+    "192.168.19.32",
+    "192.168.19.33",
+    "192.168.19.34",
+    "192.168.19.35",
+    "192.168.19.36",
+    "192.168.19.37",
+    "192.168.19.38",
+    "192.168.19.39",
+    "192.168.19.40",
 ]
+# HOSTS = ["192.168.19.21"]
 # HOSTS = ["192.168.19.103"]
 
 
@@ -58,6 +69,32 @@ def log(conformation_id, message, path, logging):
                 file=file_obj,
             )
 
+
+def calculate_dft_optimization_tcp_client(task, host, port, logging=False):
+    path = f"client_{host}_{port}.out"
+    conformation_id, step, ase_atoms = task
+    try:
+        log(conformation_id, "going to connect", path, logging)
+        sock = socket.socket()
+        sock.connect((host, port))
+        log(conformation_id, "connected", path, logging)
+
+        ase_atoms = ase_atoms.todict()
+
+        task = (ase_atoms, step, conformation_id)
+        task = pickle.dumps(task)
+        send_one_message(sock, task)
+        log(conformation_id, "send one message", path, logging)
+        result = recv_one_message(sock)
+        log(conformation_id, "received response", path, logging)
+        idx, not_converged, history = pickle.loads(result)
+        assert conformation_id == idx
+
+        return conformation_id, step, history
+    except Exception as e:
+        description = traceback.format_exc()
+        log(conformation_id, description, path, logging)
+        return conformation_id, step, None
 
 def calculate_dft_energy_tcp_client(task, host, port, logging=False):
     path = f"client_{host}_{port}.out"
@@ -173,7 +210,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         timeout_seconds = sys.argv[2]
     else:
-        timeout_seconds = 300
+        timeout_seconds = 30000
 
     if len(sys.argv) >= 4:
         dft_script_path = sys.argv[3]
@@ -212,7 +249,7 @@ if __name__ == "__main__":
         with tempfile.NamedTemporaryFile(mode="wb", delete=False) as file_obj:
             result_path = file_obj.name
 
-        result = conformation_id, True, None, None
+        result = conformation_id, True, None
         try:
             completed_process = subprocess.run(
                 [
