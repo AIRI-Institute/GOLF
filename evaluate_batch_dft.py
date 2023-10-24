@@ -294,6 +294,7 @@ def make_env(args):
         "terminate_on_negative_reward": args.terminate_on_negative_reward,
         "max_num_negative_rewards": args.max_num_negative_rewards,
         "evaluation": True,
+        "host_file_path": args.host_file_path,
     }
 
     eval_env = env_fn(**env_kwargs)
@@ -323,7 +324,7 @@ def main(checkpoint_path, args, config):
         torch.use_deterministic_algorithms(True)
 
     dft_server_destinations = get_dft_server_destinations(
-        args.n_threads, args.port_type == "eval"
+        args.n_threads, args.port_type == "eval", args.host_file_path
     )
     method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
     executors = [

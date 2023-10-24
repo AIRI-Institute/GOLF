@@ -86,7 +86,12 @@ def calculate_dft_energy_tcp_client(task, host, port, logging=False):
         return conformation_id, step, None, None
 
 
-def get_dft_server_destinations(n_threads, evaluation):
+def get_dft_server_destinations(n_threads, evaluation, host_file_path=None):
+    if host_file_path:
+        with open(host_file_path, "r") as f:
+            hosts = f.readlines()
+    else:
+        hosts = HOSTS
     # Different ports for train/eval to avoid "Connection refused errors"
     if evaluation:
         port_range_begin = PORT_RANGE_BEGIN_EVAL
@@ -94,55 +99,11 @@ def get_dft_server_destinations(n_threads, evaluation):
         port_range_begin = PORT_RANGE_BEGIN_TRAIN
 
     destinations = []
-    for host in HOSTS:
+    for host in hosts:
         for port in range(port_range_begin, port_range_begin + n_threads):
             destinations.append((host, port))
 
     return destinations
-
-
-def calculate_dft_energy_queue(queue, n_threads, evaluation=False):
-    sockets = []
-
-    for destination in get_dft_server_destinations(n_threads, evaluation):
-        # print("connect", host, port)
-
-        sock = socket.socket()
-        sock.connect(destination)
-        sockets.append(sock)
-
-    results = []
-    while len(queue) > 0:
-        waitlist = []
-
-        for sock in sockets:
-            if len(queue) == 0:
-                break
-
-            task = queue.pop()
-            ase_atoms, dummy, idx = task
-
-            ase_atoms = ase_atoms.todict()
-
-            task = (ase_atoms, dummy, idx)
-            task = pickle.dumps(task)
-
-            # print("job", idx, "send", len(task), "bytes to", sock.getsockname())
-
-            send_one_message(sock, task)
-            waitlist.append(sock)
-
-        for sock in waitlist:
-            result = recv_one_message(sock)
-            # print("recv", len(result), "bytes from", sock.getsockname())
-
-            result = pickle.loads(result)
-
-            results.append(result)
-
-    results = sorted(results, key=lambda x: x[0])
-
-    return results
 
 
 # Get correct hostname

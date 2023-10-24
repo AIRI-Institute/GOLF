@@ -126,6 +126,7 @@ def fill_initial_replay_buffer(device, args, atomrefs=None):
         "minimize_on_every_step": args.minimize_on_every_step,
         "terminate_on_negative_reward": args.terminate_on_negative_reward,
         "max_num_negative_rewards": args.max_num_negative_rewards,
+        "host_file_path": args.host_file_path,
     }
     # Initialize reward wrapper
     env = RewardWrapper(env, **reward_wrapper_kwargs)

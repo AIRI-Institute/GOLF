@@ -124,13 +124,19 @@ class RdkitOracle(BaseOracle):
 
 class DFTOracle(BaseOracle):
     def __init__(
-        self, n_parallel, update_coordinates_fn, n_threads, port_type, converter
+        self,
+        n_parallel,
+        update_coordinates_fn,
+        n_threads,
+        port_type,
+        converter,
+        host_file_path,
     ):
         super().__init__(n_parallel, update_coordinates_fn)
 
         self.previous_molecules = [None] * self.n_parallel
         self.dft_server_destinations = get_dft_server_destinations(
-            n_threads, port_type == "eval"
+            n_threads, port_type == "eval", host_file_path
         )
         method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
         self.executors = [
@@ -285,6 +291,7 @@ class RewardWrapper(gym.Wrapper):
         evaluation=False,
         terminate_on_negative_reward=False,
         max_num_negative_rewards=1,
+        host_file_path=None,
     ):
         # Set arguments
         self.dft = dft
@@ -316,6 +323,7 @@ class RewardWrapper(gym.Wrapper):
             n_threads=self.n_threads,
             port_type="train",
             converter=converter,
+            host_file_path=host_file_path,
         )
 
         self.negative_rewards_counter = np.zeros(self.n_parallel)

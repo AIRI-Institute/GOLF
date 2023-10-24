@@ -317,6 +317,12 @@ def get_args():
     parser.add_argument(
         "--exp_name", required=True, type=str, help="Name of the experiment"
     )
+    parser.add_argument(
+        "--host_file_path",
+        default=None,
+        type=str,
+        help="Path to the file with a list of server ip's",
+    )
     parser.add_argument("--seed", default=None, type=int, help="Random seed")
     parser.add_argument(
         "--full_checkpoint_freq",

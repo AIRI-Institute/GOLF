@@ -20,6 +20,7 @@ def make_envs(args):
         "evaluation": False,
         "terminate_on_negative_reward": args.terminate_on_negative_reward,
         "max_num_negative_rewards": args.max_num_negative_rewards,
+        "host_file_path": args.host_file_path,
     }
 
     # Initialize env
