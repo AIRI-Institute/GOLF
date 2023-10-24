@@ -4,6 +4,16 @@
 </p>
 
 ## Distributed Gradiant Calculation using DFT
+1. Set up environments on CPU-rich machines.
+```
+# On CPU rich machines
+git clone <repo>
+cd GOLF/scripts
+./setup_host.sh n_ports ports_range_begin_train ports_range_begin_eval
+```
+Here, `n_ports` denotes number of workers on a CPU-rich machine, and `ports_range_begin_train` and `ports_range_begin_eval` denote the starting port numbers for train workers and eval workers respectively.Train workers process conformations during the training phase and eval workers procces conformations during the evaluation phase. For example, `./setup_host.sh 24 20000 30000` will launch a total of 48 workers on ports $20000, \dots, 20023, 30000, \dots, 30023$.
+
+By default we assume that each worker uses 4 CPU-cores (can be changed in `env/dft_worker.py`, line 22) which means that `n_ports` must be less or equal `total_cpu_number / 4`.
 
 1. Prepare an environment and copy to CPU-rich machines. Use the following command
 to copy symlinks as symlinks:
