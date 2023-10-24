@@ -1,9 +1,12 @@
 #! /bin/bash -ex
 
 n_ports=$1
-begin_range=$2
+begin_range_train=$2
+begin_range_eval=$3
 ./install_miniconda.sh
 source ~/miniconda3/etc/profile.d/conda.sh
 ./install_env.sh
 conda activate golf_dft_env
-./babysit_dft.sh $n_ports $begin_range
+./babysit_dft.sh $n_ports $begin_range_train
+./babysit_dft.sh $n_ports $begin_range_eval
+
