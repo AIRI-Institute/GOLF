@@ -3,16 +3,28 @@
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 </p>
 
-## Training NNPs on optimization trajectories
+## Training the NNP baseline
 1. Set up environment on the GPU machine.
    ```
    # On the GPU machine
-   conda create -y -n md_env python=3.9
-   conda activate md_env
+   conda create -y -n GOLF_env python=3.9
+   conda activate GOLF_env
    conda install pytorch pytorch-cuda=11.8 -c pytorch -c nvidia
    conda install  psi4 -c psi4
    python -m pip install -r requirements.txt
    ```
+2. Download training dataset $\mathcal{D}_0$.
+   ```
+   wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/GOLF_train.db
+   ```
+3. Train baseline PaiNN model
+   ```
+   cd scripts/train
+   ./run_training_baseline
+   ```
+
+## Training the NNP on optimization trajectories
+1. Set up environment on the GPU machine like in [the first section](#training-the-nnp-baseline)
 2. Download optimization trajectories datasets.
    ```
    wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/traj-10k.db
@@ -21,13 +33,18 @@
    ```
 3. Train PaiNN.
    ```
-   ./run_training_trajectories.sh
+   cd scripts/train
+   ./run_training_trajectories-10k.sh
+   ./run_training_trajectories-100k.sh
+   ./run_training_trajectories-500k.sh
    ```
+   Running these scripts will create a folder in the specified `log_dir` directory. The name of the folder is specified by the `exp_name` hyperparameter. The folder will contain checkpoints, a metrics file and a config file with hyperparameters.
+
 ## Training NNPs with GOLF
 
 ### Distributed Gradient Calculation with Psi4
 To speed up the training, we parallelize DFT computations using several CPU-rich machines. The training of the NNP takes place on the parent machine with a GPU.
-1. Set up environment on the GPU machine like in [the first section](#training-nnps-on-optimization-trajectories)
+1. Set up environment on the GPU machine like in [the first section](#training-the-nnp-baseline)
 1. Log in to CPU-rich machines. They must be accessible via `ssh`.
 2. Set up environments on CPU-rich machines.
    ```
@@ -40,3 +57,22 @@ To speed up the training, we parallelize DFT computations using several CPU-rich
    
    By default we assume that each worker uses 4 CPU-cores (can be changed in `env/dft_worker.py`, line 22) which means that `n_ports` must be less or equal to `total_cpu_number / 4`.
 4. Write ip addresses of CPU rich machines to a text file. We use `env/host_names.txt`.
+
+### Training with GOLF
+Train PaiNN with GOLF.
+```
+cd scripts/train
+./run_training_GOLF.sh
+```
+
+## Evaluating NNPs
+1. Download evaluation dataset $\mathcal{D}_{\text{test}}$.
+   ```
+   wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/GOLF_test.db
+   ```
+2. Run evaluation.
+   ```
+   python evaluate_batch_dft.py --checkpoint_path *path-to-experiment-folder* --agent_path *path-to-checkpoint* --n_parallel 120 --n_threads 24 --conf_number -1 --eval_db_path *path_to_evaluation_database*
+   ```
+
+
