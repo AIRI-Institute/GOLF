@@ -648,6 +648,12 @@ if __name__ == "__main__":
         type=int,
         help="Number of conformations to evaluate on",
     )
+    parser.add_argument(
+        "--host_file_name",
+        default=None,
+        type=str,
+        help="Path to the file with a list of server ip's",
+    )
     parser.add_argument("--pct_max_threshold", type=float, default=2)
     parser.add_argument("--pct_min_threshold", type=float, default=-math.inf)
     parser.add_argument("--summary_log_interval", type=int, default=1000)
