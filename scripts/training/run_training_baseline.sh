@@ -1,12 +1,12 @@
 #! /bin/bash -ex
 
-cuda=$1
+cuda=$0
 
 CUDA_VISIBLE_DEVICES=$cuda \
 python main.py --n_parallel 240 \
 --n_threads 24 \
---db_path ../data/train_4k_mff_rdkit_optimized_v2.db \
---eval_db_path env/data/test_4k_mff_optimized.db \
+--db_path *path-to-train-dataset* \
+--eval_db_path *path-to-eval-dataset* \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
 --timelimit_train 1 \
@@ -21,12 +21,11 @@ python main.py --n_parallel 240 \
 --n_rbf 50 \
 --n_atom_basis 128 \
 --actor GOLF \
+--experience_saver reward_threshold \
+--store_only_initial_conformations True \
 --conformation_optimizer LBFGS \
 --conf_opt_lr 1.0 \
 --conf_opt_lr_scheduler Constant \
---experience_saver reward_threshold \
---grad_missmatch_threshold 1.0 \
---store_only_initial_conformations True \
 --max_iter 5 \
 --lbfgs_device cpu \
 --momentum 0.0 \
@@ -48,9 +47,9 @@ python main.py --n_parallel 240 \
 --eval_freq 1200 \
 --n_eval_runs 64 \
 --eval_termination_mode fixed_length \
---exp_name fixed_dataset_rdkit \
+--exp_name baseline-NNP \
 --full_checkpoint_freq  10000 \
 --light_checkpoint_freq 50000 \
 --save_checkpoints True \
---load_baseline results/AL-painn-DFT-baseline_2023_05_02_14_37_12_882529/full_cp_iter_500000 \
---log_dir results \
+--load_baseline *path-to-baseline-NNP* \
+--log_dir *path-to-log-dir* \
