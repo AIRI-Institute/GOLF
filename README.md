@@ -22,7 +22,7 @@
    cd scripts/train
    ./run_training_baseline.sh
    ```
-   Running this script will create a folder in the specified `log_dir` directory. The name of the folder is specified by the `exp_name` hyperparameter. The folder will contain checkpoints, a metrics file and a config file with hyperparameters.
+   Running this script will create a folder in the specified `log_dir` directory (we use "./results" in our configs and scripts). The name of the folder is specified by the `exp_name` hyperparameter. The folder will contain checkpoints, a metrics file and a config file with hyperparameters.
 
 ## Training the NNP on optimization trajectories
 1. Set up environment on the GPU machine like in [the first section](#training-the-nnp-baseline)
@@ -87,4 +87,17 @@ cd scripts/train
    python evaluate_batch_dft.py --checkpoint_path *path-to-experiment-folder* --agent_path *path-to-checkpoint* --n_parallel 240 --n_threads 24 --conf_number -1 --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False --eval_early_stop_steps 1 2 3 5 8 13 21 30 50 75 100
    ```
    After the evaluation is finished, an `evaluation_metrics.json` file with per-step metrics is created. Each record in `evaluation_metrics.json` describes optimization statistics for a single conformation and contains such metrics as: forces/energies MSE, percentage of optimized energy, predicted and ground-truth energies, etc. The final NNP-optimized conformations are stored in `results.db` database.
+5. Run evaluation with pre-trained models.
+   In this repo, we provide NNPs pre-trained on different datasets in the `checkpoints` directory:
+      - $f^{\text{baseline}}$  (`checkpoints/baseline-NNP/NNP_checkpoint`)
+      - $f^{\text{traj-10k}}$ (`checkpoints/traj-10k/NNP_checkpoint`)
+      - $f^{\text{traj-100k}}$ (`checkpoints/traj-100k/NNP_checkpoint`)
+      - $f^{\text{traj-500k}}$ (`checkpoints/trak-500k/NNP_checkpoint`)
+      - $f^{\text{GOLF-1k}}$ (`checkpoints/GOLF-1k/NNP_checkpoint`)
+      - $f^{\text{GOLF-10k}}$ (`checkpoints/GOLF-10k/NNP_checkpoint`)
+
+   For example, to evaluate GOLF-10k without `psi4` energy estimation, run:
+   ```
+   python evaluate_batch_dft.py --checkpoint_path checkpoints/GOLF-10k --agent_path NNP_checkpoint --n_parallel 240 --n_threads 24 --conf_number -1 --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False
+   ```
 
