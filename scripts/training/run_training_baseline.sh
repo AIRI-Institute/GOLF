@@ -51,4 +51,4 @@ python main.py --n_parallel 240 \
 --full_checkpoint_freq  10000 \
 --light_checkpoint_freq 50000 \
 --save_checkpoints True \
---log_dir *path-to-log-dir* \
+--log_dir results \

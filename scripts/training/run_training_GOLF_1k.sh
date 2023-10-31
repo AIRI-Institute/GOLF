@@ -51,5 +51,5 @@ python main.py --n_parallel 48 \
 --full_checkpoint_freq  96 \
 --light_checkpoint_freq 192 \
 --save_checkpoints True \
---load_baseline *path-to-baseline-NNP* \
---log_dir *path-to-log-dir* \
+--load_baseline  checkpoints/baseline-NNP/NNP_checkpoint \
+--log_dir results \
