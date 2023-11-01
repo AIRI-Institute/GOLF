@@ -34,7 +34,7 @@ from tqdm import tqdm
 from GOLF.utils import recollate_batch, get_atoms_indices_range
 from GOLF import DEVICE
 from env.moldynamics_env import env_fn
-from env.wrappers import RewardWrapper
+from env.wrappers import EnergyWrapper
 from utils.arguments import str2bool, check_positive
 
 
@@ -298,7 +298,7 @@ def make_env(args):
     }
 
     eval_env = env_fn(**env_kwargs)
-    eval_env = RewardWrapper(eval_env, **reward_wrapper_kwargs)
+    eval_env = EnergyWrapper(eval_env, **reward_wrapper_kwargs)
 
     return eval_env
 

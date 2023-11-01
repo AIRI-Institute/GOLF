@@ -1,5 +1,5 @@
 from .moldynamics_env import env_fn
-from .wrappers import RewardWrapper
+from .wrappers import EnergyWrapper
 
 
 def make_envs(args):
@@ -25,7 +25,7 @@ def make_envs(args):
 
     # Initialize env
     env = env_fn(**env_kwargs)
-    env = RewardWrapper(env, **reward_wrapper_kwargs)
+    env = EnergyWrapper(env, **reward_wrapper_kwargs)
 
     # Update kwargs for eval_env
     if args.eval_db_path != "":
@@ -46,6 +46,6 @@ def make_envs(args):
 
     # Initialize eval env
     eval_env = env_fn(**env_kwargs)
-    eval_env = RewardWrapper(eval_env, **reward_wrapper_kwargs)
+    eval_env = EnergyWrapper(eval_env, **reward_wrapper_kwargs)
 
     return env, eval_env

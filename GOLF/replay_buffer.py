@@ -7,7 +7,7 @@ from schnetpack.nn import scatter_add
 
 from GOLF.utils import unpad_state
 from env.moldynamics_env import env_fn
-from env.wrappers import RewardWrapper
+from env.wrappers import EnergyWrapper
 
 
 NORM_THRESHOLD = 10.5

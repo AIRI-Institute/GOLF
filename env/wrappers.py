@@ -280,7 +280,7 @@ class DFTOracle(BaseOracle):
         return results
 
 
-class RewardWrapper(gym.Wrapper):
+class EnergyWrapper(gym.Wrapper):
     def __init__(
         self,
         env,
