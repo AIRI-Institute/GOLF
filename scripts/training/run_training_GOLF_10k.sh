@@ -5,8 +5,8 @@ cuda=$0
 CUDA_VISIBLE_DEVICES=$cuda \
 python main.py --n_parallel 120 \
 --n_threads 24 \
---db_path *path-to-train-dataset* \
---eval_db_path *path-to-eval-dataset* \
+--db_path ../../data/GOLF_train.db \
+--eval_db_path ../../data/GOLF_test.db \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
 --timelimit_train 100 \
@@ -48,8 +48,9 @@ python main.py --n_parallel 120 \
 --n_eval_runs 64 \
 --eval_termination_mode fixed_length \
 --exp_name GOLF-10k \
+--host_file_path ../../env/host_names.txt \
 --full_checkpoint_freq  600 \
 --light_checkpoint_freq 1200 \
 --save_checkpoints True \
---load_baseline checkpoints/baseline-NNP/NNP_checkpoint \
---log_dir results \
+--load_baseline ../../checkpoints/baseline-NNP/NNP_checkpoint \
+--log_dir ../../results \

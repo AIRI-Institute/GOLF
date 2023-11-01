@@ -1,12 +1,12 @@
 #! /bin/bash -ex
 
-cuda=$0
+cuda=$1
 
 CUDA_VISIBLE_DEVICES=$cuda \
-python main.py --n_parallel 240 \
+python ../../main.py --n_parallel 240 \
 --n_threads 24 \
---db_path *path-to-train-dataset* \
---eval_db_path *path-to-eval-dataset* \
+--db_path ../../data/GOLF_train.db \
+--eval_db_path ../../data/GOLF_test.db \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
 --timelimit_train 1 \
@@ -51,4 +51,4 @@ python main.py --n_parallel 240 \
 --full_checkpoint_freq  10000 \
 --light_checkpoint_freq 50000 \
 --save_checkpoints True \
---log_dir results \
+--log_dir ../../results \

@@ -1,12 +1,12 @@
 #! /bin/bash -ex
 
-cuda=$0
+cuda=$1
 
 CUDA_VISIBLE_DEVICES=$cuda \
-python main.py --n_parallel 240 \
+python ../../main.py --n_parallel 240 \
 --n_threads 24 \
---db_path *path-to-traj-500k* \
---eval_db_path *path-to-eval-dataset* \
+--db_path ../../data/traj-500k.db \
+--eval_db_path ../../data/GOLF_test.db \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
 --timelimit_train 1 \
@@ -47,9 +47,9 @@ python main.py --n_parallel 240 \
 --eval_freq 1200 \
 --n_eval_runs 64 \
 --eval_termination_mode fixed_length \
---exp_name traj-10k \
+--exp_name traj-500k \
 --full_checkpoint_freq  10000 \
 --light_checkpoint_freq 50000 \
 --save_checkpoints True \
---load_baseline checkpoints/baseline-NNP/NNP_checkpoint \
---log_dir results \
+--load_baseline ../../checkpoints/baseline-NNP/NNP_checkpoint \
+--log_dir ../../results \
