@@ -324,7 +324,7 @@ def main(checkpoint_path, args, config):
         torch.use_deterministic_algorithms(True)
 
     dft_server_destinations = get_dft_server_destinations(
-        args.n_threads, args.port_type == "eval", args.host_file_path
+        args.n_threads, args.host_file_path
     )
     method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
     executors = [
@@ -850,13 +850,6 @@ if __name__ == "__main__":
     # Other args
     parser.add_argument("--project", type=str, help="Project name in wandb")
     parser.add_argument("--run_id", type=str, help="Run name in wandb project")
-    parser.add_argument(
-        "--port_type",
-        choices=["train", "eval"],
-        default="eval",
-        type=str,
-        help="DFT server port",
-    )
     parser.add_argument(
         "--logging_tcp_client",
         default=False,
