@@ -11,6 +11,7 @@
 
 # Ignore logs notebooks and env data
 results
+data
 trajectories
 notebooks
 evaluate_action_norms
