@@ -23,7 +23,7 @@
 4. Train baseline PaiNN model
    ```
    cd scripts/train
-   ./run_training_baseline.sh
+   ./run_training_baseline.sh <cuda_device_number>
    ```
    Running this script will create a folder in the specified `log_dir` directory (we use "./results" in our configs and scripts). The name of the folder is specified by the `exp_name` hyperparameter. The folder will contain checkpoints, a metrics file and a config file with hyperparameters.
 
@@ -40,9 +40,9 @@
 3. Train PaiNN.
    ```
    cd scripts/train
-   ./run_training_trajectories-10k.sh
-   ./run_training_trajectories-100k.sh
-   ./run_training_trajectories-500k.sh
+   ./run_training_trajectories-10k.sh <cuda_device_number>
+   ./run_training_trajectories-100k.sh <cuda_device_number>
+   ./run_training_trajectories-500k.sh <cuda_device_number>
    ```
 
 ## Training NNPs with GOLF
@@ -67,7 +67,7 @@ To speed up the training, we parallelize DFT computations using several CPU-rich
 Train PaiNN with GOLF.
 ```
 cd scripts/train
-./run_training_GOLF.sh
+./run_training_GOLF.sh <cuda_device_number>
 ```
 
 ## Evaluating NNPs
