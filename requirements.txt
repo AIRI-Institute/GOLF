@@ -8,3 +8,4 @@ PettingZoo==1.17.0
 networkx==2.6.3
 backoff==1.11.1
 GitPython==3.1.31
+pytorch-lightning==1.9.0
