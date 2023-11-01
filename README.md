@@ -13,11 +13,14 @@
    conda install  psi4 -c psi4
    python -m pip install -r requirements.txt
    ```
-2. Download training dataset $\mathcal{D}_0$.
+2. Download training dataset $\mathcal{D}_0$ and evaluation dataset $\mathcal{D}\_{\text{test}}$
    ```
+   mkdir data && cd data
    wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/GOLF_train.db
+   wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/GOLF_test.db
+   cd ../
    ```
-3. Train baseline PaiNN model
+4. Train baseline PaiNN model
    ```
    cd scripts/train
    ./run_training_baseline.sh
@@ -28,9 +31,11 @@
 1. Set up environment on the GPU machine like in [the first section](#training-the-nnp-baseline)
 2. Download optimization trajectories datasets.
    ```
+   cd data
    wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/traj-10k.db
    wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/traj-100k.db
    wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/traj-500k.db
+   cd ../
    ```
 3. Train PaiNN.
    ```
@@ -66,17 +71,13 @@ cd scripts/train
 ```
 
 ## Evaluating NNPs
-1. Download evaluation dataset $\mathcal{D}_{\text{test}}$.
-   ```
-   wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/GOLF_test.db
-   ```
-2. Run evaluation.
+1. Run evaluation.
       
    To optimize conformations with an NNP run the following command. The NNP is specified by providing the path to the experiment folder created during the training. Hyperparameters for the external optimizer and the NNP will be taken from `*path-to-experiment-folder*/config.json`. Specify the checkpoint path _relative_ to the `*path-to-experiment-folder*`. If you whish to run evaluation for a pre-trained NNP, create a folder with `config.json` and an NNP checkpoint.
    ```
    python evaluate_batch_dft.py --checkpoint_path *path-to-experiment-folder* --agent_path *path-to-checkpoint* --n_parallel 240 --n_threads 24 --conf_number -1 --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False
    ```
-4. Run evaluation and estimate the percentage of optimized energy.
+2. Run evaluation and estimate the percentage of optimized energy.
    
    To estimate the $\overline{pct}$, optimal energies obtained with the genuine oracle $\mathcal{O}$ (we used `psi4.optimize`) must be available. We provide them in the evaluation dataset $\mathcal{D}_{\text{test}}$. If only $\overline{pct}_T$ needs to be estimated, run:
    ```
@@ -87,7 +88,7 @@ cd scripts/train
    python evaluate_batch_dft.py --checkpoint_path *path-to-experiment-folder* --agent_path *path-to-checkpoint* --n_parallel 240 --n_threads 24 --conf_number -1 --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False --eval_early_stop_steps 1 2 3 5 8 13 21 30 50 75 100
    ```
    After the evaluation is finished, an `evaluation_metrics.json` file with per-step metrics is created. Each record in `evaluation_metrics.json` describes optimization statistics for a single conformation and contains such metrics as: forces/energies MSE, percentage of optimized energy, predicted and ground-truth energies, etc. The final NNP-optimized conformations are stored in `results.db` database.
-5. Run evaluation with pre-trained models.
+3. Run evaluation with pre-trained models.
    In this repo, we provide NNPs pre-trained on different datasets in the `checkpoints` directory:
       - $f^{\text{baseline}}$  (`checkpoints/baseline-NNP/NNP_checkpoint`)
       - $f^{\text{traj-10k}}$ (`checkpoints/traj-10k/NNP_checkpoint`)
