@@ -108,9 +108,10 @@ def main(args, experiment_folder):
     if args.load_baseline:
         trainer.light_load(args.load_baseline)
 
-    state = env.reset()
-    # Set initial states in Policy
-    policy.reset(state)
+    if not args.store_only_initial_conformations:
+        state = env.reset()
+        # Set initial states in Policy
+        policy.reset(state)
 
     episode_returns = np.zeros(args.n_parallel)
 
@@ -133,10 +134,9 @@ def main(args, experiment_folder):
         start = time.perf_counter()
         update_condition = replay_buffer.size >= args.batch_size
 
-        # Get current timesteps
-        episode_timesteps = env.unwrapped.get_env_step()
-
         if not args.store_only_initial_conformations:
+            # Get current timesteps
+            episode_timesteps = env.unwrapped.get_env_step()
             # Select next action
             actions = policy.act(episode_timesteps)["action"].cpu().numpy()
             print("policy.act() time: {:.4f}".format(time.perf_counter() - start))

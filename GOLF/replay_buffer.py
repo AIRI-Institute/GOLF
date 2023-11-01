@@ -119,18 +119,6 @@ def fill_initial_replay_buffer(device, args, atomrefs=None):
     else:
         total_confs = args.num_initial_conformations
 
-    # Reward wrapper kwargs
-    reward_wrapper_kwargs = {
-        "dft": args.reward == "dft",
-        "n_threads": args.n_threads,
-        "minimize_on_every_step": args.minimize_on_every_step,
-        "terminate_on_negative_reward": args.terminate_on_negative_reward,
-        "max_num_negative_rewards": args.max_num_negative_rewards,
-        "host_file_path": args.host_file_path,
-    }
-    # Initialize reward wrapper
-    env = RewardWrapper(env, **reward_wrapper_kwargs)
-
     initial_replay_buffer = ReplayBuffer(
         device,
         max_size=total_confs,
@@ -139,12 +127,11 @@ def fill_initial_replay_buffer(device, args, atomrefs=None):
     )
 
     # Fill up the replay buffer
-    # for _ in range(100):
     for _ in range(total_confs):
         state = env.reset()
         # Save initial state in replay buffer
-        energies = env.get_energies()
-        forces = env.get_forces()
+        energies = np.array([env.energy])
+        forces = [np.array(force) for force in env.force]
         initial_replay_buffer.add(state, forces, energies)
 
     return initial_replay_buffer
