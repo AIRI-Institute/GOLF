@@ -137,6 +137,8 @@ class DFTOracle(BaseOracle):
         self.dft_server_destinations = get_dft_server_destinations(
             n_threads, host_file_path
         )
+        print("WORKERS:")
+        print(self.dft_server_destinations)
         method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
         self.executors = [
             concurrent.futures.ProcessPoolExecutor(
