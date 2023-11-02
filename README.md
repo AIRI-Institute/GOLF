@@ -56,9 +56,9 @@ To speed up the training, we parallelize DFT computations using several CPU-rich
    # On CPU rich machines
    git clone <repo>
    cd GOLF/scripts
-   ./setup_host.sh n_ports ports_range_begin_train ports_range_begin_eval
+   ./setup_host.sh n_ports ports_range_begin
    ```
-   Here, `n_ports` denotes number of workers on a CPU-rich machine, and `ports_range_begin_train` and `ports_range_begin_eval` denote the starting port numbers for train workers and eval workers respectively. Train workers process conformations during the training phase and eval workers procces conformations during the evaluation phase. For example, `./setup_host.sh 24 20000 30000` will launch a total of 48 workers listening to ports `20000, ... , 20023, 30000, ... , 30023`. Note that train workers and eval workers do not operate at the same time.
+   Here, `n_ports` denotes number of workers on a CPU-rich machine, and `ports_range_begin` denotes the starting port numbers for workers and. Workers calculate energies and forces using `psi4` for newly generated conformations. For example, `./setup_host.sh 24 20000` will launch a total of 48 workers listening to ports `20000, ... , 20023`. You can change the `ports_range_begin` in `env/dft.py`.
    
    By default we assume that each worker uses 4 CPU-cores (can be changed in `env/dft_worker.py`, line 22) which means that `n_ports` must be less or equal to `total_cpu_number / 4`.
 4. Add ip addresses of CPU rich machines to a text file. We use `env/host_names.txt`.
