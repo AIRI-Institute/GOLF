@@ -75,17 +75,17 @@ cd scripts/train
       
    To optimize conformations with an NNP run the following command. The NNP is specified by providing the path to the experiment folder created during the training. Hyperparameters for the external optimizer and the NNP will be taken from `*path-to-experiment-folder*/config.json`. Specify the checkpoint path _relative_ to the `*path-to-experiment-folder*`. If you whish to run evaluation for a pre-trained NNP, create a folder with `config.json` and an NNP checkpoint.
    ```
-   python evaluate_batch_dft.py --checkpoint_path *path-to-experiment-folder* --agent_path *path-to-checkpoint* --n_parallel 240 --n_threads 24 --conf_number -1 --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False
+   python evaluate_batch_dft.py --checkpoint_path *path-to-experiment-folder* --agent_path *path-to-checkpoint* --n_parallel 240 --n_threads 24 --conf_number -1 --host_file_path env/host_names.txt --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False
    ```
 2. Run evaluation and estimate the percentage of optimized energy.
    
    To estimate the $\overline{pct}$, optimal energies obtained with the genuine oracle $\mathcal{O}$ (we used `psi4.optimize`) must be available. We provide them in the evaluation dataset $\mathcal{D}_{\text{test}}$. If only $\overline{pct}_T$ needs to be estimated, run:
    ```
-   python evaluate_batch_dft.py --checkpoint_path *path-to-experiment-folder* --agent_path *path-to-checkpoint* --n_parallel 240 --n_threads 24 --conf_number -1 --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False --eval_early_stop_steps 100
+   python evaluate_batch_dft.py --checkpoint_path *path-to-experiment-folder* --agent_path *path-to-checkpoint* --n_parallel 240 --n_threads 24 --conf_number -1 --host_file_path env/host_names.txt --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False --eval_early_stop_steps 100
    ```
-   If you wish to adjust the timelimit, adjust `eval_early_stop_steps` accordingly. If you wish to reproduce plots from 1, run:
+   If you wish to adjust the timelimit, adjust `eval_early_stop_steps` accordingly. If you wish to reproduce plots from Figure 1, run:
    ```
-   python evaluate_batch_dft.py --checkpoint_path *path-to-experiment-folder* --agent_path *path-to-checkpoint* --n_parallel 240 --n_threads 24 --conf_number -1 --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False --eval_early_stop_steps 1 2 3 5 8 13 21 30 50 75 100
+   python evaluate_batch_dft.py --checkpoint_path *path-to-experiment-folder* --agent_path *path-to-checkpoint* --n_parallel 240 --n_threads 24 --conf_number -1 --host_file_path env/host_names.txt --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False --eval_early_stop_steps 1 2 3 5 8 13 21 30 50 75 100
    ```
    After the evaluation is finished, an `evaluation_metrics.json` file with per-step metrics is created. Each record in `evaluation_metrics.json` describes optimization statistics for a single conformation and contains such metrics as: forces/energies MSE, percentage of optimized energy, predicted and ground-truth energies, etc. The final NNP-optimized conformations are stored in `results.db` database.
 3. Run evaluation with pre-trained models.
@@ -99,6 +99,6 @@ cd scripts/train
 
    For example, to evaluate GOLF-10k without `psi4` energy estimation, run:
    ```
-   python evaluate_batch_dft.py --checkpoint_path checkpoints/GOLF-10k --agent_path NNP_checkpoint --n_parallel 240 --n_threads 24 --conf_number -1 --eval_db_path *path_to_evaluation_database* --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False
+   python evaluate_batch_dft.py --checkpoint_path checkpoints/GOLF-10k --agent_path NNP_checkpoint_actor --n_parallel 240 --n_threads 24 --conf_number -1 --host_file_path env/host_names.txt --eval_db_path data/GOLF_test.db --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False
    ```
 
