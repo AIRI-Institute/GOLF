@@ -67,7 +67,7 @@ To speed up the training, we parallelize DFT computations using several CPU-rich
 Train PaiNN with GOLF.
 ```
 cd scripts/train
-./run_training_GOLF.sh <cuda_device_number>
+./run_training_GOLF-10k.sh <cuda_device_number>
 ```
 
 ## Evaluating NNPs
