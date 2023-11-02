@@ -14,7 +14,7 @@ trap cleanup EXIT
 
 range=$1
 begin=$2
-end=`expr $begin + $range`
+end=`expr $begin + $range - 1`
 
 rm -f /dev/shm/psi.*
 
