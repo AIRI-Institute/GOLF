@@ -893,6 +893,7 @@ if __name__ == "__main__":
     config["db_path"] = "/".join(args.eval_db_path.split("/")[-3:])
     config["eval_db_path"] = "/".join(args.eval_db_path.split("/")[-3:])
     config["n_parallel"] = args.n_parallel
+    config["host_file_path"] = args.host_file_path
     config["timelimit"] = args.timelimit + 1
     config["n_threads"] = args.n_threads
     config["terminate_on_negative_reward"] = args.terminate_on_negative_reward
