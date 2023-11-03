@@ -15,7 +15,6 @@ data
 trajectories
 notebooks
 evaluate_action_norms
-*.json
 env/data
 
 # Ignore models
