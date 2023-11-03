@@ -5,6 +5,9 @@
 # Ingore Jmol --> might remove
 **/Jmol
 
+# Ignore psi4 stuff
+**/timer.dat
+
 # Ignore all __pycache__ and .DS_Store
 **/__pycache__
 *.DS_Store
