@@ -2,7 +2,99 @@
 <p align="left">
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 </p>
+
 This repository is the official implementation of Gradual Optimization Learning for Conformational Energy Minimization. [[arxiv]](https://google.com)
+
+<table border="1" class="dataframe">
+   <thead>
+      <tr style="text-align: center;">
+         <th>Model</th>
+         <th>$\overline{\text{pct}}_T (\%) \uparrow$</th>
+         <th>$\text{pct}_{\text{div}} (\%) \downarrow$</th>
+         <th>$\text{COV} (\%) \uparrow$ </th>
+         <th>$\text{MAT} (\text{&#8491}) \downarrow $</th>
+      </tr>
+   </thead>
+   <tbody>
+      <tr>
+         <td><i>RDKit</i></td>
+         <td><i>$84.92 \pm 10.6$</i></td>
+         <td><i>$\mathbf{0.05}$</i></td>
+         <td><i>$62.24$</i></td>
+         <td><i>$0.509$</i></td>
+      </tr>
+      <tr>
+         <td><i>Torsional Diffusion</i></td>
+         <td><i>$25.63 \pm 21.4$</i></td>
+         <td><i>$46.9$</i></td>
+         <td><i>$11.3$</i></td>
+         <td><i>$1.333$</i></td>
+      </tr>
+      <tr>
+         <td><i>ConfOpt</i></td>
+         <td><i>$36.48 \pm 23.0$</i></td>
+         <td><i>$84.5$</i></td>
+         <td><i>$19.88$</i></td>
+         <td><i>$1.05$</i></td>
+      </tr>
+      <tr>
+         <td><i>Uni-Mol+</i></td>
+         <td><i>$62.20 \pm 17.2$</i></td>
+         <td><i>$2.8$</i></td>
+         <td><i>$68.79$</i></td>
+         <td><i>$0.407$</i></td>
+      </tr>
+      <tr>
+         <td><i>$f^{\text{baseline}}$</i></td>
+         <td><i>$76.8 \pm 22.4$</i></td>
+         <td><i>$7.5$</i></td>
+         <td><i>$65.22$</i></td>
+         <td><i>$0.482$</i></td>
+      </tr>
+      <tr>
+         <td><i>$f^{\text{rdkit}}$</i></td>
+         <td><i>$93.09 \pm 11.9$</i></td>
+         <td><i>$3.8$</i></td>
+         <td><i>$71.6$</i></td>
+         <td><i>$0.426$</i></td>
+      </tr>
+      <tr>
+         <td><i>$f^{\text{traj-10k}}$</i></td>
+         <td><i>$95.3 \pm 7.3$ </i></td>
+         <td><i>$4.5$</i></td>
+         <td><i>$70.55$</i></td>
+         <td><i>$0.440$</i></td>
+      </tr>
+      <tr>
+         <td><i>$f^{\text{traj-100k}}$</i></td>
+         <td><i>$96.3 \pm 9.8$</i></td>
+         <td><i>$2.9$</i></td>
+         <td><i>$71.43$</i></td>
+         <td><i>$0.432$</i></td>
+      </tr>
+      <tr>
+         <td><i>$f^{\text{traj-500k}}$</i></td>
+         <td><i>$98.4 \pm 9.2$</i></td>
+         <td><i>1.8</i></td>
+         <td><i>72.15</i></td>
+         <td><i>0.442</i></td>
+      </tr>
+      <tr>
+         <td><i>$f^{\text{GOLF-1k}}$</i></td>
+         <td><i>$98.5 \pm 5.3$</i></td>
+         <td><i>$3.6$</i></td>
+         <td><i></i>$76.54$</td>
+         <td><i>$\mathbf{0.349}$</i></td>
+      </tr>
+      <tr>
+         <td><i>$f^{\text{GOLF-10k}}$</i></td>
+         <td><i>$\mathbf{99.4 \pm 5.2}$</i></td>
+         <td><i>$2.4$</i></td>
+         <td><i>$\mathbf{76.84}$</i></td>
+         <td><i>$0.355$</i></td>
+      </tr>
+   </tbody>
+</table>
 
 ## Training the NNP baseline
 1. Set up environment on the GPU machine.
