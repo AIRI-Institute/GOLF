@@ -649,7 +649,7 @@ if __name__ == "__main__":
         help="Number of conformations to evaluate on",
     )
     parser.add_argument(
-        "--host_file_name",
+        "--host_file_path",
         default=None,
         type=str,
         help="Path to the file with a list of server ip's",
