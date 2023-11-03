@@ -3,7 +3,7 @@
 cuda=$1
 
 CUDA_VISIBLE_DEVICES=$cuda \
-python main.py --n_parallel 48 \
+python ../../main.py --n_parallel 48 \
 --n_threads 24 \
 --db_path ../../data/GOLF_train.db \
 --eval_db_path ../../data/GOLF_test.db \
@@ -45,12 +45,12 @@ python main.py --n_parallel 48 \
 --subtract_atomization_energy True \
 --action_norm_limit 1.0 \
 --eval_freq 48 \
---n_eval_runs 64 \
+--n_eval_runs 48 \
 --eval_termination_mode fixed_length \
 --exp_name GOLF-1k \
 --host_file_path ../../env/host_names.txt \
 --full_checkpoint_freq  96 \
 --light_checkpoint_freq 192 \
 --save_checkpoints True \
---load_baseline  ../../checkpoints/baseline-NNP/NNP_checkpoint \
+--load_baseline ../../checkpoints/baseline-NNP/NNP_checkpoint \
 --log_dir ../../results \

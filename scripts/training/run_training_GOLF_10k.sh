@@ -1,9 +1,9 @@
 #! /bin/bash -ex
 
-cuda=$0
+cuda=$1
 
 CUDA_VISIBLE_DEVICES=$cuda \
-python main.py --n_parallel 120 \
+python ../../main.py --n_parallel 120 \
 --n_threads 24 \
 --db_path ../../data/GOLF_train.db \
 --eval_db_path ../../data/GOLF_test.db \
