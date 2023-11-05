@@ -75,9 +75,9 @@ This repository is the official implementation of Gradual Optimization Learning 
       <tr>
          <td><i>$f^{\text{traj-500k}}$</i></td>
          <td><i>$98.4 \pm 9.2$</i></td>
-         <td><i>1.8</i></td>
-         <td><i>72.15</i></td>
-         <td><i>0.442</i></td>
+         <td><i>$1.8$</i></td>
+         <td><i>$72.15$</i></td>
+         <td><i>$0.442$</i></td>
       </tr>
       <tr>
          <td><i>$f^{\text{GOLF-1k}}$</i></td>
