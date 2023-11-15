@@ -51,10 +51,10 @@ def main(args, experiment_folder):
         with connect(args.db_path) as conn:
             if "atomrefs" in conn.metadata and args.subtract_atomization_energy:
                 atomrefs = conn.metadata["atomrefs"]["energy"]
-        assert (
-            args.subtract_atomization_energy and atomrefs
-        ), "Attempting to train with no atomization energy subtraction\
-            will likely result in the divergence of the model"
+        if args.subtract_atomization_energy:
+            assert (
+                atomrefs is not None
+            ), "Per-atom energies are not provided but args.subtract_atomization_energy is True."
 
     if args.load_model and not args.store_only_initial_conformations:
         replay_buffer = pickle.load(open(f"{args.load_model}_replay", "rb"))

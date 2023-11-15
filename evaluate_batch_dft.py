@@ -350,10 +350,10 @@ def main(checkpoint_path, args, config):
     with connect(args.eval_db_path) as conn:
         if "atomrefs" in conn.metadata and args.subtract_atomization_energy:
             atomrefs = np.array(conn.metadata["atomrefs"]["energy"])
-    assert (
-        args.subtract_atomization_energy and atomrefs is not None
-    ), "Attempting to train with no atomization energy subtraction\
-        will likely result in the divergence of the model"
+    if args.subtract_atomization_energy:
+        assert (
+            atomrefs is not None
+        ), "Per-atom energies are not provided but args.subtract_atomization_energy is True."
 
     state = eval_env.reset()
     if args.resume:
