@@ -16,7 +16,7 @@ range=$1
 begin=$2
 end=`expr $begin + $range - 1`
 
-rm -f /dev/shm/psi.*
+rm -f /dev/shm/psi* /dev/shm/null* /dev/shm/dfh*
 
 for port in `seq $begin $end`;
 do
