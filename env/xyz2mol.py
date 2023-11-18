@@ -1,8 +1,6 @@
-import argparse
 import copy
 import itertools
 
-from rdkit.Chem import rdmolops
 from rdkit.Chem import rdchem
 
 try:
@@ -16,7 +14,7 @@ import numpy as np
 import networkx as nx
 
 from rdkit import Chem
-from rdkit.Chem import AllChem, rdmolops
+from rdkit.Chem import AllChem
 from rdkit.Geometry import Point3D
 import sys
 
@@ -893,8 +891,11 @@ def get_rdkit_force(mol, confId=0):
 
 def set_coordinates(mol, coordinates):
     conf = mol.GetConformer()
-    for i in range(mol.GetNumAtoms()):
-        x, y, z = coordinates[i]
+    for i, a in enumerate(mol.GetAtoms()):
+        ij = i
+        if a.GetAtomMapNum() != 0:
+            ij = a.GetAtomMapNum() - 1
+        x, y, z = coordinates[ij]
         conf.SetAtomPosition(i, Point3D(x, y, z))
 
 

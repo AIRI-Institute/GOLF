@@ -160,6 +160,9 @@ class MolecularDynamics(gym.Env):
             # In case the database is the result of optimization
             elif hasattr(row.data, "initial_energy"):
                 self.energy[idx] = row.data["initial_energy"]
+            # In case of the SPICE dataset
+            elif hasattr(row.data, "total_energy"):
+                self.energy[idx] = row.data["total_energy"]
 
             if hasattr(row.data, "optimal_energy"):
                 if isinstance(row.data["optimal_energy"], list):
