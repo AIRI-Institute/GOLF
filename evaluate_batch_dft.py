@@ -377,7 +377,7 @@ def main(checkpoint_path, args, config):
 
     stats = {}
     for i, conformation_id in enumerate(eval_env.atoms_ids):
-        optimal_energy = eval_env.energy[i] + 1e-4
+        optimal_energy = eval_env.energy[i] + 1e-8
         if eval_env.optimal_energy[i]:
             optimal_energy = eval_env.optimal_energy[i]
         stats[conformation_id] = ConformationOptimizationStats(
@@ -410,6 +410,7 @@ def main(checkpoint_path, args, config):
         lbfgs_dones = select_action_result["done"]
         is_finite_action = select_action_result["is_finite_action"]
         n_iters_dones = select_action_result["n_iter"]
+        n_iters += np.asarray(n_iters_dones)
         forces = np.asarray(
             np.vsplit(
                 select_action_result["anti_gradient"],
@@ -426,14 +427,15 @@ def main(checkpoint_path, args, config):
             stats[conformation_id].non_finite_action_step = episode_timesteps[i]
 
         actions *= get_not_finished_mask(state, ~is_finite_action | finished)
-        state, rewards, dones, info = eval_env.step(actions)
-        dones = ~is_finite_action | dones
-        n_iters += np.asarray(n_iters_dones)
-        steps = np.asarray(eval_env.unwrapped.get_env_step(), dtype=np.float32)
 
+        # Do not change the molecules inside the env if inital conformations are evaluated
         if args.evaluate_initial_conformations:
             steps = np.zeros(args.n_parallel, dtype=np.float32)
             dones = np.ones(args.n_parallel, dtype=bool)
+        else:
+            state, _, dones, _ = eval_env.step(actions)
+            dones = ~is_finite_action | dones
+            steps = np.asarray(eval_env.unwrapped.get_env_step(), dtype=np.float32)
 
         tasks = []
 
@@ -460,6 +462,8 @@ def main(checkpoint_path, args, config):
                     n_iter=n_iters[i], energy=energy, force=forces[i]
                 )
                 stats[conformation_id].step2stats[early_stop_step] = step_stats
+                if conformation_id == 1:
+                    print(eval_env.dft_oracle.molecules[i].get_positions())
                 tasks.append(
                     (
                         conformation_id,
