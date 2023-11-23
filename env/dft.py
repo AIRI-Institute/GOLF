@@ -131,7 +131,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         timeout_seconds = sys.argv[2]
     else:
-        timeout_seconds = 300
+        timeout_seconds = 600
 
     if len(sys.argv) >= 4:
         dft_script_path = sys.argv[3]
