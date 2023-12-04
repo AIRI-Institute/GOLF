@@ -20,6 +20,14 @@ notebooks
 evaluate_action_norms
 env/data
 
+# Ignore different hostname files
+**/host_names*
+
+# Ignore resulting DBs and evaluation metrics
+**/evaluation_config.json
+**/evaluation_metrics.json
+**/results.db
+
 # Ignore models
 models
 
