@@ -43,7 +43,7 @@ python ../../main.py --n_parallel 240 \
 --max_oracle_steps 100000 \
 --utd_ratio 5 \
 --subtract_atomization_energy True \
---action_norm_limit 1.0 \
+--forces_norm_limit 1.0 \
 --eval_freq 1200 \
 --n_eval_runs 64 \
 --eval_termination_mode fixed_length \

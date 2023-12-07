@@ -7,7 +7,7 @@ function cleanup {
     pkill -P $$
 
     echo "clean /dev/shm"
-    rm -f "/dev/shm/psi.*"
+    rm -f /dev/shm/psi* /dev/shm/null* /dev/shm/dfh*
 }
 
 trap cleanup EXIT

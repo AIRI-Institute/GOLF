@@ -1,9 +1,5 @@
-from GOLF.experience_saver import (
-    RewardThresholdSaver,
-    LastConformationSaver,
-)
+from GOLF.experience_saver import LastConformationSaver, RewardThresholdSaver
 from utils.utils import ignore_extra_args
-
 
 savers = {
     "reward_threshold": ignore_extra_args(RewardThresholdSaver),

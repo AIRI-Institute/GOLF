@@ -1,7 +1,7 @@
-import numpy as np
 import time
-
 from collections import defaultdict
+
+import numpy as np
 
 from GOLF import DEVICE
 from GOLF.utils import recollate_batch

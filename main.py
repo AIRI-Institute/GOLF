@@ -8,18 +8,18 @@ import random
 import time
 from pathlib import Path
 
-from ase.db import connect
 import numpy as np
 import torch
+from ase.db import connect
 
+from env.make_envs import make_envs
 from GOLF import DEVICE
-from GOLF.GOLF_trainer import GOLF
 from GOLF.eval import eval_policy_dft, eval_policy_rdkit
+from GOLF.GOLF_trainer import GOLF
 from GOLF.make_policies import make_policies
 from GOLF.make_saver import make_saver
 from GOLF.replay_buffer import ReplayBuffer, fill_initial_replay_buffer
 from GOLF.utils import calculate_action_norm, recollate_batch
-from env.make_envs import make_envs
 from utils.arguments import get_args
 from utils.logging import Logger
 from utils.utils import ignore_extra_args
@@ -139,7 +139,7 @@ def main(args, experiment_folder):
             episode_timesteps = env.unwrapped.get_env_step()
             # Select next action
             actions = policy.act(episode_timesteps)["action"].cpu().numpy()
-            print("policy.act() time: {:.4f}".format(time.perf_counter() - start))
+            print("policy.act(); time: {:.4f}".format(time.perf_counter() - start))
 
             # If action contains non finites then reset everything and continue
             if not np.isfinite(actions).all():
@@ -181,16 +181,14 @@ def main(args, experiment_folder):
             update_condition and (args.reward != "dft" or train_model_flag)
         ) or args.store_only_initial_conformations:
             # Train agent after collecting sufficient data
-            prev_start = time.perf_counter()
+            train_start = time.perf_counter()
             for update_num in range(args.n_parallel * args.utd_ratio):
                 step_metrics = trainer.update(replay_buffer)
-                new_start = time.perf_counter()
-                # print(
-                #     "policy.train {} time: {:.4f}".format(
-                #         update_num, new_start - prev_start
-                #     )
-                # )
-                prev_start = new_start
+            print(
+                "policy.train(); total updates: {}; time: {:.4f}".format(
+                    update_num, time.perf_counter() - train_start
+                )
+            )
 
             # Reset flag
             train_model_flag = False

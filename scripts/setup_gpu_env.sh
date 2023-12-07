@@ -4,4 +4,3 @@ conda install pytorch pytorch-cuda=12.1 -c pytorch -c nvidia
 conda install pyg -c pyg
 conda install  psi4 -c psi4
 python -m pip install -r requirements.txt
-

@@ -11,18 +11,15 @@ import sys
 import time
 import warnings
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import torch
-
-from pathlib import Path
-
 from ase import Atoms
 from ase.db import connect
-from schnetpack import properties
 
-from GOLF.make_policies import make_policies
 from env.dft import calculate_dft_energy_tcp_client, get_dft_server_destinations
+from GOLF.make_policies import make_policies
 
 try:
     import wandb
@@ -31,11 +28,11 @@ except ImportError:
 
 from tqdm import tqdm
 
-from GOLF.utils import recollate_batch, get_atoms_indices_range
-from GOLF import DEVICE
-from env.moldynamics_env import env_fn
+from env.optimization_env import OptimizationEnv
 from env.wrappers import EnergyWrapper
-from utils.arguments import str2bool, check_positive
+from GOLF import DEVICE
+from GOLF.utils import get_atoms_indices_range, recollate_batch
+from utils.arguments import check_positive, str2bool
 
 
 class Config:
@@ -297,19 +294,16 @@ def make_env(args):
         "host_file_path": args.host_file_path,
     }
 
-    eval_env = env_fn(**env_kwargs)
+    eval_env = OptimizationEnv(**env_kwargs)
     eval_env = EnergyWrapper(eval_env, **reward_wrapper_kwargs)
 
     return eval_env
 
 
-def get_not_finished_mask(state, finished):
-    n_molecules = state[properties.n_atoms].size(0)
-    n_atoms = get_atoms_indices_range(state).cpu().numpy()
-    not_finished_mask = np.ones(
-        shape=(state[properties.position].size(0),), dtype=np.float32
-    )
-    for i in range(n_molecules):
+def get_not_finished_mask(batch, finished):
+    n_atoms = get_atoms_indices_range(batch).cpu().numpy()
+    not_finished_mask = np.ones(shape=(batch.pos.size(0),), dtype=np.float32)
+    for i in range(batch.batch_size):
         if finished[i]:
             not_finished_mask[n_atoms[i] : n_atoms[i + 1]] = 0
 
@@ -355,17 +349,17 @@ def main(checkpoint_path, args, config):
     ), "Attempting to train with no atomization energy subtraction\
         will likely result in the divergence of the model"
 
-    state = eval_env.reset()
+    batch = eval_env.reset()
     if args.resume:
         metrics_ids = set(
             metric["conformation_id"]
             for metric in read_metrics(args.evaluation_metrics_path)
         )
         while set(eval_env.atoms_ids).issubset(metrics_ids):
-            state = eval_env.reset()
+            batch = eval_env.reset()
 
     reserve_db_ids(args.results_db_path, eval_env.atoms_ids.copy())
-    eval_policy.reset(state)
+    eval_policy.reset(batch)
 
     finished = np.zeros(shape=eval_env.n_parallel, dtype=bool)
     lbfgs_done_steps = np.full(shape=eval_env.n_parallel, fill_value=-1)
@@ -412,8 +406,9 @@ def main(checkpoint_path, args, config):
         n_iters_dones = select_action_result["n_iter"]
         forces = np.asarray(
             np.vsplit(
-                select_action_result["anti_gradient"],
-                np.cumsum(state[properties.n_atoms].cpu().numpy())[:-1],
+                select_action_result["forces"],
+                get_atoms_indices_range(batch).cpu().numpy()[1:-1]
+                # np.cumsum(state[properties.n_atoms].cpu().numpy())[:-1],
             ),
             dtype=object,
         )
@@ -425,8 +420,8 @@ def main(checkpoint_path, args, config):
             stats[conformation_id].non_finite_action = True
             stats[conformation_id].non_finite_action_step = episode_timesteps[i]
 
-        actions *= get_not_finished_mask(state, ~is_finite_action | finished)
-        state, rewards, dones, info = eval_env.step(actions)
+        actions *= get_not_finished_mask(batch, ~is_finite_action | finished)
+        batch, rewards, dones, info = eval_env.step(actions)
         dones = ~is_finite_action | dones
         n_iters += np.asarray(n_iters_dones)
         steps = np.asarray(eval_env.unwrapped.get_env_step(), dtype=np.float32)
@@ -567,7 +562,7 @@ def main(checkpoint_path, args, config):
         if len(envs_to_reset) > 0:
             reset_states = eval_env.reset(indices=envs_to_reset)
             eval_policy.reset(reset_states, indices=envs_to_reset)
-            state = recollate_batch(state, envs_to_reset, reset_states)
+            batch = recollate_batch(batch, envs_to_reset, reset_states)
             atoms_ids = [eval_env.atoms_ids[i] for i in envs_to_reset]
             reserve_db_ids(args.results_db_path, atoms_ids)
             pbar_optimization.update(n_conf_processed_delta)

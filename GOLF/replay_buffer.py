@@ -1,14 +1,9 @@
-import torch
 import numpy as np
+import torch
+from torch_geometric.data import Batch
+from torch_geometric.utils import scatter
 
-from schnetpack import properties
-from schnetpack.data.loader import _atoms_collate_fn
-from schnetpack.nn import scatter_add
-
-from GOLF.utils import unpad_state
-from env.moldynamics_env import env_fn
-from env.wrappers import EnergyWrapper
-
+from env.optimization_env import OptimizationEnv
 
 NORM_THRESHOLD = 10.5
 
@@ -45,10 +40,10 @@ class ReplayBuffer(object):
         else:
             self.atomrefs = None
 
-    def add(self, states, forces, energies):
+    def add(self, batch, forces, energies):
         energies = torch.tensor(energies, dtype=torch.float32)
         force_norms = np.array([np.linalg.norm(force) for force in forces])
-        individual_states = unpad_state(states)
+        individual_states = batch.to_data_list()
         # Exclude conformations with forces that have a high norm
         # from the replay buffer
         for i in np.where(force_norms < NORM_THRESHOLD)[0]:
@@ -74,26 +69,19 @@ class ReplayBuffer(object):
             forces = forces + init_forces
             energy = torch.cat((energy, init_energy), dim=0)
 
-        state_batch = {
-            key: value.to(self.device)
-            for key, value in _atoms_collate_fn(states).items()
-        }
+        batch = Batch.from_data_list(states).to(self.device)
         forces = torch.cat(forces).to(self.device)
 
         if self.atomrefs is not None:
-            # Get system index
-            idx_m = state_batch[properties.idx_m]
-
-            # Get num molecules in the batch
-            max_m = int(idx_m[-1]) + 1
-
             # Get atomization energy for each molecule in the batch
-            atomization_energy = scatter_add(
-                self.atomrefs[state_batch[properties.Z]], idx_m, dim_size=max_m
+            atomization_energy = scatter(
+                self.atomrefs[batch.z],
+                batch.batch,
+                dim_size=batch.batch_size,
             ).unsqueeze(-1)
             energy -= atomization_energy
 
-        return state_batch, forces, energy
+        return batch, forces, energy
 
     def sample_wo_collate(self, batch_size):
         ind = np.random.choice(min(self.size, self.max_size), batch_size, replace=False)
@@ -113,7 +101,7 @@ def fill_initial_replay_buffer(device, args, atomrefs=None):
         "num_initial_conformations": args.num_initial_conformations,
     }
     # Initialize env
-    env = env_fn(**env_kwargs)
+    env = OptimizationEnv(**env_kwargs)
     if args.num_initial_conformations == -1:
         total_confs = env.get_db_length()
     else:

@@ -3,7 +3,7 @@
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 </p>
 
-This repository is the official implementation of Gradual Optimization Learning for Conformational Energy Minimization. [[arxiv]](https://arxiv.org/)
+This repository is the official implementation of Gradual Optimization Learning for Conformational Energy Minimization [[arxiv]](https://arxiv.org/abs/2311.06295).
 
 <table border="1" class="dataframe">
    <thead>
@@ -109,8 +109,8 @@ This repository is the official implementation of Gradual Optimization Learning 
 2. Download training dataset $\mathcal{D}_0$ and evaluation dataset $\mathcal{D}\_{\text{test}}$
    ```
    mkdir data && cd data
-   wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/GOLF_train.db
-   wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/GOLF_test.db
+   wget https://shorturl.at/gknC5
+   wget https://shorturl.at/jTXZ7
    cd ../
    ```
 4. Train baseline PaiNN model
@@ -125,9 +125,9 @@ This repository is the official implementation of Gradual Optimization Learning 
 2. Download optimization trajectories datasets.
    ```
    cd data
-   wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/traj-10k.db
-   wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/traj-100k.db
-   wget https://n-usr-31b1j.s3pd12.sbercloud.ru/b-usr-31b1j-qz9/data/energy_dbs/traj-500k.db
+   wget https://shorturl.at/MV047
+   wget https://shorturl.at/szJSZ
+   wget https://shorturl.at/gnPTZ
    cd ../
    ```
 3. Train PaiNN.

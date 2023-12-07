@@ -1,8 +1,6 @@
-import argparse
 import copy
 import itertools
 
-from rdkit.Chem import rdmolops
 from rdkit.Chem import rdchem
 
 try:
@@ -10,15 +8,14 @@ try:
 except ImportError:
     rdEHTTools = None
 
+import sys
 from collections import defaultdict
 
-import numpy as np
 import networkx as nx
-
+import numpy as np
 from rdkit import Chem
-from rdkit.Chem import AllChem, rdmolops
+from rdkit.Chem import AllChem
 from rdkit.Geometry import Point3D
-import sys
 
 global __ATOM_LIST__
 __ATOM_LIST__ = [

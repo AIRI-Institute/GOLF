@@ -1,12 +1,11 @@
-import traceback
-from datetime import datetime
 import os
-import struct
-
-import socket
 import pickle
+import socket
+import struct
 import subprocess
 import tempfile
+import traceback
+from datetime import datetime
 
 PORT_RANGE_BEGIN_TRAIN = 20000
 PORT_RANGE_BEGIN_EVAL = 30000
@@ -131,7 +130,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         timeout_seconds = sys.argv[2]
     else:
-        timeout_seconds = 300
+        timeout_seconds = 600
 
     if len(sys.argv) >= 4:
         dft_script_path = sys.argv[3]

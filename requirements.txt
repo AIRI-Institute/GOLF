@@ -1,11 +1,10 @@
 ase==3.22.1
 h5py==3.6.0
 tqdm==4.64.0
-PyYAML==5.4.1
-schnetpack==2.0.0
+PyYAML==5.3.1
 rdkit-pypi==2022.3.1
 PettingZoo==1.17.0
 networkx==2.6.3
 backoff==1.11.1
 GitPython==3.1.31
-pytorch-lightning==1.9.0
+fsspec==2023.10.0

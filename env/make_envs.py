@@ -1,4 +1,4 @@
-from .moldynamics_env import env_fn
+from .optimization_env import OptimizationEnv
 from .wrappers import EnergyWrapper
 
 
@@ -24,7 +24,7 @@ def make_envs(args):
     }
 
     # Initialize env
-    env = env_fn(**env_kwargs)
+    env = OptimizationEnv(**env_kwargs)
     env = EnergyWrapper(env, **reward_wrapper_kwargs)
 
     # Update kwargs for eval_env
@@ -45,7 +45,7 @@ def make_envs(args):
         reward_wrapper_kwargs["evaluation"] = True
 
     # Initialize eval env
-    eval_env = env_fn(**env_kwargs)
+    eval_env = OptimizationEnv(**env_kwargs)
     eval_env = EnergyWrapper(eval_env, **reward_wrapper_kwargs)
 
     return env, eval_env

@@ -1,14 +1,14 @@
 import math
 
 import torch
-from schnetpack import properties
-from schnetpack.nn import scatter_add
 from torch.nn.functional import mse_loss
+from torch_geometric.utils import scatter
 
 from GOLF import DEVICE
 from GOLF.utils import (
     calculate_gradient_norm,
     get_lr_scheduler,
+    get_n_atoms,
     get_optimizer_class,
 )
 
@@ -59,18 +59,19 @@ class GOLF(object):
 
     def update(self, replay_buffer, *args):
         metrics = dict()
-        state, force, energy = replay_buffer.sample(self.batch_size)
-        output = self.actor(state, train=True)
+        batch, force, energy = replay_buffer.sample(self.batch_size)
+        output = self.actor(batch, train=True)
         predicted_energy = output["energy"]
-        predicted_force = output["anti_gradient"]
-        n_atoms = state[properties.n_atoms]
+        predicted_force = output["forces"]
+        n_atoms = get_n_atoms(batch)
 
         energy_loss = mse_loss(predicted_energy, energy.squeeze(1))
         force_loss = torch.sum(
-            scatter_add(
+            scatter(
                 mse_loss(predicted_force, force, reduction="none").mean(-1),
-                state[properties.idx_m],
-                dim_size=n_atoms.size(0),
+                batch.batch,
+                dim_size=batch.batch_size,
+                reduce="sum",
             )
             / n_atoms
         ) / n_atoms.size(0)

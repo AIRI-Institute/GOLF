@@ -109,32 +109,18 @@ def get_args():
     )
 
     # Backbone args
+
     parser.add_argument(
-        "--backbone",
-        choices=["schnet", "painn"],
+        "--nnp_type",
+        choices=["DimenetPlusPlus"],
         required=True,
-        help="Type of backbone to use for actor and critic",
+        help="Type of NNP to be used for optimization",
     )
     parser.add_argument(
-        "--n_interactions",
-        default=3,
-        type=int,
-        help="Number of interaction blocks for Schnet in actor/critic",
-    )
-    parser.add_argument(
-        "--cutoff", default=5.0, type=float, help="Cutoff for Schnet in actor/critic"
-    )
-    parser.add_argument(
-        "--n_rbf",
-        default=50,
-        type=int,
-        help="Number of Gaussians for Schnet in actor/critic",
-    )
-    parser.add_argument(
-        "--n_atom_basis",
-        default=128,
-        type=int,
-        help="Number of features to describe atomic environments inside backbone",
+        "--nnp_config_path",
+        required=True,
+        type=str,
+        help="Path to yaml config for the NNP",
     )
 
     # GOLF args
@@ -287,10 +273,10 @@ def get_args():
         help="Subtract atomization energy from the DFT energy for training",
     )
     parser.add_argument(
-        "--action_norm_limit",
+        "--forces_norm_limit",
         default=0.05,
         type=float,
-        help="Upper limit for action norm. Action norms larger get scaled down",
+        help="Upper limit for forces norm. Forces with larger norms get scaled down",
     )
 
     # Eval args

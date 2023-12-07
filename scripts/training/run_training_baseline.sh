@@ -15,11 +15,8 @@ python ../../main.py --n_parallel 240 \
 --max_num_negative_rewards 1 \
 --reward dft \
 --minimize_on_every_step True \
---backbone painn \
---n_interactions 3 \
---cutoff 5.0 \
---n_rbf 50 \
---n_atom_basis 128 \
+--nnp_type DimenetPlusPlus \
+--nnp_config_path ../../configs/dimenetplusplus.yaml \
 --actor GOLF \
 --experience_saver reward_threshold \
 --store_only_initial_conformations True \
@@ -43,7 +40,7 @@ python ../../main.py --n_parallel 240 \
 --max_oracle_steps 100000 \
 --utd_ratio 5 \
 --subtract_atomization_energy True \
---action_norm_limit 1.0 \
+--forces_norm_limit 1.0 \
 --eval_freq 1200 \
 --n_eval_runs 64 \
 --eval_termination_mode fixed_length \

@@ -1,11 +1,10 @@
 import json
+import os
 import sys
 import warnings
+from collections import deque
 
 import numpy as np
-import os
-
-from collections import deque
 
 try:
     import wandb

@@ -1,18 +1,16 @@
-import gym
 import concurrent.futures
-import numpy as np
-import math
 import multiprocessing as mp
+
+import gym
+import numpy as np
 import torch
-
 from rdkit.Chem import AddHs, AllChem, Conformer, MolFromSmiles
-from schnetpack.data.loader import _atoms_collate_fn
-from schnetpack.interfaces import AtomsConverter
-from schnetpack.transform import ASENeighborList
+from torch_geometric.data import Batch, Data
 
-from .dft_worker import update_ase_atoms_positions
-from .dft import get_dft_server_destinations, calculate_dft_energy_tcp_client
-from .xyz2mol import get_rdkit_energy, get_rdkit_force, set_coordinates
+from env.dft import calculate_dft_energy_tcp_client, get_dft_server_destinations
+from env.dft_worker import update_ase_atoms_positions
+from env.xyz2mol import get_rdkit_energy, get_rdkit_force, set_coordinates
+from GOLF import DEVICE
 
 RDKIT_ENERGY_THRESH = 300
 KCALMOL2HARTREE = 627.5
@@ -128,7 +126,6 @@ class DFTOracle(BaseOracle):
         n_parallel,
         update_coordinates_fn,
         n_threads,
-        converter,
         host_file_path,
     ):
         super().__init__(n_parallel, update_coordinates_fn)
@@ -144,7 +141,6 @@ class DFTOracle(BaseOracle):
             )
             for _ in range(len(self.dft_server_destinations))
         ]
-        self.converter = converter
         self.tasks = {}
         self.number_processed_conformations = 0
 
@@ -179,7 +175,7 @@ class DFTOracle(BaseOracle):
 
         energies = np.array(energies)
         forces = [np.array(force) for force in forces]
-        obs = _atoms_collate_fn(obs)
+        obs = Batch.from_data_list(obs)
         episode_total_delta_energies = np.array(initial_energies) - energies
 
         self.task_queue_full_flag = False
@@ -236,7 +232,14 @@ class DFTOracle(BaseOracle):
             self.tasks[self.number_processed_conformations] = {
                 "future": future,
                 "initial_energy": self.initial_energies[i],
-                "obs": self.converter(self.previous_molecules[i]),
+                "obs": Data(
+                    z=torch.from_numpy(
+                        self.previous_molecules[i].get_atomic_numbers()
+                    ).long(),
+                    pos=torch.from_numpy(
+                        self.previous_molecules[i].get_positions()
+                    ).float(),
+                ).to(DEVICE),
             }
             self.number_processed_conformations += 1
 
@@ -311,16 +314,10 @@ class EnergyWrapper(gym.Wrapper):
         )
 
         # Initialize DFT oracle
-        converter = AtomsConverter(
-            neighbor_list=ASENeighborList(cutoff=math.inf),
-            dtype=torch.float32,
-            device=torch.device("cpu"),
-        )
         self.dft_oracle = DFTOracle(
             n_parallel=self.n_parallel,
             update_coordinates_fn=update_ase_atoms_positions,
             n_threads=self.n_threads,
-            converter=converter,
             host_file_path=host_file_path,
         )
 
@@ -418,7 +415,12 @@ class EnergyWrapper(gym.Wrapper):
         # Set molecules and get observation
         for i, molecule in enumerate(molecules):
             self.env.atoms[i] = molecule.copy()
-            obs_list.append(self.env.converter(molecule))
+            obs_list.append(
+                Data(
+                    z=torch.from_numpy(molecule.get_atomic_numbers()).long(),
+                    pos=torch.from_numpy(molecule.get_positions()).float(),
+                ).to(DEVICE)
+            )
 
         self.rdkit_oracle.initialize_molecules(indices, smiles_list, molecules, max_its)
 
@@ -427,7 +429,7 @@ class EnergyWrapper(gym.Wrapper):
                 indices, molecules, energy_list, force_list
             )
 
-        obs = _atoms_collate_fn(obs_list)
+        obs = Batch.from_data_list(obs_list)
         return obs
 
     def update_timelimit(self, tl):

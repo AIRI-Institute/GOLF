@@ -1,16 +1,12 @@
-import math
+import warnings
+from sqlite3 import DatabaseError
 
 import backoff
 import gym
 import numpy as np
 import torch
-import warnings
-
 from ase.db import connect
-from sqlite3 import DatabaseError
-from schnetpack.data.loader import _atoms_collate_fn
-from schnetpack.interfaces import AtomsConverter
-from schnetpack.transform import ASENeighborList
+from torch_geometric.data import Batch, Data
 
 from GOLF import DEVICE
 
@@ -27,21 +23,19 @@ def on_giveup(details):
     )
 
 
-class MolecularDynamics(gym.Env):
+class OptimizationEnv(gym.Env):
     metadata = {"render_modes": ["human"], "name": "md_v0"}
     DISTANCE_THRESH = 0.7
 
     def __init__(
         self,
         db_path,
-        converter,
         n_parallel=1,
         timelimit=10,
         sample_initial_conformations=True,
         num_initial_conformations=50000,
     ):
         self.db_path = db_path
-        self.converter = converter
         self.n_parallel = n_parallel
         self.TL = timelimit
         self.sample_initial_conformations = sample_initial_conformations
@@ -71,7 +65,7 @@ class MolecularDynamics(gym.Env):
 
     def step(self, actions):
         # Get number of atoms in each molecule
-        cumsum_numbers_atoms = self.get_atoms_num_cumsum()
+        cumsum_num_atoms = self.get_atoms_num_cumsum()
 
         obs = []
         rewards = [None] * self.n_parallel
@@ -79,10 +73,9 @@ class MolecularDynamics(gym.Env):
         info = {}
 
         for idx in range(self.n_parallel):
-            # Unpad action
             self.atoms[idx].set_positions(
                 self.atoms[idx].get_positions()
-                + actions[cumsum_numbers_atoms[idx] : cumsum_numbers_atoms[idx + 1]]
+                + actions[cumsum_num_atoms[idx] : cumsum_num_atoms[idx + 1]]
             )
 
             # Check if there are atoms too close to each other in the molecule
@@ -99,15 +92,20 @@ class MolecularDynamics(gym.Env):
             dones[idx] = self.env_steps[idx] >= self.TL
 
             # Convert atoms to obs
-            obs.append(self.converter(self.atoms[idx]))
+            obs.append(
+                Data(
+                    z=torch.from_numpy(self.atoms[idx].get_atomic_numbers()).long(),
+                    pos=torch.from_numpy(self.atoms[idx].get_positions()).float(),
+                )
+            )
 
         # Add info about bad pairs
         info["total_bad_pairs_before_processing"] = self.total_num_bad_pairs_before
         info["total_bad_pairs_after_processing"] = self.total_num_bad_pairs_after
 
         # Collate observations into a batch
-        obs = _atoms_collate_fn(obs)
-        obs = {k: v.to(DEVICE) for k, v in obs.items()}
+        # Collate observations into a batch
+        obs = Batch.from_data_list(obs).to(DEVICE)
 
         return obs, rewards, dones, info
 
@@ -182,11 +180,15 @@ class MolecularDynamics(gym.Env):
             self.env_steps[idx] = 0
 
             # Convert atoms to obs
-            obs.append(self.converter(self.atoms[idx]))
+            obs.append(
+                Data(
+                    z=torch.from_numpy(self.atoms[idx].get_atomic_numbers()).long(),
+                    pos=torch.from_numpy(self.atoms[idx].get_positions()).float(),
+                )
+            )
 
         # Collate observations into a batch
-        obs = _atoms_collate_fn(obs)
-        obs = {k: v.to(DEVICE) for k, v in obs.items()}
+        obs = Batch.from_data_list(obs).to(DEVICE)
 
         return obs
 
@@ -248,7 +250,7 @@ class MolecularDynamics(gym.Env):
         # to avoid finding dublicate pairs
         r_ij[np.tri(r_ij.shape[0], k=-1).astype(bool)] = 10.0
 
-        return np.argwhere(r_ij < MolecularDynamics.DISTANCE_THRESH), dir_ij, r_ij
+        return np.argwhere(r_ij < OptimizationEnv.DISTANCE_THRESH), dir_ij, r_ij
 
     def process_molecule(self, atoms):
         new_atoms = atoms.copy()
@@ -262,7 +264,7 @@ class MolecularDynamics(gym.Env):
         # one pair of atoms so moving them apart should not cause
         # any other r_kl to become < THRESH.
         for i, j in bad_indices_before:
-            coef = MolecularDynamics.DISTANCE_THRESH + 0.05 - r_ij[i, j]
+            coef = OptimizationEnv.DISTANCE_THRESH + 0.05 - r_ij[i, j]
             positions[i] -= 0.5 * coef * dir_ij[i, j]
             positions[j] -= 0.5 * coef * dir_ij[j, i]
         new_atoms.set_positions(positions)
@@ -277,17 +279,3 @@ class MolecularDynamics(gym.Env):
             seed = np.random.randint(0, 1000000)
         np.random.seed(seed)
         return seed
-
-
-def env_fn(**kwargs):
-    """
-    To support the AEC API, the raw_env() function just uses the from_parallel
-    function to convert from a ParallelEnv to an AEC env
-    """
-    converter = AtomsConverter(
-        neighbor_list=ASENeighborList(cutoff=math.inf),
-        dtype=torch.float32,
-        device=torch.device("cpu"),
-    )
-    env = MolecularDynamics(converter=converter, **kwargs)
-    return env

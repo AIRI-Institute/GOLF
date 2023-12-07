@@ -1,16 +1,14 @@
 import argparse
+import pickle
 import sys
+import time
 import traceback
 
 import ase
 import ase.io
-import time
-import psi4
 import numpy as np
-import pickle
-
+import psi4
 from psi4 import SCFConvergenceError
-from psi4.driver.p4util.exceptions import OptimizationConvergenceError
 
 PSI4_BOHR2ANGSTROM = 0.52917720859
 

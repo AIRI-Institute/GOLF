@@ -1,14 +1,13 @@
-import schnetpack
+import yaml
 from torch.optim import SGD, Adam
 
 from GOLF import DEVICE
 from GOLF.GOLF_actor import (
     Actor,
-    RdkitActor,
     ConformationOptimizer,
     LBFGSConformationOptimizer,
+    RdkitActor,
 )
-from GOLF.utils import get_cutoff_by_string
 from GOLF.optim.lion_pytorch import Lion
 from utils.utils import ignore_extra_args
 
@@ -20,19 +19,15 @@ actors = {
 
 def make_policies(env, eval_env, args):
     # Backbone args
-    backbone_args = {
-        "n_interactions": args.n_interactions,
-        "n_atom_basis": args.n_atom_basis,
-        "radial_basis": schnetpack.nn.BesselRBF(n_rbf=args.n_rbf, cutoff=args.cutoff),
-        "cutoff_fn": get_cutoff_by_string("cosine")(args.cutoff),
-    }
+    with open(args.nnp_config_path, "r") as f:
+        nnp_args = yaml.safe_load(f)
 
     # Actor args
     actor_args = {
         "env": env,
-        "backbone": args.backbone,
-        "backbone_args": backbone_args,
-        "action_norm_limit": args.action_norm_limit,
+        "nnp_type": args.nnp_type,
+        "nnp_args": nnp_args,
+        "force_norm_limit": args.forces_norm_limit,
     }
     actor = actors[args.actor](**actor_args)
 
