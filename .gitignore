@@ -2,6 +2,9 @@
 *.ipynb
 **/.ipynb_checkpoints
 
+# Ignore wandb
+**/wandb/**
+
 # Ingore Jmol --> might remove
 **/Jmol
 

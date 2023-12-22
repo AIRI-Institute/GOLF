@@ -12,3 +12,8 @@ dimenet_num_before_skip: 1
 dimenet_num_after_skip: 2
 dimenet_num_output_layers: 3
 cutoff: 5.0
+do_postprocessing: true
+
+scaler:
+  scale_: 0.870582896669776
+  mean_: -7.349405628928332

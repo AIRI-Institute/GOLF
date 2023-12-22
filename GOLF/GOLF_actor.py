@@ -116,13 +116,15 @@ class RdkitActor(nn.Module):
             np.float64(new_coordinates[i].numpy()) for i in range(len(opt_ids))
         ]
         # Update coordinates inside env
-        self.env.rdkit_oracle.update_coordinates(new_coordinates, indices=opt_ids)
-        _, energies, forces = self.env.rdkit_oracle.calculate_energies_forces(
+        self.env.surrogate_oracle.update_coordinates(new_coordinates, indices=opt_ids)
+        energies, forces = self.env.surrogate_oracle.calculate_energies_forces(
             indices=opt_ids
         )
 
         # Restore original coordinates
-        self.env.rdkit_oracle.update_coordinates(current_coordinates, indices=opt_ids)
+        self.env.surrogate_oracle.update_coordinates(
+            current_coordinates, indices=opt_ids
+        )
 
         # Forces in (kcal/mol)/angstrom. Transform into hartree/angstrom.
         forces = torch.cat(
@@ -158,7 +160,7 @@ class ConformationOptimizer(nn.Module):
             indices = torch.arange(self.n_parallel)
         unpad_initial_states = initial_batch.to_data_list()
         for i, idx in enumerate(indices):
-            self.states[idx] = unpad_initial_states[i].copy()
+            self.states[idx] = unpad_initial_states[i].clone()
             self.states[idx].pos.requires_grad_(True)
             self.optimizer_list[idx] = self.optimizer(
                 [self.states[idx].pos], **self.optimizer_kwargs
@@ -308,7 +310,7 @@ class LBFGSConformationOptimizer(nn.Module):
         unpad_initial_states = initial_states.to_data_list()
         torch.set_grad_enabled(True)
         for i, idx in enumerate(indices):
-            state = unpad_initial_states[i].copy().to(self.lbfgs_device)
+            state = unpad_initial_states[i].clone().to(self.lbfgs_device)
             self.conformation_optimizers[idx] = AsyncLBFGS(
                 state,
                 self.policy2optimizer_queues[idx],
@@ -340,7 +342,7 @@ class LBFGSConformationOptimizer(nn.Module):
             n_atoms = get_n_atoms(batch)
             torch.set_grad_enabled(True)
             output = self.actor(
-                state_dict=batch,
+                batch=batch,
                 active_optimizers_ids=list(conformation_optimizers_ids),
                 train=True,
             )

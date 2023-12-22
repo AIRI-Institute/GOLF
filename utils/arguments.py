@@ -100,6 +100,15 @@ def get_args():
         help="How the energy is calculated",
     )
     parser.add_argument(
+        "--surrogate_oracle_type",
+        choices=["rdkit", "neural"],
+        default="rdkit",
+        help="Type of surrogate oracle to use",
+    )
+    parser.add_argument(
+        "--tau", default=0.1, type=float, help="Neural oracle update rate"
+    )
+    parser.add_argument(
         "--minimize_on_every_step",
         default=True,
         choices=[True, False],
@@ -109,7 +118,6 @@ def get_args():
     )
 
     # Backbone args
-
     parser.add_argument(
         "--nnp_type",
         choices=["DimenetPlusPlus"],
@@ -338,6 +346,12 @@ def get_args():
         help="Checkpoint for the actor. Does not restore replay buffer",
     )
     parser.add_argument(
+        "--fixed_neural_oracle_baseline",
+        type=str,
+        default=None,
+        help="Checkpoint for fixed neural oracle",
+    )
+    parser.add_argument(
         "--load_model",
         type=str,
         default=None,
@@ -345,7 +359,7 @@ def get_args():
     )
     parser.add_argument("--log_dir", default=".", help="Directory where runs are saved")
     parser.add_argument(
-        "--run_id", default="run-0", type=str, help="Run name in wandb project"
+        "--project_name", required=True, type=str, help="Wandb project name"
     )
     args = parser.parse_args()
 

@@ -459,7 +459,7 @@ def main(checkpoint_path, args, config):
                     (
                         conformation_id,
                         early_stop_step,
-                        eval_env.dft_oracle.molecules[i].copy(),
+                        eval_env.genuine_oracle.molecules[i].copy(),
                     )
                 )
 

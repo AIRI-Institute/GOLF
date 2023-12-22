@@ -14,6 +14,8 @@ python ../../main.py --n_parallel 36 \
 --terminate_on_negative_reward True \
 --max_num_negative_rewards 1 \
 --reward dft \
+--surrogate_oracle_type neural \
+--tau 1.0 \
 --minimize_on_every_step True \
 --nnp_type DimenetPlusPlus \
 --nnp_config_path ../../configs/dimenetplusplus.yaml \
@@ -44,10 +46,12 @@ python ../../main.py --n_parallel 36 \
 --eval_freq 180 \
 --n_eval_runs 36 \
 --eval_termination_mode fixed_length \
---exp_name GOLF-10k \
+--exp_name GOLF-10k-Fixed-Neural-Oracle \
 --host_file_path ../../env/host_names.txt \
 --full_checkpoint_freq  720 \
 --light_checkpoint_freq 1440 \
 --save_checkpoints True \
 --load_baseline ../../checkpoints/DimenetPlusPlus-best/NNP_checkpoint \
+--fixed_neural_oracle_baseline ../../results/GOLF-10k_2023_12_08_15_30_30_974793/full_cp_iter_10008 \
 --log_dir ../../results \
+--project_name GOLF-pyg \

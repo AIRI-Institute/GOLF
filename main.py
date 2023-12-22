@@ -17,6 +17,7 @@ from GOLF import DEVICE
 from GOLF.eval import eval_policy_dft, eval_policy_rdkit
 from GOLF.GOLF_trainer import GOLF
 from GOLF.make_policies import make_policies
+from GOLF.make_neural_oracle import make_neural_oracle
 from GOLF.make_saver import make_saver
 from GOLF.replay_buffer import ReplayBuffer, fill_initial_replay_buffer
 from GOLF.utils import calculate_action_norm, recollate_batch
@@ -40,7 +41,7 @@ def main(args, experiment_folder):
     logger = Logger(experiment_folder, args)
 
     # Initialize envs
-    env, eval_env = make_envs(args)
+    env, eval_env = make_envs(args, neural_oracle=None)
 
     # Initialize replay buffer.
     atomrefs = None
@@ -108,6 +109,12 @@ def main(args, experiment_folder):
     if args.load_baseline:
         trainer.light_load(args.load_baseline)
 
+    # Initialize neural oracles
+    if args.surrogate_oracle_type == "neural":
+        neural_oracle = make_neural_oracle(policy.actor, args)
+        env.surrogate_oracle.model = copy.deepcopy(neural_oracle)
+        eval_env.surrogate_oracle.model = copy.deepcopy(neural_oracle)
+
     if not args.store_only_initial_conformations:
         state = env.reset()
         # Set initial states in Policy
@@ -153,13 +160,13 @@ def main(args, experiment_folder):
 
             if args.reward == "dft":
                 # If task queue is full wait for all tasks to finish and store data to RB
-                if env.dft_oracle.task_queue_full_flag:
+                if env.genuine_oracle.task_queue_full_flag:
                     (
                         states,
                         energies,
                         forces,
                         episode_total_delta_energies,
-                    ) = env.dft_oracle.get_data()
+                    ) = env.genuine_oracle.get_data()
                     replay_buffer.add(states, forces, energies)
 
                     logger.update_dft_return_statistics(episode_total_delta_energies)
@@ -192,6 +199,11 @@ def main(args, experiment_folder):
 
             # Reset flag
             train_model_flag = False
+
+            # Update neural_oracle after training
+            if args.surrogate_oracle_type == "neural":
+                env.surrogate_oracle.update_model(policy.actor)
+                eval_env.surrogate_oracle.update_model(policy.actor)
 
             # Increase replay buffer size without adding any data
             # so that the training is done for the correct amount of steps

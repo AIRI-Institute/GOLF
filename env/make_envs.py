@@ -2,7 +2,7 @@ from .optimization_env import OptimizationEnv
 from .wrappers import EnergyWrapper
 
 
-def make_envs(args):
+def make_envs(args, neural_oracle):
     # Env kwargs
     env_kwargs = {
         "db_path": args.db_path,
@@ -15,6 +15,9 @@ def make_envs(args):
     # Reward wrapper kwargs
     reward_wrapper_kwargs = {
         "dft": args.reward == "dft",
+        "surrogate_oracle": args.surrogate_oracle_type,
+        "tau": args.tau,
+        "neural_oracle": neural_oracle,
         "n_threads": args.n_threads,
         "minimize_on_every_step": args.minimize_on_every_step,
         "evaluation": False,

@@ -4,7 +4,7 @@ from collections import defaultdict
 import numpy as np
 
 from GOLF import DEVICE
-from GOLF.utils import recollate_batch
+from env.oracles import RdkitOracle
 
 CONVERGENCE_THRESHOLD = 1e-5
 
@@ -86,9 +86,6 @@ def eval_policy_dft(actor, env, eval_episodes=10):
             env.unwrapped.energy[i] - env.unwrapped.optimal_energy[i]
         )
 
-    # Calculate optimal delta energy Rdkit
-    initial_energy_rdkit = env.rdkit_oracle.initial_energies
-
     # First save all the data
     molecules = [molecule.copy() for molecule in env.unwrapped.atoms]
     smiles = env.unwrapped.smiles.copy()
@@ -96,10 +93,12 @@ def eval_policy_dft(actor, env, eval_episodes=10):
     dft_forces = env.unwrapped.force.copy()
 
     # Get optimial rdkit energy and calculate delta
-    _, optimal_energy_rdkit, _ = env.rdkit_oracle.calculate_energies_forces(
-        max_its=5000
-    )
-    optimized_delta_energy_rdkit = initial_energy_rdkit - optimal_energy_rdkit
+    if isinstance(env.surrogate_oracle, RdkitOracle):
+        initial_energy_rdkit = env.surrogate_oracle.initial_energies
+        optimal_energy_rdkit, _ = env.surrogate_oracle.calculate_energies_forces(
+            max_its=5000
+        )
+        optimized_delta_energy_rdkit = initial_energy_rdkit - optimal_energy_rdkit
 
     # Reset the environment again
     env.set_initial_positions(molecules, smiles, dft_initial_energies, dft_forces)
@@ -109,12 +108,13 @@ def eval_policy_dft(actor, env, eval_episodes=10):
         # TODO incorporate actor dones into DFT evaluation
         select_action_result = actor.select_action(episode_timesteps)
         action = select_action_result["action"]
+
         # actor_dones = select_action_result["done"]
 
         # Obser reward and next obs
-        state, rdkit_rewards, _, info = env.step(action)
+        state, energy_delta, _, info = env.step(action)
         dones = [(t + 1) > max_timestamps for t in episode_timesteps]
-        episode_returns += rdkit_rewards
+        episode_returns += energy_delta
 
         if "calculate_dft_energy_env_ids" in info:
             dft_pct_of_minimized_energy.extend(
@@ -124,8 +124,10 @@ def eval_policy_dft(actor, env, eval_episodes=10):
             )
 
         # If task queue is full wait for all tasks to finish
-        if env.dft_oracle.task_queue_full_flag:
-            _, _, _, episode_total_delta_energies = env.dft_oracle.get_data(eval=True)
+        if env.genuine_oracle.task_queue_full_flag:
+            _, _, _, episode_total_delta_energies = env.genuine_oracle.get_data(
+                eval=True
+            )
             # Log total delta energy and pct of optimized energy
             result["eval/dft_delta_energy"].extend(
                 episode_total_delta_energies.tolist()
@@ -139,25 +141,29 @@ def eval_policy_dft(actor, env, eval_episodes=10):
 
         # All trajectories terminate at the same time
         if np.all(dones):
-            rdkit_pct_of_minimized_energy = (
-                episode_returns / optimized_delta_energy_rdkit
-            )
-            rdkit_delta_energy = episode_returns
+            # Log results
+            surrogate_oracle_delta_energy = episode_returns
             final_energies = info["final_energy"]
 
             # Optimization failure
             optimization_failure_mask = episode_returns < 0
-            rdkit_pct_of_minimized_energy[optimization_failure_mask] = 0.0
-            rdkit_delta_energy[optimization_failure_mask] = 0.0
-            final_energies[optimization_failure_mask] = initial_energy_rdkit[
-                optimization_failure_mask
-            ]
+            surrogate_oracle_delta_energy[optimization_failure_mask] = 0.0
 
-            # Log results
-            result["eval/rdkit_pct_of_minimized_energy"].extend(
-                rdkit_pct_of_minimized_energy.tolist()
+            if isinstance(env.surrogate_oracle, RdkitOracle):
+                rdkit_pct_of_minimized_energy = (
+                    episode_returns / optimized_delta_energy_rdkit
+                )
+                rdkit_pct_of_minimized_energy[optimization_failure_mask] = 0.0
+                result["eval/rdkit_pct_of_minimized_energy"].extend(
+                    rdkit_pct_of_minimized_energy.tolist()
+                )
+                final_energies[optimization_failure_mask] = initial_energy_rdkit[
+                    optimization_failure_mask
+                ]
+
+            result["eval/surrogate_oracle_delta_energy"].extend(
+                surrogate_oracle_delta_energy.tolist()
             )
-            result["eval/rdkit_delta_energy"].extend(rdkit_delta_energy.tolist())
             result["eval/final_energy"].extend(final_energies.tolist())
             result["eval/episode_len"].extend(episode_timesteps)
 
@@ -175,9 +181,6 @@ def eval_policy_dft(actor, env, eval_episodes=10):
                     env.unwrapped.energy[i] - env.unwrapped.optimal_energy[i]
                 )
 
-            # Update optimal delta energy Rdkit
-            initial_energy_rdkit = env.rdkit_oracle.initial_energies
-
             # First save all the data
             molecules = [molecule.copy() for molecule in env.unwrapped.atoms]
             smiles = env.unwrapped.smiles.copy()
@@ -185,10 +188,15 @@ def eval_policy_dft(actor, env, eval_episodes=10):
             dft_forces = env.unwrapped.force.copy()
 
             # Get optimial rdkit energy and calculate delta
-            _, optimal_energy_rdkit, _ = env.rdkit_oracle.calculate_energies_forces(
-                max_its=5000
-            )
-            optimized_delta_energy_rdkit = initial_energy_rdkit - optimal_energy_rdkit
+            if isinstance(env.surrogate_oracle, RdkitOracle):
+                initial_energy_rdkit = env.surrogate_oracle.initial_energies
+                (
+                    optimal_energy_rdkit,
+                    _,
+                ) = env.surrogate_oracle.calculate_energies_forces(max_its=5000)
+                optimized_delta_energy_rdkit = (
+                    initial_energy_rdkit - optimal_energy_rdkit
+                )
 
             # Reset the environment again
             env.set_initial_positions(
