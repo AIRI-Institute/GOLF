@@ -23,9 +23,6 @@ notebooks
 evaluate_action_norms
 env/data
 
-# Ignore models
-models
-
 # Ignore figures
 *.html
 *.png

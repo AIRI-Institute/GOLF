@@ -120,7 +120,7 @@ def get_args():
     # Backbone args
     parser.add_argument(
         "--nnp_type",
-        choices=["DimenetPlusPlus"],
+        choices=["DimenetPlusPlus", "PaiNN"],
         required=True,
         help="Type of NNP to be used for optimization",
     )

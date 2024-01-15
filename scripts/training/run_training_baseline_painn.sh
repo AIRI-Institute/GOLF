@@ -5,7 +5,7 @@ cuda=$1
 CUDA_VISIBLE_DEVICES=$cuda \
 python ../../main.py --n_parallel 240 \
 --n_threads 24 \
---db_path ../../data/GOLF_train.db \
+--db_path ../../../MolDynamics/env/data/train_4k_mff_with_forces_wooutlier.db \
 --eval_db_path ../../data/GOLF_test.db \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
@@ -15,8 +15,8 @@ python ../../main.py --n_parallel 240 \
 --max_num_negative_rewards 1 \
 --reward dft \
 --minimize_on_every_step True \
---nnp_type DimenetPlusPlus \
---nnp_config_path ../../configs/dimenetplusplus.yaml \
+--nnp_type PaiNN \
+--nnp_config_path /mnt/2tb/tsypin/MARL/GOLF-pyg/configs/painn_small_direct_forces.yaml \
 --actor GOLF \
 --experience_saver reward_threshold \
 --store_only_initial_conformations True \
@@ -44,7 +44,7 @@ python ../../main.py --n_parallel 240 \
 --eval_freq 1200 \
 --n_eval_runs 64 \
 --eval_termination_mode fixed_length \
---exp_name baseline-NNP \
+--exp_name baseline-NNP-painn \
 --full_checkpoint_freq  10000 \
 --light_checkpoint_freq 50000 \
 --save_checkpoints True \

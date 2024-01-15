@@ -5,7 +5,7 @@ from torch_geometric.utils import scatter
 
 from env.optimization_env import OptimizationEnv
 
-NORM_THRESHOLD = 10.5
+NORM_THRESHOLD = 0.04
 
 
 class ReplayBuffer(object):
@@ -17,10 +17,12 @@ class ReplayBuffer(object):
         atomrefs=None,
         initial_RB=None,
         initial_conf_pct=0.0,
+        filter_forces_by_norm=True,
     ):
         self.device = device
         self.max_size = max_size
         self.max_total_conformations = max_total_conformations
+        self.filter_forces_by_norm = filter_forces_by_norm
         self.initial_RB = initial_RB
         self.ptr = 0
         self.size = 0
@@ -46,12 +48,15 @@ class ReplayBuffer(object):
         individual_states = batch.to_data_list()
         # Exclude conformations with forces that have a high norm
         # from the replay buffer
-        for i in np.where(force_norms < NORM_THRESHOLD)[0]:
+        if self.filter_forces_by_norm:
+            indices = np.where(force_norms < NORM_THRESHOLD)[0]
+        else:
+            indices = np.arange(len(individual_states))
+        for i in indices:
             self.states[self.ptr] = individual_states[i]
             self.energy[self.ptr] = energies[i]
             self.forces[self.ptr] = torch.tensor(forces[i], dtype=torch.float32)
             self.ptr = (self.ptr + 1) % self.max_size
-            # self.size = min(self.size + 1, self.max_size)
             self.size = self.size + 1
 
         self.replay_buffer_full = self.size >= self.max_total_conformations
@@ -112,6 +117,7 @@ def fill_initial_replay_buffer(device, args, atomrefs=None):
         max_size=total_confs,
         max_total_conformations=total_confs,
         atomrefs=atomrefs,
+        filter_forces_by_norm=False,
     )
 
     # Fill up the replay buffer

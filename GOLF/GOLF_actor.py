@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch_geometric.data import Batch
 
 from GOLF import DEVICE
-from GOLF.models import DimeNetPlusPlusPotential
+from GOLF.models import DimeNetPlusPlusPotential, PaiNN
 from GOLF.optim import lbfgs
 from GOLF.utils import (
     get_atoms_indices_range,
@@ -22,6 +22,7 @@ EPS = 1e-8
 
 NeuralNetworkPotentials = {
     "DimenetPlusPlus": ignore_extra_args(DimeNetPlusPlusPotential),
+    "PaiNN": ignore_extra_args(PaiNN),
 }
 
 
@@ -79,9 +80,7 @@ class Actor(nn.Module):
         return self.last_energy, self.last_forces
 
     def forward(self, batch, active_optimizers_ids=None, train=False):
-        _, _, energy, forces = self.nnp(
-            pos=batch.pos, atom_z=batch.z, batch_mapping=batch.batch
-        )
+        energy, forces = self.nnp(batch)
         self._save_last_output(energy, forces)
         if train:
             return {"forces": forces.detach(), "energy": energy}
