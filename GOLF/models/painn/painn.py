@@ -332,10 +332,11 @@ class PaiNN(nn.Module):
 
         empty_image = neighbors == 0
         if torch.any(empty_image):
-            raise ValueError(
-                f"An image has no neighbors: id={data.id[empty_image]}, "
-                f"sid={data.sid[empty_image]}, fid={data.fid[empty_image]}"
-            )
+            print(f"An image has no neighbors! #images = {empty_image.sum().item()}")
+            # raise ValueError(
+            #     f"An image has no neighbors: id={data.id[empty_image]}, "
+            #     f"sid={data.sid[empty_image]}, fid={data.fid[empty_image]}"
+            # )
 
         # Symmetrize edges for swapping in symmetric message passing
         (
