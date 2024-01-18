@@ -363,6 +363,7 @@ class PaiNN(nn.Module):
             id_swap,
         )
 
+    @torch.enable_grad()
     def forward(self, data):
         pos = data.pos
         batch = data.batch
