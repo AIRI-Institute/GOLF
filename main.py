@@ -65,8 +65,15 @@ def main(args, experiment_folder):
     else:
         # Initialize a fixed replay buffer with conformations from the database
         print("Filling replay buffer with initial conformations...")
-        initial_replay_buffer = fill_initial_replay_buffer(DEVICE, args, atomrefs)
+        initial_replay_buffer = fill_initial_replay_buffer(
+            DEVICE, args.db_path, args, atomrefs
+        )
         print(f"Done! RB size: {initial_replay_buffer.size}")
+        print("Filling evaluation buffer with conformations...")
+        eval_replay_buffer = fill_initial_replay_buffer(
+            DEVICE, args.eval_db_path, args, atomrefs
+        )
+        print(f"Done! RB size: {eval_replay_buffer.size}")
         replay_buffer = ReplayBuffer(
             device=DEVICE,
             max_size=args.replay_buffer_size,
@@ -196,6 +203,9 @@ def main(args, experiment_folder):
                     update_num, time.perf_counter() - train_start
                 )
             )
+
+            # Calculate evaluation metrics
+            step_metrics.update(trainer.eval(replay_buffer))
 
             # Reset flag
             train_model_flag = False

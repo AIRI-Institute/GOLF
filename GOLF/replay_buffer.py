@@ -16,6 +16,7 @@ class ReplayBuffer(object):
         max_total_conformations,
         atomrefs=None,
         initial_RB=None,
+        eval_RB=None,
         initial_conf_pct=0.0,
         filter_forces_by_norm=True,
     ):
@@ -24,6 +25,7 @@ class ReplayBuffer(object):
         self.max_total_conformations = max_total_conformations
         self.filter_forces_by_norm = filter_forces_by_norm
         self.initial_RB = initial_RB
+        self.eval_RB = eval_RB
         self.ptr = 0
         self.size = 0
         self.replay_buffer_full = False
@@ -88,6 +90,21 @@ class ReplayBuffer(object):
 
         return batch, forces, energy
 
+    def sample_eval(self, batch_size):
+        states, forces, energy = self.sample_wo_collate(batch_size)
+        batch = Batch.from_data_list(states).to(self.device)
+        forces = torch.cat(forces).to(self.device)
+        energy = energy.to(self.device)
+        if self.atomrefs is not None:
+            # Get atomization energy for each molecule in the batch
+            atomization_energy = scatter(
+                self.atomrefs[batch.z],
+                batch.batch,
+                dim_size=batch.batch_size,
+            ).unsqueeze(-1)
+            energy -= atomization_energy
+        return batch, forces, energy
+
     def sample_wo_collate(self, batch_size):
         ind = np.random.choice(min(self.size, self.max_size), batch_size, replace=False)
         states = [self.states[i] for i in ind]
@@ -96,10 +113,10 @@ class ReplayBuffer(object):
         return states, forces, energy
 
 
-def fill_initial_replay_buffer(device, args, atomrefs=None):
+def fill_initial_replay_buffer(device, db_path, args, atomrefs=None):
     # Env kwargs
     env_kwargs = {
-        "db_path": args.db_path,
+        "db_path": db_path,
         "n_parallel": 1,
         "timelimit": args.timelimit_train,
         "sample_initial_conformations": False,
