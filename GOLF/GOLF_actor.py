@@ -83,7 +83,7 @@ class Actor(nn.Module):
         energy, forces = self.nnp(batch)
         self._save_last_output(energy, forces)
         if train:
-            return {"forces": forces.detach(), "energy": energy}
+            return {"forces": forces, "energy": energy}
         forces = forces.detach()
         forces = self._limit_forces_norm(forces, get_atoms_indices_range(batch))
 
