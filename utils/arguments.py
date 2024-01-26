@@ -222,7 +222,7 @@ def get_args():
         "--optimizer",
         default="adam",
         type=str,
-        choices=["adam", "lion"],
+        choices=["adam", "lion", "AdamW"],
         help="Optimizer type",
     )
     parser.add_argument(

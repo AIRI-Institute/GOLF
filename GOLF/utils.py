@@ -72,6 +72,8 @@ def get_lr_scheduler(scheduler_type, optimizer, **kwargs):
 def get_optimizer_class(optimizer_name):
     if optimizer_name == "adam":
         return torch.optim.Adam
+    elif optimizer_name == "AdamW":
+        return torch.optim.AdamW
     elif optimizer_name == "lion":
         return Lion
     else:
