@@ -8,11 +8,8 @@ import warnings
 
 from ase.db import connect
 from sqlite3 import DatabaseError
-from schnetpack.data.loader import _atoms_collate_fn
 from schnetpack.interfaces import AtomsConverter
 from schnetpack.transform import ASENeighborList
-
-from GOLF import DEVICE
 
 np.seterr(all="ignore")
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -98,16 +95,12 @@ class MolecularDynamics(gym.Env):
             self.env_steps[idx] += 1
             dones[idx] = self.env_steps[idx] >= self.TL
 
-            # Convert atoms to obs
-            obs.append(self.converter(self.atoms[idx]))
-
         # Add info about bad pairs
         info["total_bad_pairs_before_processing"] = self.total_num_bad_pairs_before
         info["total_bad_pairs_after_processing"] = self.total_num_bad_pairs_after
 
         # Collate observations into a batch
-        obs = _atoms_collate_fn(obs)
-        obs = {k: v.to(DEVICE) for k, v in obs.items()}
+        obs = self.converter(self.atoms)
 
         return obs, rewards, dones, info
 
@@ -134,7 +127,6 @@ class MolecularDynamics(gym.Env):
 
         rows = [self.initial_molecule_conformations[db_idx] for db_idx in db_indices]
 
-        obs = []
         for idx, row, atom_id in zip(
             indices, rows, self.initial_conformations_ids[db_indices]
         ):
@@ -181,12 +173,8 @@ class MolecularDynamics(gym.Env):
             # Reset env_steps
             self.env_steps[idx] = 0
 
-            # Convert atoms to obs
-            obs.append(self.converter(self.atoms[idx]))
-
         # Collate observations into a batch
-        obs = _atoms_collate_fn(obs)
-        obs = {k: v.to(DEVICE) for k, v in obs.items()}
+        obs = self.converter([self.atoms[idx] for idx in indices])
 
         return obs
 
