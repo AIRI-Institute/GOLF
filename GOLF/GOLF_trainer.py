@@ -1,16 +1,10 @@
-import math
-
 import torch
 from schnetpack import properties
 from schnetpack.nn import scatter_add
 from torch.nn.functional import mse_loss
 
 from GOLF import DEVICE
-from GOLF.utils import (
-    calculate_gradient_norm,
-    get_lr_scheduler,
-    get_optimizer_class,
-)
+from GOLF.utils import calculate_gradient_norm, get_lr_scheduler, get_optimizer_class
 
 
 class GOLF(object):
@@ -57,8 +51,10 @@ class GOLF(object):
         self.force_loss_coef = force_loss_coef
         self.total_it = 0
 
-    def update(self, replay_buffer, *args):
+    def update(self, replay_buffer):
         metrics = dict()
+
+        # Train model
         state, force, energy = replay_buffer.sample(self.batch_size)
         output = self.actor(state, train=True)
         predicted_energy = output["energy"]
@@ -76,38 +72,75 @@ class GOLF(object):
         ) / n_atoms.size(0)
         loss = self.force_loss_coef * force_loss + self.energy_loss_coef * energy_loss
 
-        metrics["loss"] = loss.item()
-        metrics["energy_loss"] = energy_loss.item()
-        metrics["force_loss"] = force_loss.item()
-        metrics["energy_loss_contrib"] = energy_loss.item() * self.energy_loss_coef
-        metrics["force_loss_contrib"] = force_loss.item() * self.force_loss_coef
-        if self.use_lr_scheduler:
-            metrics["lr"] = self.lr_scheduler.get_last_lr()[0]
-
         if not torch.all(torch.isfinite(loss)):
             print(f"Non finite values in loss")
             return metrics
 
         self.optimizer.zero_grad()
         loss.backward()
-        if self.clip_value is not None:
-            metrics["grad_norm"] = torch.nn.utils.clip_grad_norm_(
-                self.actor.parameters(), self.clip_value
-            ).item()
-        else:
-            metrics["grad_norm"] = calculate_gradient_norm(self.actor).item()
 
-        if not math.isfinite(metrics["grad_norm"]):
+        if self.clip_value is not None:
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                self.actor.parameters(), self.clip_value
+            )
+        else:
+            grad_norm = calculate_gradient_norm(self.actor)
+        if not torch.all(torch.isfinite(grad_norm)):
             print("Non finite values in GD grad_norm")
             return metrics
 
         self.optimizer.step()
-
         # Update lr
         if self.use_lr_scheduler:
             self.lr_scheduler.step()
 
         self.total_it += 1
+        metrics["train/loss"] = loss.item()
+        metrics["train/energy_loss"] = energy_loss.item()
+        metrics["train/force_loss"] = force_loss.item()
+        metrics["train/energy_loss_contrib"] = (
+            energy_loss.item() * self.energy_loss_coef
+        )
+        metrics["train/force_loss_contrib"] = force_loss.item() * self.force_loss_coef
+        metrics["grad_norm"] = grad_norm.item()
+        if self.use_lr_scheduler:
+            metrics["lr"] = self.lr_scheduler.get_last_lr()[0]
+        return metrics
+
+    def eval(self, replay_buffer):
+        metrics = dict()
+
+        # Evaluate on test dataset
+        eval_state, eval_force, eval_energy = replay_buffer.sample_eval(self.batch_size)
+        output = self.actor(eval_state, train=True)
+        predicted_energy = output["energy"]
+        predicted_force = output["anti_gradient"]
+        n_atoms = eval_state[properties.n_atoms]
+
+        with torch.no_grad():
+            eval_energy_loss = mse_loss(predicted_energy, eval_energy.squeeze(1))
+            eval_force_loss = torch.sum(
+                scatter_add(
+                    mse_loss(predicted_force, eval_force, reduction="none").mean(-1),
+                    eval_state[properties.idx_m],
+                    dim_size=n_atoms.size(0),
+                )
+                / n_atoms
+            ) / n_atoms.size(0)
+            eval_loss = (
+                self.force_loss_coef * eval_force_loss
+                + self.energy_loss_coef * eval_energy_loss
+            )
+
+        metrics["eval/loss"] = eval_loss.item()
+        metrics["eval/energy_loss"] = eval_energy_loss.item()
+        metrics["eval/force_loss"] = eval_force_loss.item()
+        metrics["eval/energy_loss_contrib"] = (
+            eval_energy_loss.item() * self.energy_loss_coef
+        )
+        metrics["eval/force_loss_contrib"] = (
+            eval_force_loss.item() * self.force_loss_coef
+        )
         return metrics
 
     def save(self, filename):

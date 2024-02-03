@@ -63,9 +63,9 @@ class Logger:
         self.exploration_episode_final_energy = deque(maxlen=self._keep_n_episodes)
         self.exploration_episode_number = 0
 
-        self.use_wandb = "wandb" in sys.modules and os.environ.get("WANDB_API_KEY")
+        self.use_wandb = "wandb" in sys.modules  # and os.environ.get("WANDB_API_KEY")
         if self.use_wandb:
-            wandb.init(project=config.exp_name, save_code=True, name=config.run_id)
+            wandb.init(project=config.project_name, save_code=True, config=config)
         else:
             warnings.warn("Could not configure wandb access.")
 
