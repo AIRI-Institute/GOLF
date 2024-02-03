@@ -147,7 +147,7 @@ To speed up the training, we parallelize DFT computations using several CPU-rich
 2. Set up environments on CPU-rich machines.
    ```
    # On CPU rich machines
-   git clone <repo>
+   git clone https://github.com/AIRI-Institute/GOLF
    cd GOLF/scripts
    ./setup_host.sh n_ports ports_range_begin
    ```
