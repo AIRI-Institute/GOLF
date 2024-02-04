@@ -523,6 +523,7 @@ def main(checkpoint_path, args, config):
             done_future_ids.add(future_id)
             conformation_id, step, energy, force = future.result()
             if energy is None:
+                worker_id = future_id % len(dft_server_destinations)
                 host, port = dft_server_destinations[worker_id]
                 print(
                     f"DFT did not converged: conformation_id={conformation_id} step={step}. Host={host}, port={port}",
@@ -593,10 +594,11 @@ def main(checkpoint_path, args, config):
     pbar_optimization.update(n_conf_processed_delta)
     pbar_optimization.close()
 
-    for _, future in futures.items():
+    for future_id, future in futures.items():
         conformation_id, step, energy, force = future.result()
 
         if energy is None:
+            worker_id = future_id % len(dft_server_destinations)
             host, port = dft_server_destinations[worker_id]
             print(
                 f"DFT did not converged: conformation_id={conformation_id} step={step}. Host={host}, port={port}",
