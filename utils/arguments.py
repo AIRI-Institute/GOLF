@@ -359,7 +359,7 @@ def get_args():
     )
     parser.add_argument("--log_dir", default=".", help="Directory where runs are saved")
     parser.add_argument(
-        "--run_id", default="run-0", type=str, help="Run name in wandb project"
+        "--project_name", required=True, type=str, help="Wandb project name"
     )
     args = parser.parse_args()
 

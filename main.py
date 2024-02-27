@@ -64,14 +64,22 @@ def main(args, experiment_folder):
     else:
         # Initialize a fixed replay buffer with conformations from the database
         print("Filling replay buffer with initial conformations...")
-        initial_replay_buffer = fill_initial_replay_buffer(DEVICE, args, atomrefs)
+        initial_replay_buffer = fill_initial_replay_buffer(
+            DEVICE, args.db_path, args, atomrefs
+        )
         print(f"Done! RB size: {initial_replay_buffer.size}")
+        print("Filling evaluation replay buffer...")
+        eval_replay_buffer = fill_initial_replay_buffer(
+            DEVICE, args.eval_db_path, args, atomrefs
+        )
+        print(f"Done! Eval RB size: {eval_replay_buffer.size}")
         replay_buffer = ReplayBuffer(
             device=DEVICE,
             max_size=args.replay_buffer_size,
             max_total_conformations=args.max_oracle_steps,
             atomrefs=atomrefs,
             initial_RB=initial_replay_buffer,
+            eval_RB=eval_replay_buffer,
             initial_conf_pct=args.initial_conf_pct,
         )
 
@@ -171,9 +179,6 @@ def main(args, experiment_folder):
                     light_save_flag = True
             else:
                 experience_saver(next_state, rewards, dones)
-
-            # Move to next state
-            state = next_state
         else:
             dones = np.stack([True for _ in range(args.n_parallel)])
 
@@ -181,16 +186,11 @@ def main(args, experiment_folder):
             update_condition and (args.reward != "dft" or train_model_flag)
         ) or args.store_only_initial_conformations:
             # Train agent after collecting sufficient data
-            prev_start = time.perf_counter()
-            for update_num in range(args.n_parallel * args.utd_ratio):
+            for _ in range(args.n_parallel * args.utd_ratio):
                 step_metrics = trainer.update(replay_buffer)
-                new_start = time.perf_counter()
-                # print(
-                #     "policy.train {} time: {:.4f}".format(
-                #         update_num, new_start - prev_start
-                #     )
-                # )
-                prev_start = new_start
+
+            # Calculate evaluation metrics
+            step_metrics.update(trainer.eval(replay_buffer))
 
             # Reset flag
             train_model_flag = False
@@ -238,7 +238,6 @@ def main(args, experiment_folder):
             # Execute only if at least one env has reset.
             if len(envs_to_reset) > 0:
                 reset_states = env.reset(indices=envs_to_reset)
-                state = recollate_batch(state, envs_to_reset, reset_states)
                 # Reset initial states in policy
                 policy.reset(reset_states, indices=envs_to_reset)
 
@@ -250,9 +249,12 @@ def main(args, experiment_folder):
             args.reward != "dft"
             or eval_model_flag
             or args.store_only_initial_conformations
-        ) and (replay_buffer.size // args.n_parallel) % math.ceil(
-            args.eval_freq / float(args.n_parallel)
-        ) == 0:
+        ) and (
+            (replay_buffer.size // args.n_parallel)
+            % math.ceil(args.eval_freq / float(args.n_parallel))
+            == 0
+            or replay_buffer.size == 0
+        ):
             print(f"Evaluation at step {replay_buffer.size}...")
             # Update eval policy
             eval_policy.actor = copy.deepcopy(policy.actor)

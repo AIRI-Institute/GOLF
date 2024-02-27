@@ -72,13 +72,16 @@ class RdkitOracle(BaseOracle):
 
         for i, idx in enumerate(indices):
             # Perform rdkit minimization
-            ff = AllChem.MMFFGetMoleculeForceField(
-                self.molecules[idx],
-                AllChem.MMFFGetMoleculeProperties(self.molecules[idx]),
-                confId=0,
-            )
-            ff.Initialize()
-            not_converged[i] = ff.Minimize(maxIts=max_its)
+            try:
+                ff = AllChem.MMFFGetMoleculeForceField(
+                    self.molecules[idx],
+                    AllChem.MMFFGetMoleculeProperties(self.molecules[idx]),
+                    confId=0,
+                )
+                ff.Initialize()
+                not_converged[i] = ff.Minimize(maxIts=max_its)
+            except Exception as e:
+                print("Bad SMILES! Unable to minimize.")
             energies[i] = get_rdkit_energy(self.molecules[idx])
             forces[i] = get_rdkit_force(self.molecules[idx])
 
@@ -103,7 +106,9 @@ class RdkitOracle(BaseOracle):
             # Calculate initial rdkit energy
             if smiles is not None:
                 # Initialize molecule from Smiles
-                self.molecules[i] = MolFromSmiles(smiles, ps)
+                self.molecules[i] = MolFromSmiles(smiles)
+                self.molecules[i] = AddHs(self.molecules[i])
+                # self.molecules[i] = MolFromSmiles(smiles, ps)
                 # Add random conformer
                 self.molecules[i].AddConformer(
                     Conformer(len(molecule.get_atomic_numbers()))

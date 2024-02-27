@@ -795,9 +795,9 @@ def xyz2AC_huckel(atomicNumList, xyz, charge):
     passed, result = rdEHTTools.RunMol(mol_huckel)
     opop = result.GetReducedOverlapPopulationMatrix()
     tri = np.zeros((num_atoms, num_atoms))
-    tri[
-        np.tril(np.ones((num_atoms, num_atoms), dtype=bool))
-    ] = opop  # lower triangular to square matrix
+    tri[np.tril(np.ones((num_atoms, num_atoms), dtype=bool))] = (
+        opop  # lower triangular to square matrix
+    )
     for i in range(num_atoms):
         for j in range(i + 1, num_atoms):
             pair_pop = abs(tri[j, i])
@@ -872,30 +872,42 @@ def xyz2mol(
 
 
 def get_rdkit_energy(mol, confId=0):
-    ff = AllChem.MMFFGetMoleculeForceField(
-        mol, AllChem.MMFFGetMoleculeProperties(mol), confId=confId
-    )
-    ff.Initialize()
-    return ff.CalcEnergy()
+    try:
+        ff = AllChem.MMFFGetMoleculeForceField(
+            mol, AllChem.MMFFGetMoleculeProperties(mol), confId=confId
+        )
+        ff.Initialize()
+        energy = ff.CalcEnergy()
+    except Exception as e:
+        print(f"Bad SMILES. Setting energy to 0. Exception: {e}")
+        energy = 0.0
+    return energy
 
 
 def get_rdkit_force(mol, confId=0):
-    ff = AllChem.MMFFGetMoleculeForceField(
-        mol, AllChem.MMFFGetMoleculeProperties(mol), confId=confId
-    )
-    ff.Initialize()
-    return -np.asarray(ff.CalcGrad(), dtype=np.float32).reshape(
-        (len(mol.GetAtoms()), 3)
-    )
+    try:
+        ff = AllChem.MMFFGetMoleculeForceField(
+            mol, AllChem.MMFFGetMoleculeProperties(mol), confId=confId
+        )
+        ff.Initialize()
+        forces = -np.asarray(ff.CalcGrad(), dtype=np.float32).reshape(
+            (len(mol.GetAtoms()), 3)
+        )
+    except Exception as e:
+        forces = np.ones((len(mol.GetAtoms()), 3)) * 1e-6
+        print(f"Bad SMILES. Setting forces to 0. Exception: {e}")
+    return forces
 
 
 def set_coordinates(mol, coordinates):
     conf = mol.GetConformer()
-    for i, a in enumerate(mol.GetAtoms()):
-        ij = i
-        if a.GetAtomMapNum() != 0:
-            ij = a.GetAtomMapNum() - 1
-        x, y, z = coordinates[ij]
+    for i in range(mol.GetNumAtoms()):
+        x, y, z = coordinates[i]
+        # for i, a in enumerate(mol.GetAtoms()):
+        #     ij = i
+        #     if a.GetAtomMapNum() != 0:
+        #         ij = a.GetAtomMapNum() - 1
+        #     x, y, z = coordinates[ij]
         conf.SetAtomPosition(i, Point3D(x, y, z))
 
 

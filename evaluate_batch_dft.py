@@ -462,8 +462,6 @@ def main(checkpoint_path, args, config):
                     n_iter=n_iters[i], energy=energy, force=forces[i]
                 )
                 stats[conformation_id].step2stats[early_stop_step] = step_stats
-                if conformation_id == 1:
-                    print(eval_env.dft_oracle.molecules[i].get_positions())
                 tasks.append(
                     (
                         conformation_id,
@@ -525,8 +523,10 @@ def main(checkpoint_path, args, config):
             done_future_ids.add(future_id)
             conformation_id, step, energy, force = future.result()
             if energy is None:
+                worker_id = future_id % len(dft_server_destinations)
+                host, port = dft_server_destinations[worker_id]
                 print(
-                    f"DFT did not converged: conformation_id={conformation_id} step={step}",
+                    f"DFT did not converged: conformation_id={conformation_id} step={step}. Host={host}, port={port}",
                     flush=True,
                 )
             step_stats = stats[conformation_id].step2stats[step]
@@ -594,11 +594,14 @@ def main(checkpoint_path, args, config):
     pbar_optimization.update(n_conf_processed_delta)
     pbar_optimization.close()
 
-    for _, future in futures.items():
+    for future_id, future in futures.items():
         conformation_id, step, energy, force = future.result()
+
         if energy is None:
+            worker_id = future_id % len(dft_server_destinations)
+            host, port = dft_server_destinations[worker_id]
             print(
-                f"DFT did not converged: conformation_id={conformation_id} step={step}",
+                f"DFT did not converged: conformation_id={conformation_id} step={step}. Host={host}, port={port}",
                 flush=True,
             )
         step_stats = stats[conformation_id].step2stats[step]
@@ -894,8 +897,10 @@ if __name__ == "__main__":
             not args.evaluation_metrics_path.exists()
         ), f"Evaluation metrics file {args.evaluation_metrics_path} exists!"
 
-    config["db_path"] = "/".join(args.eval_db_path.split("/")[-3:])
-    config["eval_db_path"] = "/".join(args.eval_db_path.split("/")[-3:])
+    # config["db_path"] = "/".join(args.eval_db_path.split("/")[-3:])
+    config["db_path"] = args.eval_db_path
+    # config["eval_db_path"] = "/".join(args.eval_db_path.split("/")[-3:])
+    config["eval_db_path"] = args.eval_db_path
     config["n_parallel"] = args.n_parallel
     config["host_file_path"] = args.host_file_path
     config["timelimit"] = args.timelimit + 1

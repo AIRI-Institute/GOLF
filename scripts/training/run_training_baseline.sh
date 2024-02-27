@@ -52,3 +52,4 @@ python ../../main.py --n_parallel 240 \
 --light_checkpoint_freq 50000 \
 --save_checkpoints True \
 --log_dir ../../results \
+--project_name GOLF-pyg-baseline \

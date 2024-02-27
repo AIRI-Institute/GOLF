@@ -21,12 +21,14 @@ class ReplayBuffer(object):
         max_total_conformations,
         atomrefs=None,
         initial_RB=None,
+        eval_RB=None,
         initial_conf_pct=0.0,
     ):
         self.device = device
         self.max_size = max_size
         self.max_total_conformations = max_total_conformations
         self.initial_RB = initial_RB
+        self.eval_RB = eval_RB
         self.ptr = 0
         self.size = 0
         self.replay_buffer_full = False
@@ -56,7 +58,6 @@ class ReplayBuffer(object):
             self.energy[self.ptr] = energies[i]
             self.forces[self.ptr] = torch.tensor(forces[i], dtype=torch.float32)
             self.ptr = (self.ptr + 1) % self.max_size
-            # self.size = min(self.size + 1, self.max_size)
             self.size = self.size + 1
 
         self.replay_buffer_full = self.size >= self.max_total_conformations
@@ -79,6 +80,31 @@ class ReplayBuffer(object):
             for key, value in _atoms_collate_fn(states).items()
         }
         forces = torch.cat(forces).to(self.device)
+        energy = energy.to(self.device)
+
+        if self.atomrefs is not None:
+            # Get system index
+            idx_m = state_batch[properties.idx_m]
+
+            # Get num molecules in the batch
+            max_m = int(idx_m[-1]) + 1
+
+            # Get atomization energy for each molecule in the batch
+            atomization_energy = scatter_add(
+                self.atomrefs[state_batch[properties.Z]], idx_m, dim_size=max_m
+            ).unsqueeze(-1)
+            energy -= atomization_energy
+
+        return state_batch, forces, energy
+
+    def sample_eval(self, batch_size):
+        states, forces, energy = self.eval_RB.sample_wo_collate(batch_size)
+        state_batch = {
+            key: value.to(self.device)
+            for key, value in _atoms_collate_fn(states).items()
+        }
+        forces = torch.cat(forces).to(self.device)
+        energy = energy.to(self.device)
 
         if self.atomrefs is not None:
             # Get system index
@@ -99,14 +125,14 @@ class ReplayBuffer(object):
         ind = np.random.choice(min(self.size, self.max_size), batch_size, replace=False)
         states = [self.states[i] for i in ind]
         forces = [self.forces[i] for i in ind]
-        energy = self.energy[ind].to(self.device)
+        energy = self.energy[ind]
         return states, forces, energy
 
 
-def fill_initial_replay_buffer(device, args, atomrefs=None):
+def fill_initial_replay_buffer(device, db_path, args, atomrefs=None):
     # Env kwargs
     env_kwargs = {
-        "db_path": args.db_path,
+        "db_path": db_path,
         "n_parallel": 1,
         "timelimit": args.timelimit_train,
         "sample_initial_conformations": False,

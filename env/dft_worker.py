@@ -17,9 +17,9 @@ PSI4_BOHR2ANGSTROM = 0.52917720859
 # os.environ['PSI_SCRATCH'] = "/dev/shm/tmp"
 # psi4.set_options({ "CACHELEVEL": 0 })
 
-psi4.set_memory("8 GB")
+psi4.set_memory("16 GB")
 psi4.core.IOManager.shared_object().set_default_path("/dev/shm/")
-psi4.core.set_num_threads(4)
+psi4.core.set_num_threads(8)
 psi4.core.set_output_file("/dev/null")
 
 HEADER = "units ang \n nocom \n noreorient \n"

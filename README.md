@@ -3,7 +3,7 @@
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 </p>
 
-This repository is the official implementation of Gradual Optimization Learning for Conformational Energy Minimization. [[arxiv]](https://arxiv.org/abs/2311.06295)
+This repository is the official implementation of Gradual Optimization Learning for Conformational Energy Minimization [[arxiv]](https://arxiv.org/abs/2311.06295).
 
 <table border="1" class="dataframe">
    <thead>
@@ -147,7 +147,7 @@ To speed up the training, we parallelize DFT computations using several CPU-rich
 2. Set up environments on CPU-rich machines.
    ```
    # On CPU rich machines
-   git clone <repo>
+   git clone https://github.com/AIRI-Institute/GOLF
    cd GOLF/scripts
    ./setup_host.sh n_ports ports_range_begin
    ```
