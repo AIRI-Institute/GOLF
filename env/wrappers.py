@@ -107,8 +107,7 @@ class RdkitOracle(BaseOracle):
             if smiles is not None:
                 # Initialize molecule from Smiles
                 self.molecules[i] = MolFromSmiles(smiles)
-                self.molecules[i] = AddHs(self.molecules[i])
-                # self.molecules[i] = MolFromSmiles(smiles, ps)
+                self.molecules[i] = MolFromSmiles(smiles, ps)
                 # Add random conformer
                 self.molecules[i].AddConformer(
                     Conformer(len(molecule.get_atomic_numbers()))
