@@ -100,15 +100,12 @@ class RdkitOracle(BaseOracle):
         return rewards
 
     def initialize_molecules(self, indices, smiles_list, molecules, max_its=0):
-        ps = SmilesParserParams()
-        ps.removeHs = False
         for i, smiles, molecule in zip(indices, smiles_list, molecules):
             # Calculate initial rdkit energy
             if smiles is not None:
                 # Initialize molecule from Smiles
                 self.molecules[i] = MolFromSmiles(smiles)
                 self.molecules[i] = AddHs(self.molecules[i])
-                # self.molecules[i] = MolFromSmiles(smiles, ps)
                 # Add random conformer
                 self.molecules[i].AddConformer(
                     Conformer(len(molecule.get_atomic_numbers()))

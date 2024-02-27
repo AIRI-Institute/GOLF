@@ -905,11 +905,6 @@ def set_coordinates(mol, coordinates):
     conf = mol.GetConformer()
     for i in range(mol.GetNumAtoms()):
         x, y, z = coordinates[i]
-        # for i, a in enumerate(mol.GetAtoms()):
-        #     ij = i
-        #     if a.GetAtomMapNum() != 0:
-        #         ij = a.GetAtomMapNum() - 1
-        #     x, y, z = coordinates[ij]
         conf.SetAtomPosition(i, Point3D(x, y, z))
 
 
