@@ -91,7 +91,7 @@ class ReplayBuffer(object):
         return batch, forces, energy
 
     def sample_eval(self, batch_size):
-        states, forces, energy = self.sample_wo_collate(batch_size)
+        states, forces, energy = self.eval_RB.sample_wo_collate(batch_size)
         batch = Batch.from_data_list(states).to(self.device)
         forces = torch.cat(forces).to(self.device)
         energy = energy.to(self.device)
