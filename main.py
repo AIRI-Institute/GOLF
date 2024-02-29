@@ -80,6 +80,7 @@ def main(args, experiment_folder):
             max_total_conformations=args.max_oracle_steps,
             atomrefs=atomrefs,
             initial_RB=initial_replay_buffer,
+            eval_RB=eval_replay_buffer,
             initial_conf_pct=args.initial_conf_pct,
         )
 
@@ -134,11 +135,12 @@ def main(args, experiment_folder):
     # Set training flag to False (for dft reward only)
     train_model_flag = False
 
-    # Set evaluation/save flags to False (for dft reward only).
+    # Set save flags to False (for dft reward only).
     # Flag is set to True every time new experience is added
     # to replay buffer. This is done to avoid multiple
-    # evaluations of the same model
-    eval_model_flag = False
+    # evaluations of the same model.
+    # Set evaluation flag to True to get initial quality.
+    eval_model_flag = True
     full_save_flag = False
     light_save_flag = False
 
