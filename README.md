@@ -111,8 +111,8 @@ This repository is the official implementation of Gradual Optimization Learning 
 2. Download training dataset $\mathcal{D}_0$ and evaluation dataset $\mathcal{D}\_{\text{test}}$
    ```
    mkdir data && cd data
-   wget https://shorturl.at/gknC5
-   wget https://shorturl.at/jTXZ7
+   wget https://sc.link/FpEvS
+   wget https://sc.link/W6RUA
    cd ../
    ```
 4. Train baseline PaiNN model
@@ -127,9 +127,9 @@ This repository is the official implementation of Gradual Optimization Learning 
 2. Download optimization trajectories datasets.
    ```
    cd data
-   wget https://shorturl.at/MV047
-   wget https://shorturl.at/szJSZ
-   wget https://shorturl.at/gnPTZ
+   wget https://sc.link/ZQRiV
+   wget https://sc.link/Z0ebo
+   wget https://sc.link/hj1JX
    cd ../
    ```
 3. Train PaiNN.
@@ -168,7 +168,7 @@ cd scripts/train
 ## Evaluating NNPs
 The evaluation can be done with or without `psi4` energy estimation for NNP-optimization trajectories. The argument 'eval_early_stop_steps' controls for which conformations in the optimization to evaluate energy/forces with `psi4`. For example, setting `eval_early_stop_steps` to an empty list will result in no additional `psi4` energy estimations, and setting it  to `[1 2 3 5 8 13 21 30 50 75 100]` will result in 13 additional energy evaluations for each conformation in evaluation dataset. Note that in order to compute the $\overline{pct}_T$, optimal energies obtained with the genuine oracle $\mathcal{O}$ (we used `psi4.optimize` for $\leq 200$ steps) must be available.
 
-In this repo, we provide NNPs pre-trained on different datasets in the `checkpoints` directory:
+In this repo, we provide NNPs pre-trained on different datasets and with GOLF in the `checkpoints` directory:
    - $f^{\text{baseline}}$  (`checkpoints/baseline-NNP/NNP_checkpoint`)
    - $f^{\text{traj-10k}}$ (`checkpoints/traj-10k/NNP_checkpoint`)
    - $f^{\text{traj-100k}}$ (`checkpoints/traj-100k/NNP_checkpoint`)
@@ -182,4 +182,4 @@ python evaluate_batch_dft.py --checkpoint_path checkpoints/GOLF-10k --agent_path
 ```
 Make sure that `n_threads` is equal to the number of workers on each CPU-rich machine. Setting `n_threads` to a larger number will result in optimization failures. If you wish to only evaluate the last state in each optimization trajectory, set `timelimit` and `eval_early_stop_steps` to the same number: `--timelimit T --eval_early_stop_steps T`.
 
-After the evaluation is finished, an `evaluation_metrics.json` file with per-step metrics is created. Each record in `evaluation_metrics.json` describes optimization statistics for a single conformation and contains such metrics as: forces/energies MSE, percentage of optimized energy, predicted and ground-truth energies, etc. The final NNP-optimized conformations are stored in `results.db` database.
+After the evaluation is finished, an `evaluation_metrics.json` file with per-step metrics will be created. Each record in `evaluation_metrics.json` describes optimization statistics for a single conformation and contains such metrics as: forces/energies MSE, percentage of optimized energy, predicted and ground-truth energies, etc. The final NNP-optimized conformations are stored in `results.db` database.
