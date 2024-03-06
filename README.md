@@ -5,6 +5,8 @@
 
 This repository is the official implementation of Gradual Optimization Learning for Conformational Energy Minimization [[arxiv]](https://arxiv.org/abs/2311.06295).
 
+**To reproduce results on [SPICE](https://www.nature.com/articles/s41597-022-01882-6) dataset, select "GOLF-SPICE" branch.**
+
 <table border="1" class="dataframe">
    <thead>
       <tr style="text-align: center;">
