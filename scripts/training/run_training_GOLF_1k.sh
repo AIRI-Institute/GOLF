@@ -5,8 +5,8 @@ cuda=$1
 CUDA_VISIBLE_DEVICES=$cuda \
 python ../../main.py --n_parallel 48 \
 --n_threads 24 \
---db_path ../../data/GOLF_train.db \
---eval_db_path ../../data/GOLF_test.db \
+--db_path ../../data/D-0.db \
+--eval_db_path ../../data/D-test.db \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
 --timelimit_train 100 \

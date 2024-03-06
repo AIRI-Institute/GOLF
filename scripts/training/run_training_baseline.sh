@@ -5,8 +5,8 @@ cuda=$1
 CUDA_VISIBLE_DEVICES=$cuda \
 python ../../main.py --n_parallel 240 \
 --n_threads 24 \
---db_path ../../data/GOLF_train.db \
---eval_db_path ../../data/GOLF_test.db \
+--db_path ../../data/D-0.db \
+--eval_db_path ../../data/D-test.db \
 --num_initial_conformations -1 \
 --sample_initial_conformations True \
 --timelimit_train 1 \
@@ -40,7 +40,7 @@ python ../../main.py --n_parallel 240 \
 --force_loss_coef 0.99 \
 --replay_buffer_size 1000000 \
 --initial_conf_pct 1.0 \
---max_oracle_steps 100000 \
+--max_oracle_steps 200000 \
 --utd_ratio 5 \
 --subtract_atomization_energy True \
 --action_norm_limit 1.0 \
