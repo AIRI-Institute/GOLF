@@ -5,6 +5,8 @@
 
 This repository is the official implementation of Gradual Optimization Learning for Conformational Energy Minimization [[arxiv]](https://arxiv.org/abs/2311.06295).
 
+**Experiments and results on the [nablaDFT](https://pubs.rsc.org/en/content/articlelanding/2022/cp/d2cp03966d) dataset can be found in the "GOLF-SPICE" branch.**
+
 <table border="1" class="dataframe">
    <thead>
       <tr style="text-align: center;">
