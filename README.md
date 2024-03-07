@@ -69,8 +69,8 @@ This repository is the official implementation of Gradual Optimization Learning 
 2. Download training dataset $\mathcal{D}_0$ and evaluation dataset $\mathcal{D}\_{\text{test}}$
    ```
    mkdir data && cd data
-   wget https://shorturl.at/gknC5
-   wget https://shorturl.at/jTXZ7
+   wget https://sc.link/6Ljw1
+   wget https://sc.link/HtZte
    cd ../
    ```
 4. Train baseline PaiNN model
@@ -85,9 +85,9 @@ This repository is the official implementation of Gradual Optimization Learning 
 2. Download optimization trajectories datasets.
    ```
    cd data
-   wget https://shorturl.at/MV047
-   wget https://shorturl.at/szJSZ
-   wget https://shorturl.at/gnPTZ
+   wget https://sc.link/7tgCE
+   wget https://sc.link/AjsfR
+   wget https://sc.link/yd08k
    cd ../
    ```
 3. Train PaiNN.
