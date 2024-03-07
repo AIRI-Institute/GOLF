@@ -13,6 +13,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <th>Model</th>
          <th>$\overline{\text{pct}}_T (\%) \uparrow$</th>
          <th>$\text{pct}_{\text{div}} (\%) \downarrow$</th>
+         <th>$\overline{E^{\text{res}}}_T\tiny{\text{(kc/mol)}}\downarrow$</th>
+         <th>$\text{pct}_{\text{success}} (\%) \uparrow$</th>
          <th>$\text{COV} (\%) \uparrow$ </th>
          <th>$\text{MAT} (\text{&#8491}) \downarrow $</th>
       </tr>
@@ -22,6 +24,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>RDKit</i></td>
          <td><i>$84.92 \pm 10.6$</i></td>
          <td><i>$\mathbf{0.05}$</i></td>
+         <td><i>$5.5$</i></td>
+         <td><i>$4.1$</i></td>
          <td><i>$62.24$</i></td>
          <td><i>$0.509$</i></td>
       </tr>
@@ -29,6 +33,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>Torsional Diffusion</i></td>
          <td><i>$25.63 \pm 21.4$</i></td>
          <td><i>$46.9$</i></td>
+         <td><i>$33.8$</i></td>
+         <td><i>$0.0$</i></td>
          <td><i>$11.3$</i></td>
          <td><i>$1.333$</i></td>
       </tr>
@@ -36,6 +42,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>ConfOpt</i></td>
          <td><i>$36.48 \pm 23.0$</i></td>
          <td><i>$84.5$</i></td>
+         <td><i>$27.9$</i></td>
+         <td><i>$0.2$</i></td>
          <td><i>$19.88$</i></td>
          <td><i>$1.05$</i></td>
       </tr>
@@ -43,6 +51,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>Uni-Mol+</i></td>
          <td><i>$62.20 \pm 17.2$</i></td>
          <td><i>$2.8$</i></td>
+         <td><i>$18.6$</i></td>
+         <td><i>$0.2$</i></td>
          <td><i>$68.79$</i></td>
          <td><i>$0.407$</i></td>
       </tr>
@@ -50,6 +60,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{baseline}}$</i></td>
          <td><i>$76.8 \pm 22.4$</i></td>
          <td><i>$7.5$</i></td>
+         <td><i>$8.6$</i></td>
+         <td><i>$8.2$</i></td>
          <td><i>$65.22$</i></td>
          <td><i>$0.482$</i></td>
       </tr>
@@ -57,6 +69,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{rdkit}}$</i></td>
          <td><i>$93.09 \pm 11.9$</i></td>
          <td><i>$3.8$</i></td>
+         <td><i>$2.8$</i></td>
+         <td><i>$35.4$</i></td>
          <td><i>$71.6$</i></td>
          <td><i>$0.426$</i></td>
       </tr>
@@ -64,6 +78,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{traj-10k}}$</i></td>
          <td><i>$95.3 \pm 7.3$ </i></td>
          <td><i>$4.5$</i></td>
+         <td><i>$2.0$</i></td>
+         <td><i>$37.0$</i></td>
          <td><i>$70.55$</i></td>
          <td><i>$0.440$</i></td>
       </tr>
@@ -71,6 +87,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{traj-100k}}$</i></td>
          <td><i>$96.3 \pm 9.8$</i></td>
          <td><i>$2.9$</i></td>
+         <td><i>$1.5$</i></td>
+         <td><i>$52.7$</i></td>
          <td><i>$71.43$</i></td>
          <td><i>$0.432$</i></td>
       </tr>
@@ -78,6 +96,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{traj-500k}}$</i></td>
          <td><i>$98.4 \pm 9.2$</i></td>
          <td><i>$1.8$</i></td>
+         <td><i>$\mathbf{0.5}$</i></td>
+         <td><i>$73.4$</i></td>
          <td><i>$72.15$</i></td>
          <td><i>$0.442$</i></td>
       </tr>
@@ -85,6 +105,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{GOLF-1k}}$</i></td>
          <td><i>$98.5 \pm 5.3$</i></td>
          <td><i>$3.6$</i></td>
+         <td><i>$1.1$</i></td>
+         <td><i>$62.9$</i></td>
          <td><i></i>$76.54$</td>
          <td><i>$\mathbf{0.349}$</i></td>
       </tr>
@@ -92,6 +114,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{GOLF-10k}}$</i></td>
          <td><i>$\mathbf{99.4 \pm 5.2}$</i></td>
          <td><i>$2.4$</i></td>
+         <td><i>$\mathbf{0.5}$</i></td>
+         <td><i>$\mathbf{77.3}$</i></td>
          <td><i>$\mathbf{76.84}$</i></td>
          <td><i>$0.355$</i></td>
       </tr>
