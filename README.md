@@ -76,6 +76,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{traj-10k}}$</i></td>
          <td><i>$95.3 \pm 7.3$ </i></td>
          <td><i>$4.5$</i></td>
+         <td><i>$2.0$</i></td>
+         <td><i>$37.0$</i></td>
          <td><i>$70.55$</i></td>
          <td><i>$0.440$</i></td>
       </tr>
@@ -83,6 +85,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{traj-100k}}$</i></td>
          <td><i>$96.3 \pm 9.8$</i></td>
          <td><i>$2.9$</i></td>
+         <td><i>$1.5$</i></td>
+         <td><i>$52.7$</i></td>
          <td><i>$71.43$</i></td>
          <td><i>$0.432$</i></td>
       </tr>
@@ -90,6 +94,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{traj-500k}}$</i></td>
          <td><i>$98.4 \pm 9.2$</i></td>
          <td><i>$1.8$</i></td>
+         <td><i>$\mathbf{0.5}$</i></td>
+         <td><i>$73.4$</i></td>
          <td><i>$72.15$</i></td>
          <td><i>$0.442$</i></td>
       </tr>
@@ -97,6 +103,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{GOLF-1k}}$</i></td>
          <td><i>$98.5 \pm 5.3$</i></td>
          <td><i>$3.6$</i></td>
+         <td><i>$1.1$</i></td>
+         <td><i>$62.9$</i></td>
          <td><i></i>$76.54$</td>
          <td><i>$\mathbf{0.349}$</i></td>
       </tr>
@@ -104,6 +112,8 @@ This repository is the official implementation of Gradual Optimization Learning 
          <td><i>$f^{\text{GOLF-10k}}$</i></td>
          <td><i>$\mathbf{99.4 \pm 5.2}$</i></td>
          <td><i>$2.4$</i></td>
+         <td><i>$\mathbf{0.5}$</i></td>
+         <td><i>$\mathbf{77.3}$</i></td>
          <td><i>$\mathbf{76.84}$</i></td>
          <td><i>$0.355$</i></td>
       </tr>
