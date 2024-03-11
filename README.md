@@ -219,3 +219,14 @@ python evaluate_batch_dft.py --checkpoint_path checkpoints/GOLF-10k --agent_path
 Make sure that `n_threads` is equal to the number of workers on each CPU-rich machine. Setting `n_threads` to a larger number will result in optimization failures. If you wish to only evaluate the last state in each optimization trajectory, set `timelimit` and `eval_early_stop_steps` to the same number: `--timelimit T --eval_early_stop_steps T`.
 
 After the evaluation is finished, an `evaluation_metrics.json` file with per-step metrics will be created. Each record in `evaluation_metrics.json` describes optimization statistics for a single conformation and contains such metrics as: forces/energies MSE, percentage of optimized energy, predicted and ground-truth energies, etc. The final NNP-optimized conformations are stored in `results.db` database.
+
+## Citation
+To cite this work, please use:
+```
+@inproceedings{tsypin2023gradual,
+  title={Gradual Optimization Learning for Conformational Energy Minimization},
+  author={Tsypin, Artem and Ugadiarov, Leonid Anatolievich and Khrabrov, Kuzma and Telepov, Alexander and Rumiantsev, Egor and Skrynnik, Alexey and Panov, Aleksandr and Vetrov, Dmitry P and Tutubalina, Elena and Kadurin, Artur},
+  booktitle={The Twelfth International Conference on Learning Representations},
+  year={2023}
+}
+```
