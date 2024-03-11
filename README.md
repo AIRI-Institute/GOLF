@@ -3,7 +3,7 @@
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 </p>
 
-This repository is the official implementation of Gradual Optimization Learning for Conformational Energy Minimization [[arxiv]](https://arxiv.org/abs/2311.06295).
+This repository is the official implementation of Gradual Optimization Learning for Conformational Energy Minimization [[openreview]](https://openreview.net/forum?id=FMMF1a9ifL).
 
 **Experiments and results on the [SPICE](https://www.nature.com/articles/s41597-022-01882-6) dataset can be found in the "GOLF-SPICE" branch.**
 
