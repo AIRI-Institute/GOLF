@@ -76,7 +76,7 @@ This repository is the official implementation of Gradual Optimization Learning 
 4. Train baseline PaiNN model
    ```
    cd scripts/train
-   ./run_training_baseline.sh <cuda_device_number>
+   ./run_training_baseline_spice.sh <cuda_device_number>
    ```
    Running this script will create a folder in the specified `log_dir` directory (we use "./results" in our configs and scripts). The name of the folder is specified by the `exp_name` hyperparameter. The folder will contain checkpoints, a metrics file and a config file with hyperparameters.
 
@@ -93,9 +93,9 @@ This repository is the official implementation of Gradual Optimization Learning 
 3. Train PaiNN.
    ```
    cd scripts/train
-   ./run_training_trajectories-10k.sh <cuda_device_number>
-   ./run_training_trajectories-100k.sh <cuda_device_number>
-   ./run_training_trajectories-500k.sh <cuda_device_number>
+   ./run_training_trajectories_10k_spice.sh <cuda_device_number>
+   ./run_training_trajectories_100k_spice.sh <cuda_device_number>
+   ./run_training_trajectories_500k_spice.sh <cuda_device_number>
    ```
 
 ## Training NNPs with GOLF
@@ -120,7 +120,7 @@ To speed up the training, we parallelize DFT computations using several CPU-rich
 Train PaiNN with GOLF.
 ```
 cd scripts/train
-./run_training_GOLF-10k.sh <cuda_device_number>
+./run_training_GOLF_10k_SPICE.sh <cuda_device_number>
 ```
 
 ## Evaluating NNPs
