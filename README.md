@@ -1,9 +1,21 @@
-# Gradual Optimization Learning for Conformational Energy Minimization
+# (ICLR2024 Poster) Gradual Optimization Learning for Conformational Energy Minimization
+
 <p align="left">
-<a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
+  <a href="https://github.com/psf/black">
+    <img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg">
+  </a>
+  <a href="https://openreview.net/forum?id=FMMF1a9ifL">
+    <img alt="Openreview" src="https://img.shields.io/badge/review-OpenReview-red">
+  </a>
+  <a href="https://arxiv.org/abs/2311.06295">
+    <img alt="Paper URL" src="https://img.shields.io/badge/arxiv-2311.06295-blue">
+  </a>
 </p>
 
-This repository is the official implementation of Gradual Optimization Learning for Conformational Energy Minimization [[openreview]](https://openreview.net/forum?id=FMMF1a9ifL).
+This repository is the official implementation of the paper:
+> Tsypin, A., Ugadiarov, L. A., Khrabrov, K., Telepov, A., Rumiantsev, E., Skrynnik, A., ... & Kadurin, A. (2023, October). <br>
+> **Gradual Optimization Learning for Conformational Energy Minimization.** <br>
+> In The Twelfth International Conference on Learning Representations.
 
 **Experiments and results on the [SPICE](https://www.nature.com/articles/s41597-022-01882-6) dataset can be found in the "GOLF-SPICE" branch.**
 
