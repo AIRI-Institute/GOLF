@@ -140,7 +140,7 @@ This repository is the official implementation of the paper:
    ```
    mkdir data && cd data
    wget https://sc.link/FpEvS
-   wget https://sc.link/W6RUA
+   wget https://sc.link/XJYzc
    cd ../
    ```
 4. Train baseline PaiNN model
