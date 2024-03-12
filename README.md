@@ -139,8 +139,8 @@ This repository is the official implementation of the paper:
 2. Download training dataset $\mathcal{D}_0$ and evaluation dataset $\mathcal{D}\_{\text{test}}$
    ```
    mkdir data && cd data
-   wget https://sc.link/FpEvS
-   wget https://sc.link/W6RUA
+   wget https://sc.link/FpEvS -O D-0.db
+   wget https://sc.link/W6RUA -O D-test.db
    cd ../
    ```
 4. Train baseline PaiNN model
@@ -155,9 +155,9 @@ This repository is the official implementation of the paper:
 2. Download optimization trajectories datasets.
    ```
    cd data
-   wget https://sc.link/ZQRiV
-   wget https://sc.link/Z0ebo
-   wget https://sc.link/hj1JX
+   wget https://sc.link/ZQRiV -O D-traj-10k.db
+   wget https://sc.link/Z0ebo -O D-traj-100k.db
+   wget https://sc.link/hj1JX -O D-traj-500k.db
    cd ../
    ```
 3. Train PaiNN.
