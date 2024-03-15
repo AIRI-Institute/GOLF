@@ -5,9 +5,10 @@ cuda=$1
 CUDA_VISIBLE_DEVICES=$cuda \
 python ../../main.py --n_parallel 240 \
 --n_threads 24 \
---db_path ../../../MolDynamics/env/data/train_4k_mff_with_forces_wooutlier.db \
---eval_db_path ../../data/GOLF_test.db \
+--db_path ../../data/D-0.db \
+--eval_db_path ../../data/D-test.db \
 --num_initial_conformations -1 \
+--eval_num_initial_conformations 2000 \
 --sample_initial_conformations True \
 --timelimit_train 1 \
 --timelimit_eval 50 \
