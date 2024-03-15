@@ -125,7 +125,7 @@ class GOLF(object):
         batch, eval_force, eval_energy = replay_buffer.sample_eval(self.batch_size)
         output = self.actor(batch, train=True)
         predicted_energy = output["energy"]
-        predicted_force = output["anti_gradient"]
+        predicted_force = output["forces"]
         n_atoms = get_n_atoms(batch)
 
         with torch.no_grad():
