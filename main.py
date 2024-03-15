@@ -66,12 +66,20 @@ def main(args, experiment_folder):
         # Initialize a fixed replay buffer with conformations from the database
         print("Filling replay buffer with initial conformations...")
         initial_replay_buffer = fill_initial_replay_buffer(
-            DEVICE, args.db_path, args, atomrefs
+            device=DEVICE,
+            db_path=args.db_path,
+            timelimit=args.timelimit_train,
+            num_initial_conformations=args.num_initial_conformations,
+            atomrefs=atomrefs,
         )
         print(f"Done! RB size: {initial_replay_buffer.size}")
         print("Filling evaluation buffer with conformations...")
         eval_replay_buffer = fill_initial_replay_buffer(
-            DEVICE, args.eval_db_path, args, atomrefs
+            device=DEVICE,
+            db_path=args.eval_db_path,
+            timelimit=args.timelimit_train,
+            num_initial_conformations=args.eval_num_initial_conformations,
+            atomrefs=atomrefs,
         )
         print(f"Done! RB size: {eval_replay_buffer.size}")
         replay_buffer = ReplayBuffer(
@@ -198,7 +206,7 @@ def main(args, experiment_folder):
         ) or args.store_only_initial_conformations:
             # Train agent after collecting sufficient data
             train_start = time.perf_counter()
-            for update_num in range(args.n_parallel * args.utd_ratio):
+            for update_num in range(1, args.n_parallel * args.utd_ratio + 1):
                 step_metrics = trainer.update(replay_buffer)
             print(
                 "policy.train(); total updates: {}; time: {:.4f}".format(

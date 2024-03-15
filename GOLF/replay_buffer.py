@@ -113,21 +113,23 @@ class ReplayBuffer(object):
         return states, forces, energy
 
 
-def fill_initial_replay_buffer(device, db_path, args, atomrefs=None):
+def fill_initial_replay_buffer(
+    device, db_path, timelimit, num_initial_conformations, atomrefs=None
+):
     # Env kwargs
     env_kwargs = {
         "db_path": db_path,
         "n_parallel": 1,
-        "timelimit": args.timelimit_train,
+        "timelimit": timelimit,
         "sample_initial_conformations": False,
-        "num_initial_conformations": args.num_initial_conformations,
+        "num_initial_conformations": num_initial_conformations,
     }
     # Initialize env
     env = OptimizationEnv(**env_kwargs)
-    if args.num_initial_conformations == -1:
+    if num_initial_conformations == -1:
         total_confs = env.get_db_length()
     else:
-        total_confs = args.num_initial_conformations
+        total_confs = num_initial_conformations
 
     initial_replay_buffer = ReplayBuffer(
         device,
@@ -138,7 +140,7 @@ def fill_initial_replay_buffer(device, db_path, args, atomrefs=None):
     )
 
     # Fill up the replay buffer
-    for _ in range(total_confs):
+    for i in range(total_confs):
         state = env.reset()
         # Save initial state in replay buffer
         energies = np.array([env.energy])

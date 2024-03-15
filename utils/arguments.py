@@ -56,9 +56,16 @@ def get_args():
     )
     parser.add_argument(
         "--num_initial_conformations",
-        default=50000,
+        default=-1,
         type=int,
         help="Number of initial molecule conformations to sample from the database. \
+              If equals to '-1' sample all conformations from the database.",
+    )
+    parser.add_argument(
+        "--eval_num_initial_conformations",
+        default=-1,
+        type=int,
+        help="Number of initial molecule conformations to sample from the evaluation database. \
               If equals to '-1' sample all conformations from the database.",
     )
     parser.add_argument(
