@@ -1,0 +1,16 @@
+node_latent_dim: 50
+hidden_channels: 256
+num_blocks: 6
+int_emb_size: 64
+basis_emb_size: 8
+out_emb_channels: 256
+num_spherical: 7
+num_radial: 6
+envelope_exponent: 5
+num_before_skip: 1
+num_after_skip: 2
+num_output_layers: 3
+cutoff: 5.0
+regress_forces: True
+use_pbc: False
+otf_graph: True
