@@ -2,13 +2,8 @@ import yaml
 from torch.optim import SGD, Adam
 
 from GOLF import DEVICE
-from GOLF.GOLF_actor import (
-    Actor,
-    ConformationOptimizer,
-    LBFGSConformationOptimizer,
-    RdkitActor,
-)
-from GOLF.optim.lion_pytorch import Lion
+from GOLF.GOLF_actor import Actor, RdkitActor
+from GOLF.optim import Lion, ConformationOptimizer, LBFGSConformationOptimizer
 from utils.utils import ignore_extra_args
 
 actors = {
@@ -33,8 +28,6 @@ def make_policies(env, eval_env, args):
 
     policy_args = {
         "n_parallel": args.n_parallel,
-        "lr_scheduler": args.conf_opt_lr_scheduler,
-        "t_max": args.timelimit_train,
     }
 
     if args.conformation_optimizer == "LBFGS":

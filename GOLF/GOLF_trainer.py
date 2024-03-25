@@ -1,17 +1,22 @@
-import math
-
 import torch
 from torch.nn.functional import l1_loss, mse_loss
 from torch_geometric.utils import scatter
+from torchmetrics.functional import mean_absolute_error
 
 from GOLF import DEVICE
+from GOLF.optim import Lion
 from GOLF.utils import (
     calculate_gradient_norm,
     get_lr_scheduler,
-    get_n_atoms,
-    get_optimizer_class,
 )
 from utils.utils import ignore_extra_args
+
+
+optimizers = {
+    "adam": ignore_extra_args(torch.optim.Adam),
+    "AdamW": ignore_extra_args(torch.optim.AdamW),
+    "lion": ignore_extra_args(Lion),
+}
 
 
 class GOLF(object):
@@ -30,7 +35,7 @@ class GOLF(object):
         optimizer_name="adam",
     ):
         self.actor = policy.actor
-        self.optimizer = ignore_extra_args(get_optimizer_class(optimizer_name))(
+        self.optimizer = optimizers[optimizer_name](
             params=self.actor.parameters(), lr=lr, amsgrad=True
         )
         if load_model:
@@ -66,20 +71,18 @@ class GOLF(object):
         output = self.actor(batch, train=True)
         predicted_energy = output["energy"]
         predicted_force = output["forces"]
-        n_atoms = get_n_atoms(batch)
 
         energy_loss = mse_loss(predicted_energy, energy.squeeze(1))
         # energy_loss = l1_loss(predicted_energy, energy.squeeze(1))
 
-        force_loss = torch.sum(
+        force_loss = torch.mean(
             scatter(
                 mse_loss(predicted_force, force, reduction="none").mean(-1),
                 batch.batch,
                 dim_size=batch.batch_size,
-                reduce="sum",
+                reduce="mean",
             )
-            / n_atoms
-        ) / n_atoms.size(0)
+        )
         loss = self.force_loss_coef * force_loss + self.energy_loss_coef * energy_loss
 
         if not torch.all(torch.isfinite(loss)):
@@ -122,23 +125,21 @@ class GOLF(object):
         metrics = dict()
 
         # Evaluate on test dataset
-        batch, eval_force, eval_energy = replay_buffer.sample_eval(self.batch_size)
+        batch, eval_forces, eval_energy = replay_buffer.sample_eval(self.batch_size)
         output = self.actor(batch, train=True)
         predicted_energy = output["energy"]
         predicted_force = output["forces"]
-        n_atoms = get_n_atoms(batch)
 
         with torch.no_grad():
             eval_energy_loss = mse_loss(predicted_energy, eval_energy.squeeze(1))
-            eval_force_loss = torch.sum(
+            eval_force_loss = torch.mean(
                 scatter(
-                    mse_loss(predicted_force, eval_force, reduction="none").mean(-1),
+                    mse_loss(predicted_force, eval_forces, reduction="none").mean(-1),
                     batch.batch,
                     dim_size=batch.batch_size,
-                    reduce="sum",
+                    reduce="mean",
                 )
-                / n_atoms
-            ) / n_atoms.size(0)
+            )
             eval_loss = (
                 self.force_loss_coef * eval_force_loss
                 + self.energy_loss_coef * eval_energy_loss
@@ -146,7 +147,13 @@ class GOLF(object):
 
         metrics["eval/loss"] = eval_loss.item()
         metrics["eval/energy_loss"] = eval_energy_loss.item()
+        metrics["eval/energy_loss_MAE"] = mean_absolute_error(
+            predicted_energy, eval_energy.squeeze(1)
+        ).item()
         metrics["eval/force_loss"] = eval_force_loss.item()
+        metrics["eval/force_loss_MAE"] = mean_absolute_error(
+            predicted_force, eval_forces
+        ).item()
         metrics["eval/energy_loss_contrib"] = (
             eval_energy_loss.item() * self.energy_loss_coef
         )
