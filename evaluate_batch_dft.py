@@ -407,7 +407,7 @@ def main(checkpoint_path, args, config):
         forces = np.asarray(
             np.vsplit(
                 select_action_result["forces"],
-                get_atoms_indices_range(batch).cpu().numpy()[1:-1]
+                get_atoms_indices_range(batch).cpu().numpy()[1:-1],
                 # np.cumsum(state[properties.n_atoms].cpu().numpy())[:-1],
             ),
             dtype=object,
@@ -732,7 +732,6 @@ if __name__ == "__main__":
         "actor",
         "conformation_optimizer",
         "conf_opt_lr",
-        "conf_opt_lr_scheduler",
         "max_iter",
         "lbfgs_device",
         "momentum",
@@ -758,11 +757,6 @@ if __name__ == "__main__":
         "--conf_opt_lr",
         type=float,
         help="Initial learning rate for conformation optimizer.",
-    )
-    parser.add_argument(
-        "--conf_opt_lr_scheduler",
-        choices=["Constant", "CosineAnnealing"],
-        help="Conformation optimizer learning rate scheduler type",
     )
     parser.add_argument(
         "--action_norm_limit",

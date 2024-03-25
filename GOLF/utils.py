@@ -5,44 +5,6 @@ from torch_geometric.nn import radius_graph
 from torch_geometric.utils import scatter
 
 from GOLF import DEVICE
-from GOLF.optim.lion_pytorch import Lion
-
-
-class LRCosineAnnealing:
-    def __init__(self, lr, lr_min=1e-5, t_max=1000):
-        self.lr = lr
-        self.lr_min = lr_min
-        self.t_max = t_max
-
-    def get(self, t):
-        return torch.FloatTensor(
-            [
-                self.lr_min
-                + 0.5
-                * (self.lr - self.lr_min)
-                * (1 + np.cos(min(t_, self.t_max) * np.pi / self.t_max))
-                for t_ in t
-            ]
-        ).to(DEVICE)
-
-
-class LRConstant:
-    def __init__(self, lr):
-        self.lr = lr
-
-    def get(self, t):
-        return torch.FloatTensor([self.lr for t_ in t]).to(DEVICE)
-
-
-def get_conformation_lr_scheduler(lr_scheduler_type, lr, t_max):
-    if lr_scheduler_type == "Constant":
-        return LRConstant(lr)
-    elif lr_scheduler_type == "CosineAnnealing":
-        return LRCosineAnnealing(lr, t_max=t_max)
-    else:
-        raise ValueError(
-            "Unknown conformation LR scheduler type: {}".format(lr_scheduler_type)
-        )
 
 
 def get_lr_scheduler(scheduler_type, optimizer, **kwargs):
@@ -67,17 +29,6 @@ def get_lr_scheduler(scheduler_type, optimizer, **kwargs):
         )
     else:
         raise ValueError("Unknown LR scheduler type: {}".format(scheduler_type))
-
-
-def get_optimizer_class(optimizer_name):
-    if optimizer_name == "adam":
-        return torch.optim.Adam
-    elif optimizer_name == "AdamW":
-        return torch.optim.AdamW
-    elif optimizer_name == "lion":
-        return Lion
-    else:
-        raise ValueError(f"Unknown optimizer: {optimizer_name}")
 
 
 def recollate_batch(batch, indices, new_batch):

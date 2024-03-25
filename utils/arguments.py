@@ -127,7 +127,7 @@ def get_args():
     # Backbone args
     parser.add_argument(
         "--nnp_type",
-        choices=["DimenetPlusPlus", "PaiNN"],
+        choices=["DimenetPlusPlus", "DimenetPlusPlusOC", "PaiNN", "GemNetOC"],
         required=True,
         help="Type of NNP to be used for optimization",
     )
@@ -158,12 +158,6 @@ def get_args():
         default=1.0,
         type=float,
         help="Initial learning rate for conformation optimizer.",
-    )
-    parser.add_argument(
-        "--conf_opt_lr_scheduler",
-        choices=["Constant", "CosineAnnealing"],
-        default="Constant",
-        help="Conformation optimizer learning rate scheduler type",
     )
     parser.add_argument(
         "--experience_saver",
