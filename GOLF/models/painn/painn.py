@@ -28,32 +28,26 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+
 import logging
 import math
 from typing import Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from torch_geometric.nn import MessagePassing
+from torch_geometric.nn import MessagePassing, radius_graph
 from torch_scatter import scatter, segment_coo
 
-from .layers import (
-    AtomEmbedding,
-    RadialBasis,
-    ScaledSiLU,
-    ScaleFactor,
-)
-
-# from torch_geometric.nn import radius_graph
-from .utils import (
+from ..utils import (
     compute_neighbors,
     get_edge_id,
     get_pbc_distances,
-    radius_graph,
+    load_scales_compat,
     radius_graph_pbc,
     repeat_blocks,
-    load_scales_compat,
 )
+from .layers import AtomEmbedding, RadialBasis, ScaledSiLU
+from ..common_layers import ScaleFactor
 
 
 class PaiNN(nn.Module):
