@@ -1,12 +1,13 @@
-import traceback
-from datetime import datetime
 import os
-import struct
-
-import socket
 import pickle
+import socket
+import struct
 import subprocess
 import tempfile
+import traceback
+from datetime import datetime
+
+import psi4
 
 PORT_RANGE_BEGIN_TRAIN = 20000
 PORT_RANGE_BEGIN_EVAL = 30000
@@ -126,15 +127,19 @@ if __name__ == "__main__":
     import sys
 
     host = get_ip()
-    port = int(sys.argv[1])
+
+    # Set number of parallel threads
+    psi4.core.set_num_threads(sys.argv[1])
+
+    port = int(sys.argv[2])
 
     if len(sys.argv) >= 3:
-        timeout_seconds = sys.argv[2]
+        timeout_seconds = sys.argv[3]
     else:
         timeout_seconds = 600
 
     if len(sys.argv) >= 4:
-        dft_script_path = sys.argv[3]
+        dft_script_path = sys.argv[4]
     else:
         dir_path = os.path.dirname(os.path.abspath(sys.argv[0]))
         dft_script_path = os.path.join(dir_path, "dft_worker.py")

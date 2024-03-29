@@ -12,15 +12,16 @@ function cleanup {
 
 trap cleanup EXIT
 
-range=$1
-begin=$2
+num_threads=$1
+range=$2
+begin=$3
 end=`expr $begin + $range - 1`
 
 rm -f /dev/shm/psi* /dev/shm/null* /dev/shm/dfh*
 
 for port in `seq $begin $end`;
 do
-    python3.9 ../env/dft.py $port &>worker_$port.out &
+    python3.9 ../env/dft.py $num_threads $port &>worker_$port.out &
 done
 
 wait
