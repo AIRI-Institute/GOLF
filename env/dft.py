@@ -133,12 +133,12 @@ if __name__ == "__main__":
 
     port = int(sys.argv[2])
 
-    if len(sys.argv) >= 3:
+    if len(sys.argv) >= 4:
         timeout_seconds = sys.argv[3]
     else:
         timeout_seconds = 600
 
-    if len(sys.argv) >= 4:
+    if len(sys.argv) >= 5:
         dft_script_path = sys.argv[4]
     else:
         dir_path = os.path.dirname(os.path.abspath(sys.argv[0]))
