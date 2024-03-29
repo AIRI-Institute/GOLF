@@ -129,7 +129,7 @@ if __name__ == "__main__":
     host = get_ip()
 
     # Set number of parallel threads
-    psi4.core.set_num_threads(sys.argv[1])
+    psi4.core.set_num_threads(int(sys.argv[1]))
 
     port = int(sys.argv[2])
 
