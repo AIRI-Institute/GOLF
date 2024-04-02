@@ -17,13 +17,12 @@ python ../../main.py --n_parallel 240 \
 --reward dft \
 --minimize_on_every_step True \
 --nnp_type PaiNN \
---nnp_config_path /mnt/2tb/tsypin/MARL/GOLF-pyg/configs/painn_small_direct_forces.yaml \
+--nnp_config_path /mnt/2tb/tsypin/MARL/GOLF-pyg/configs/painn.yaml \
 --actor GOLF \
 --experience_saver reward_threshold \
 --store_only_initial_conformations True \
 --conformation_optimizer LBFGS \
 --conf_opt_lr 1.0 \
---conf_opt_lr_scheduler Constant \
 --max_iter 5 \
 --lbfgs_device cpu \
 --momentum 0.0 \
