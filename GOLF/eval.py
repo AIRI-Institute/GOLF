@@ -106,7 +106,7 @@ def eval_policy_dft(actor, env, eval_episodes=10):
     while len(result["eval/dft_delta_energy"]) < eval_episodes:
         episode_timesteps = env.unwrapped.get_env_step()
         # TODO incorporate actor dones into DFT evaluation
-        select_action_result = actor.select_action(episode_timesteps)
+        select_action_result = actor.select_action()
         action = select_action_result["action"]
 
         # actor_dones = select_action_result["done"]

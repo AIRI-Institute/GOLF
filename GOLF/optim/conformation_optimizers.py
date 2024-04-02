@@ -38,7 +38,7 @@ class ConformationOptimizer(nn.Module):
                 [self.states[idx].pos], **self.optimizer_kwargs
             )
 
-    def act(self, t):
+    def act(self):
         # Save current positions
         prev_positions = [
             self.states[idx].pos.detach().clone() for idx in range(self.n_parallel)
@@ -240,10 +240,10 @@ class LBFGSConformationOptimizer(nn.Module):
 
         return result
 
-    def act(self, t):
+    def act(self):
         return self.loop.run_until_complete(self._act_async())
 
-    def select_action(self, t):
-        output = self.act(t)
+    def select_action(self):
+        output = self.act()
 
         return {key: value.cpu().numpy() for key, value in output.items()}

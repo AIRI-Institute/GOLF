@@ -162,7 +162,7 @@ def main(args, experiment_folder):
             # Get current timesteps
             episode_timesteps = env.unwrapped.get_env_step()
             # Select next action
-            actions = policy.act(episode_timesteps)["action"].cpu().numpy()
+            actions = policy.act()["action"].cpu().numpy()
             print("policy.act(); time: {:.4f}".format(time.perf_counter() - start))
 
             # If action contains non finites then reset everything and continue
