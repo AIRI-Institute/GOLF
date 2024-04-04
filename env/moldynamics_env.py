@@ -1,13 +1,12 @@
 import math
+import warnings
+from sqlite3 import DatabaseError
 
 import backoff
-import gym
+import gymnasium as gym
 import numpy as np
 import torch
-import warnings
-
 from ase.db import connect
-from sqlite3 import DatabaseError
 from schnetpack.interfaces import AtomsConverter
 from schnetpack.transform import ASENeighborList
 

@@ -1,17 +1,17 @@
-import gym
 import concurrent.futures
-import numpy as np
 import math
 import multiprocessing as mp
-import torch
 
-from rdkit.Chem import AddHs, AllChem, Conformer, MolFromSmiles, SmilesParserParams
+import gymnasium as gym
+import numpy as np
+import torch
+from rdkit.Chem import AddHs, AllChem, Conformer, MolFromSmiles
 from schnetpack.data.loader import _atoms_collate_fn
 from schnetpack.interfaces import AtomsConverter
 from schnetpack.transform import ASENeighborList
 
+from .dft import calculate_dft_energy_tcp_client, get_dft_server_destinations
 from .dft_worker import update_ase_atoms_positions
-from .dft import get_dft_server_destinations, calculate_dft_energy_tcp_client
 from .xyz2mol import get_rdkit_energy, get_rdkit_force, set_coordinates
 
 RDKIT_ENERGY_THRESH = 300
