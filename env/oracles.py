@@ -199,6 +199,14 @@ class NeuralOracle(BaseOracle):
         for new_param, param in zip(new_model.parameters(), self.model.parameters()):
             param.data.copy_(self.tau * param.data + (1 - self.tau) * new_param.data)
 
+    def load(self, filename):
+        self.model.load_state_dict(
+            torch.load(f"{filename}_oracle", map_location=DEVICE)
+        )
+
+    def save(self, filename):
+        torch.save(self.model.state_dict(), f"{filename}_oracle")
+
 
 class DFTOracle(BaseOracle):
     def __init__(
@@ -351,9 +359,6 @@ class DFTOracle(BaseOracle):
                 else:
                     continue
             results.append((i, energy, force, obs, initial_energy))
-
-        if not eval:
-            print(f"Total conformations added: {len(results)}")
 
         # Delete all finished tasks
         for key in done_task_ids:

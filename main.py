@@ -59,6 +59,7 @@ def main(args, experiment_folder):
 
     if args.load_model and not args.store_only_initial_conformations:
         replay_buffer = pickle.load(open(f"{args.load_model}_replay", "rb"))
+
         # For compatability
         if not hasattr(replay_buffer, "max_total_conformations"):
             replay_buffer.max_total_conformations = args.max_oracle_steps
@@ -128,6 +129,8 @@ def main(args, experiment_folder):
     # Initialize neural oracles
     if args.surrogate_oracle_type == "neural":
         neural_oracle = make_neural_oracle(policy.actor, args)
+        if args.load_model:
+            neural_oracle.load(args.load_model)
         env.surrogate_oracle.model = copy.deepcopy(neural_oracle)
         eval_env.surrogate_oracle.model = copy.deepcopy(neural_oracle)
 
@@ -324,6 +327,9 @@ def main(args, experiment_folder):
             save_t = replay_buffer.size
             trainer_save_name = f"{experiment_folder}/full_cp_iter_{save_t}"
             trainer.save(trainer_save_name)
+
+            # Save neural oracle
+            neural_oracle.save(f"{experiment_folder}/full_cp_iter_{save_t}_oracle")
 
             # Do not save the RB if no new data is generated
             if not args.store_only_initial_conformations:
