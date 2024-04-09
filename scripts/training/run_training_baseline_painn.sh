@@ -33,8 +33,8 @@ python ../../main.py --n_parallel 240 \
 --lr_scheduler CosineAnnealing \
 --optimizer adam \
 --clip_value 1.0 \
---energy_loss_coef 0.01 \
---force_loss_coef 0.99 \
+--energy_loss_coef 1.0 \
+--force_loss_coef 1.0 \
 --replay_buffer_size 1000000 \
 --initial_conf_pct 1.0 \
 --max_oracle_steps 100000 \
