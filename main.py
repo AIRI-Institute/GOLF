@@ -329,7 +329,8 @@ def main(args, experiment_folder):
             trainer.save(trainer_save_name)
 
             # Save neural oracle
-            neural_oracle.save(f"{experiment_folder}/full_cp_iter_{save_t}_oracle")
+            if args.surrogate_oracle_type == "neural":
+                neural_oracle.save(f"{experiment_folder}/full_cp_iter_{save_t}_oracle")
 
             # Do not save the RB if no new data is generated
             if not args.store_only_initial_conformations:
