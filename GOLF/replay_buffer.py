@@ -5,7 +5,7 @@ from torch_geometric.utils import scatter
 
 from env.optimization_env import OptimizationEnv
 
-NORM_THRESHOLD = 0.04
+NORM_THRESHOLD = 1.0
 
 
 class ReplayBuffer(object):
@@ -54,6 +54,11 @@ class ReplayBuffer(object):
             indices = np.where(force_norms < NORM_THRESHOLD)[0]
         else:
             indices = np.arange(len(individual_states))
+
+        # energies.shape[0] = 1 --> initializing replay buffers
+        if energies.shape[0] > 1:
+            print(f"Total conformations added: {len(indices)}")
+
         for i in indices:
             self.states[self.ptr] = individual_states[i]
             self.energy[self.ptr] = energies[i]
