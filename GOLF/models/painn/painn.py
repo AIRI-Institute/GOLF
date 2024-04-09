@@ -42,12 +42,10 @@ from ..utils import (
     compute_neighbors,
     get_edge_id,
     get_pbc_distances,
-    load_scales_compat,
     radius_graph_pbc,
     repeat_blocks,
 )
-from .layers import AtomEmbedding, RadialBasis, ScaledSiLU
-from ..common_layers import ScaleFactor
+from .layers import AtomEmbedding, RadialBasis
 
 
 class PaiNN(nn.Module):
@@ -73,7 +71,6 @@ class PaiNN(nn.Module):
         use_pbc: bool = True,
         otf_graph: bool = True,
         num_elements: int = 83,
-        scale_file: Optional[str] = None,
     ) -> None:
         super(PaiNN, self).__init__()
 
@@ -109,11 +106,10 @@ class PaiNN(nn.Module):
                 PaiNNMessage(hidden_channels, num_rbf).jittable()
             )
             self.update_layers.append(PaiNNUpdate(hidden_channels))
-            setattr(self, "upd_out_scalar_scale_%d" % i, ScaleFactor())
 
         self.out_energy = nn.Sequential(
             nn.Linear(hidden_channels, hidden_channels // 2),
-            ScaledSiLU(),
+            nn.SiLU(),
             nn.Linear(hidden_channels // 2, 1),
         )
 
@@ -121,10 +117,66 @@ class PaiNN(nn.Module):
             self.out_forces = PaiNNOutput(hidden_channels)
 
         self.inv_sqrt_2 = 1 / math.sqrt(2.0)
-
         self.reset_parameters()
 
-        load_scales_compat(self, scale_file)
+    @torch.enable_grad()
+    def forward(self, data):
+        pos = data.pos
+        batch = data.batch
+        z = data.z.long()
+
+        if self.regress_forces and not self.direct_forces:
+            pos = pos.requires_grad_(True)
+
+        (
+            edge_index,
+            neighbors,
+            edge_dist,
+            edge_vector,
+            id_swap,
+        ) = self.generate_graph_values(data)
+
+        assert z.dim() == 1 and z.dtype == torch.long
+
+        edge_rbf = self.radial_basis(edge_dist)  # rbf * envelope
+
+        x = self.atom_emb(z)
+        vec = torch.zeros(x.size(0), 3, x.size(1), device=x.device)
+
+        #### Interaction blocks ###############################################
+
+        for i in range(self.num_layers):
+            dx, dvec = self.message_layers[i](x, vec, edge_index, edge_rbf, edge_vector)
+
+            x = x + dx
+            vec = vec + dvec
+            x = x * self.inv_sqrt_2
+
+            dx, dvec = self.update_layers[i](x, vec)
+
+            x = x + dx
+            vec = vec + dvec
+
+        #### Output block #####################################################
+        per_atom_energy = self.out_energy(x).squeeze(1)
+        energy = scatter(per_atom_energy, batch, dim=0)
+
+        if self.regress_forces:
+            if self.direct_forces:
+                forces = self.out_forces(x, vec)
+                return energy, forces
+            else:
+                forces = -1 * (
+                    torch.autograd.grad(
+                        energy,
+                        pos,
+                        grad_outputs=torch.ones_like(energy),
+                        create_graph=self.training,
+                    )[0]
+                )
+                return energy, forces
+        else:
+            return energy
 
     def reset_parameters(self) -> None:
         nn.init.xavier_uniform_(self.out_energy[0].weight)
@@ -357,66 +409,6 @@ class PaiNN(nn.Module):
             id_swap,
         )
 
-    @torch.enable_grad()
-    def forward(self, data):
-        pos = data.pos
-        batch = data.batch
-        z = data.z.long()
-
-        if self.regress_forces and not self.direct_forces:
-            pos = pos.requires_grad_(True)
-
-        (
-            edge_index,
-            neighbors,
-            edge_dist,
-            edge_vector,
-            id_swap,
-        ) = self.generate_graph_values(data)
-
-        assert z.dim() == 1 and z.dtype == torch.long
-
-        edge_rbf = self.radial_basis(edge_dist)  # rbf * envelope
-
-        x = self.atom_emb(z)
-        vec = torch.zeros(x.size(0), 3, x.size(1), device=x.device)
-
-        #### Interaction blocks ###############################################
-
-        for i in range(self.num_layers):
-            dx, dvec = self.message_layers[i](x, vec, edge_index, edge_rbf, edge_vector)
-
-            x = x + dx
-            vec = vec + dvec
-            x = x * self.inv_sqrt_2
-
-            dx, dvec = self.update_layers[i](x, vec)
-
-            x = x + dx
-            vec = vec + dvec
-            x = getattr(self, "upd_out_scalar_scale_%d" % i)(x)
-
-        #### Output block #####################################################
-        per_atom_energy = self.out_energy(x).squeeze(1)
-        energy = scatter(per_atom_energy, batch, dim=0)
-
-        if self.regress_forces:
-            if self.direct_forces:
-                forces = self.out_forces(x, vec)
-                return energy, forces
-            else:
-                forces = -1 * (
-                    torch.autograd.grad(
-                        per_atom_energy,
-                        pos,
-                        grad_outputs=torch.ones_like(per_atom_energy),
-                        create_graph=self.training,
-                    )[0]
-                )
-                return energy, forces
-        else:
-            return energy
-
     def _generate_graph(
         self,
         data,
@@ -532,13 +524,13 @@ class PaiNNMessage(MessagePassing):
 
         self.x_proj = nn.Sequential(
             nn.Linear(hidden_channels, hidden_channels),
-            ScaledSiLU(),
+            nn.SiLU(),
             nn.Linear(hidden_channels, hidden_channels * 3),
         )
         self.rbf_proj = nn.Linear(num_rbf, hidden_channels * 3)
 
-        self.inv_sqrt_3 = 1 / math.sqrt(3.0)
-        self.inv_sqrt_h = 1 / math.sqrt(hidden_channels)
+        self.inv_sqrt_3 = 1 / math.sqrt(3.0)  # WTF???
+        self.inv_sqrt_h = 1 / math.sqrt(hidden_channels)  # WTF???
         self.x_layernorm = nn.LayerNorm(hidden_channels)
 
         self.reset_parameters()
@@ -550,10 +542,11 @@ class PaiNNMessage(MessagePassing):
         self.x_proj[2].bias.data.fill_(0)
         nn.init.xavier_uniform_(self.rbf_proj.weight)
         self.rbf_proj.bias.data.fill_(0)
-        self.x_layernorm.reset_parameters()
+        # self.x_layernorm.reset_parameters()
 
     def forward(self, x, vec, edge_index, edge_rbf, edge_vector):
-        xh = self.x_proj(self.x_layernorm(x))
+        # xh = self.x_proj(self.x_layernorm(x))
+        xh = self.x_proj(x)
 
         # TODO(@abhshkdz): Nans out with AMP here during backprop. Debug / fix.
         rbfh = self.rbf_proj(edge_rbf)
@@ -605,10 +598,9 @@ class PaiNNUpdate(nn.Module):
         self.vec_proj = nn.Linear(hidden_channels, hidden_channels * 2, bias=False)
         self.xvec_proj = nn.Sequential(
             nn.Linear(hidden_channels * 2, hidden_channels),
-            ScaledSiLU(),
+            nn.SiLU(),
             nn.Linear(hidden_channels, hidden_channels * 3),
         )
-
         self.inv_sqrt_2 = 1 / math.sqrt(2.0)
         self.inv_sqrt_h = 1 / math.sqrt(hidden_channels)
 
@@ -686,11 +678,11 @@ class GatedEquivariantBlock(nn.Module):
 
         self.update_net = nn.Sequential(
             nn.Linear(hidden_channels * 2, hidden_channels),
-            ScaledSiLU(),
+            nn.SiLU(),
             nn.Linear(hidden_channels, out_channels * 2),
         )
 
-        self.act = ScaledSiLU()
+        self.act = nn.SiLU()
 
     def reset_parameters(self) -> None:
         nn.init.xavier_uniform_(self.vec1_proj.weight)
