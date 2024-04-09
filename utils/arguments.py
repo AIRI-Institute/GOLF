@@ -113,7 +113,15 @@ def get_args():
         help="Type of surrogate oracle to use",
     )
     parser.add_argument(
-        "--tau", default=0.1, type=float, help="Neural oracle update rate"
+        "--tau", default=0.9, type=float, help="Neural oracle update rate"
+    )
+    parser.add_argument(
+        "--initial_tau",
+        default=0.9,
+        type=float,
+        help="Initialize initial neural oracle as \
+              'initial_tau * actor_weights + (1 - initial_tau) * random_weights' \
+              to make initial neural oracle differ from the actor",
     )
     parser.add_argument(
         "--minimize_on_every_step",
