@@ -144,7 +144,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--task_path", type=str, required=True)
     parser.add_argument("--result_path", type=str, required=True)
+    parser.add_argument("--num_threads", type=int, required=True)
     args = parser.parse_args()
+
+    # set number of threads per worker
+    psi4.core.set_num_threads(args.num_threads)
 
     with open(args.task_path, "rb") as file_obj:
         task = pickle.load(file_obj)

@@ -127,10 +127,7 @@ if __name__ == "__main__":
     import sys
 
     host = get_ip()
-
-    # Set number of parallel threads
-    psi4.core.set_num_threads(int(sys.argv[1]))
-
+    num_threads = int(sys.argv[1])
     port = int(sys.argv[2])
 
     if len(sys.argv) >= 4:
@@ -185,6 +182,8 @@ if __name__ == "__main__":
                     task_path,
                     "--result_path",
                     result_path,
+                    "--num_threads",
+                    num_threads,
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
