@@ -127,7 +127,7 @@ if __name__ == "__main__":
     import sys
 
     host = get_ip()
-    num_threads = int(sys.argv[1])
+    num_threads = sys.argv[1]
     port = int(sys.argv[2])
 
     if len(sys.argv) >= 4:
