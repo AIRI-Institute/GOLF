@@ -11,16 +11,20 @@ def make_neural_oracle(actor, args):
     # Initialize a random actor
     with open(args.nnp_config_path, "r") as f:
         nnp_args = yaml.safe_load(f)
+    if args.neural_oracle_dropout:
+        assert (
+            args.nnp_type == "DimenetPlusPlus"
+        ), "Dropout is currently implemented only in DimenetPlusPlus NNP"
+        nnp_args["dropout"] = args.neural_oracle_dropout
     actor_args = {
         "nnp_type": args.nnp_type,
         "nnp_args": nnp_args,
         "force_norm_limit": args.forces_norm_limit,
     }
-    random_actor = actors[args.actor](**actor_args).to(DEVICE)
-    random_actor_state_dict = random_actor.state_dict()
 
     # Load pretrained actor
-    neural_oracle = copy.deepcopy(actor)
+    neural_oracle = actors[args.actor](**actor_args).to(DEVICE)
+    print("Neural oracle id", id(neural_oracle.nnp))
     if args.load_baseline:
         neural_oracle.load_state_dict(
             torch.load(f"{args.load_baseline}_actor", map_location=DEVICE)
@@ -32,10 +36,11 @@ def make_neural_oracle(actor, args):
     #         )
     #     )
 
-    neural_oracle_state_dict = neural_oracle.state_dict()
-
     # Add random components to the weights neural oracle
     # so that it is slightly different from actor
+    neural_oracle_state_dict = neural_oracle.state_dict()
+    random_actor = actors[args.actor](**actor_args).to(DEVICE)
+    random_actor_state_dict = random_actor.state_dict()
     for key in neural_oracle_state_dict:
         neural_oracle_state_dict[key] = (
             1 - args.initial_tau

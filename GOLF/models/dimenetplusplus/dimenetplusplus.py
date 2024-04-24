@@ -3,18 +3,6 @@ from torch import nn
 from torch_geometric.nn.models import DimeNetPlusPlus
 
 
-def swish(x):
-    return x * x.sigmoid()
-
-
-class Swish(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        return x * x.sigmoid()
-
-
 class DimeNetPlusPlusPotential(nn.Module):
     def __init__(
         self,
@@ -34,6 +22,7 @@ class DimeNetPlusPlusPotential(nn.Module):
         dimenet_num_output_layers=3,
         cutoff=5.0,
         do_postprocessing=False,
+        dropout=0.0,
     ):
         super().__init__()
 
@@ -51,8 +40,9 @@ class DimeNetPlusPlusPotential(nn.Module):
         self.dimenet_num_after_skip = dimenet_num_after_skip
         self.dimenet_num_output_layers = dimenet_num_output_layers
         self.cutoff = cutoff
+        self.dropout = dropout
 
-        self.linear_output_size = 1
+        # print(id(self), "class dropout value", self.dropout)
 
         self.do_postprocessing = do_postprocessing
         self.scaler = scaler
@@ -74,15 +64,16 @@ class DimeNetPlusPlusPotential(nn.Module):
             num_output_layers=self.dimenet_num_output_layers,
         )
 
-        regr_or_cls_input_dim = self.node_latent_dim
+        self.linear_output_size = 1
+        self.dropout_layer = nn.Dropout(p=self.dropout)
         self.regr_or_cls_nn = nn.Sequential(
-            nn.Linear(regr_or_cls_input_dim, regr_or_cls_input_dim),
-            Swish(),
-            nn.Linear(regr_or_cls_input_dim, regr_or_cls_input_dim // 2),
-            Swish(),
-            nn.Linear(regr_or_cls_input_dim // 2, regr_or_cls_input_dim // 2),
-            Swish(),
-            nn.Linear(regr_or_cls_input_dim // 2, self.linear_output_size),
+            nn.Linear(self.node_latent_dim, self.node_latent_dim),
+            nn.SiLU(),
+            nn.Linear(self.node_latent_dim, self.node_latent_dim // 2),
+            nn.SiLU(),
+            nn.Linear(self.node_latent_dim // 2, self.node_latent_dim // 2),
+            nn.SiLU(),
+            nn.Linear(self.node_latent_dim // 2, self.linear_output_size),
         )
 
     @torch.enable_grad()
@@ -91,12 +82,11 @@ class DimeNetPlusPlusPotential(nn.Module):
         atom_z = data.z
         batch_mapping = data.batch
         pos = pos.requires_grad_(True)
-        P_dense = self.net(pos=pos, z=atom_z, batch=batch_mapping)
+        graph_embeddings = self.net(pos=pos, z=atom_z, batch=batch_mapping)
 
-        # graph_embeddings_to_return = None
-
-        graph_embeddings = P_dense
-        # graph_embeddings_to_return = graph_embeddings
+        if self.dropout:
+            # print(id(self), self.dropout, "DROPOUT")
+            graph_embeddings = self.dropout_layer(graph_embeddings)
 
         predictions = torch.flatten(self.regr_or_cls_nn(graph_embeddings).contiguous())
         forces = -1 * (
@@ -111,5 +101,4 @@ class DimeNetPlusPlusPotential(nn.Module):
         if self.scaler and self.do_postprocessing:
             predictions = self.scaler["scale_"] * predictions + self.scaler["mean_"]
 
-        # return P_dense, graph_embeddings_to_return, predictions, forces
         return predictions, forces
