@@ -29,12 +29,14 @@ python ../../main.py --n_parallel 240 \
 --lion_beta1 0.9 \
 --lion_beta2 0.99 \
 --batch_size 64 \
---lr 1e-4 \
+--lr 5e-4 \
 --lr_scheduler CosineAnnealing \
 --optimizer adam \
 --clip_value 1.0 \
+--energy_loss L1 \
 --energy_loss_coef 1.0 \
---force_loss_coef 1.0 \
+--force_loss L2_atomwise \
+--force_loss_coef 100.0 \
 --replay_buffer_size 1000000 \
 --initial_conf_pct 1.0 \
 --max_oracle_steps 100000 \

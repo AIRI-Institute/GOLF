@@ -16,8 +16,10 @@ python ../../main.py --n_parallel 36 \
 --max_num_negative_rewards 1 \
 --reward dft \
 --surrogate_oracle_type neural \
+--actor_dropout 0.2 \
+--neural_oracle_dropout 0.5 \
 --tau 0.99 \
---initial_tau 0.95 \
+--initial_tau 1.0 \
 --minimize_on_every_step True \
 --nnp_type DimenetPlusPlus \
 --nnp_config_path /mnt/2tb/tsypin/MARL/GOLF-pyg/configs/dimenetplusplus.yaml \
@@ -36,7 +38,9 @@ python ../../main.py --n_parallel 36 \
 --lr_scheduler CosineAnnealing \
 --optimizer adam \
 --clip_value 1.0 \
+--energy_loss L2 \
 --energy_loss_coef 0.01 \
+--force_loss L2 \
 --force_loss_coef 0.99 \
 --replay_buffer_size 1000000 \
 --initial_conf_pct 0.1 \
@@ -45,9 +49,8 @@ python ../../main.py --n_parallel 36 \
 --subtract_atomization_energy True \
 --forces_norm_limit 1.0 \
 --eval_freq 360 \
---n_eval_runs 36 \
 --eval_termination_mode fixed_length \
---exp_name GOLF-10k-Dimenet \
+--exp_name GOLF-10k-Dimenet-dropout-NO \
 --host_file_path ../../env/host_names_2.txt \
 --full_checkpoint_freq  720 \
 --light_checkpoint_freq 1440 \
