@@ -67,17 +67,17 @@ def rdkit_minimize_until_convergence(env, fixed_atoms, smiles, max_its=0):
     return initial_energy, final_energy
 
 
-def eval_policy_dft(actor, env, eval_episodes=10):
+def eval_policy_dft(policy, env, eval_episodes=10):
     start = time.perf_counter()
     max_timestamps = env.unwrapped.TL
     result = defaultdict(list)
     episode_returns = np.zeros(env.n_parallel)
     dft_pct_of_minimized_energy = []
 
-    # Reset env and actor
+    # Reset env and policy
     state = env.reset()
-    actor.reset(state)
-    actor.eval()
+    policy.reset(state)
+    policy.eval()
 
     # Calculate optimal delta energy DFT
     optimized_delta_energy_dft = np.zeros(env.n_parallel)
@@ -105,11 +105,8 @@ def eval_policy_dft(actor, env, eval_episodes=10):
 
     while len(result["eval/dft_delta_energy"]) < eval_episodes:
         episode_timesteps = env.unwrapped.get_env_step()
-        # TODO incorporate actor dones into DFT evaluation
-        select_action_result = actor.select_action()
+        select_action_result = policy.select_action()
         action = select_action_result["action"]
-
-        # actor_dones = select_action_result["done"]
 
         # Obser reward and next obs
         state, energy_delta, _, info = env.step(action)
@@ -170,10 +167,9 @@ def eval_policy_dft(actor, env, eval_episodes=10):
             # Reset episode returns
             episode_returns = np.zeros(env.n_parallel)
 
-            # Reset env and actor
+            # Reset env and policy
             state = env.reset()
-            actor.reset(state)
-            actor.eval()
+            policy.reset(state)
 
             # Update optimal delta energy DFT
             for i in range(env.n_parallel):
@@ -198,12 +194,12 @@ def eval_policy_dft(actor, env, eval_episodes=10):
                     initial_energy_rdkit - optimal_energy_rdkit
                 )
 
-            # Reset the environment again
-            env.set_initial_positions(
-                molecules, smiles, dft_initial_energies, dft_forces
-            )
+                # Reset the environment again
+                env.set_initial_positions(
+                    molecules, smiles, dft_initial_energies, dft_forces
+                )
 
-    actor.train()
+    policy.train()
     result = {k: np.array(v).mean() for k, v in result.items()}
     print(
         "Full Evaluation time: {:.3f}, results: {}".format(

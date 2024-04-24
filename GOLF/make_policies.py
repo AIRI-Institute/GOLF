@@ -12,10 +12,16 @@ actors = {
 }
 
 
-def make_policies(env, eval_env, args):
+def make_policies(env, args):
     # Backbone args
     with open(args.nnp_config_path, "r") as f:
         nnp_args = yaml.safe_load(f)
+
+    if args.actor_dropout:
+        assert (
+            args.nnp_type == "DimenetPlusPlus"
+        ), "Dropout is currently implemented only in DimenetPlusPlus NNP"
+        nnp_args["dropout"] = args.actor_dropout
 
     # Actor args
     actor_args = {
@@ -77,25 +83,4 @@ def make_policies(env, eval_env, args):
             actor=actor, **policy_args
         ).to(DEVICE)
 
-    # Initialize eval policy
-    if args.reward == "rdkit":
-        n_parallel_eval = 1
-    else:
-        n_parallel_eval = args.n_eval_runs
-
-    # Update arguments and initialize new actor
-    policy_args["n_parallel"] = n_parallel_eval
-
-    actor_args.update({"env": eval_env})
-    eval_actor = actors[args.actor](**actor_args)
-
-    if args.conformation_optimizer == "LBFGS":
-        eval_policy = ignore_extra_args(LBFGSConformationOptimizer)(
-            actor=eval_actor, **policy_args
-        ).to(DEVICE)
-    else:
-        eval_policy = ignore_extra_args(ConformationOptimizer)(
-            actor=eval_actor, **policy_args
-        ).to(DEVICE)
-
-    return policy, eval_policy
+    return policy
