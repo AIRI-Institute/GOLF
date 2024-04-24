@@ -98,7 +98,7 @@ def main(args, experiment_folder):
         replay_buffer.size = int(args.load_model.split("/")[-1].split("_")[-1])
 
     # Inititalize policy and eval policy
-    policy, eval_policy = make_policies(env, eval_env, args)
+    policy = make_policies(env, args)
 
     # Initialize experience saver
     experience_saver = make_saver(
@@ -116,7 +116,9 @@ def main(args, experiment_folder):
         batch_size=args.batch_size,
         clip_value=args.clip_value,
         lr_scheduler=args.lr_scheduler,
+        energy_loss=args.energy_loss,
         energy_loss_coef=args.energy_loss_coef,
+        force_loss=args.force_loss,
         force_loss_coef=args.force_loss_coef,
         load_model=args.load_model,
         total_steps=args.max_oracle_steps * args.utd_ratio,
@@ -130,9 +132,10 @@ def main(args, experiment_folder):
     if args.surrogate_oracle_type == "neural":
         neural_oracle = make_neural_oracle(policy.actor, args)
         if args.load_model:
-            neural_oracle.load(args.load_model)
-        env.surrogate_oracle.model = copy.deepcopy(neural_oracle)
-        eval_env.surrogate_oracle.model = copy.deepcopy(neural_oracle)
+            neural_oracle.load_state_dict(
+                torch.load(f"{args.load_model}_oracle", map_location=DEVICE)
+            )
+        env.surrogate_oracle.model = neural_oracle
 
     if not args.store_only_initial_conformations:
         state = env.reset()
@@ -226,7 +229,6 @@ def main(args, experiment_folder):
             # Update neural_oracle after training
             if args.surrogate_oracle_type == "neural":
                 env.surrogate_oracle.update_model(policy.actor)
-                eval_env.surrogate_oracle.update_model(policy.actor)
 
             # Increase replay buffer size without adding any data
             # so that the training is done for the correct amount of steps
@@ -287,21 +289,26 @@ def main(args, experiment_folder):
             args.eval_freq / float(args.n_parallel)
         ) == 0:
             print(f"Evaluation at step {replay_buffer.size}...")
-            # Update eval policy
-            eval_policy.actor = copy.deepcopy(policy.actor)
+            # Update neural oracle in eval env
+            if args.surrogate_oracle_type == "neural":
+                eval_env.surrogate_oracle.model = env.surrogate_oracle.model
             step_metrics["Total_timesteps"] = replay_buffer.size
             step_metrics["Total_training_steps"] = replay_buffer.size * args.utd_ratio
             step_metrics["FPS"] = args.n_parallel / (time.perf_counter() - start)
             if not args.store_only_initial_conformations or args.reward == "rdkit":
                 step_metrics.update(
                     eval_function[args.reward](
-                        actor=eval_policy,
+                        policy=policy,
                         env=eval_env,
-                        eval_episodes=args.n_eval_runs,
+                        eval_episodes=args.n_parallel,
                         eval_termination_mode=args.eval_termination_mode,
                     )
                 )
             logger.log(step_metrics)
+
+            # Reset training policy
+            state = env.reset()
+            policy.reset(state)
 
             # Prevent evaluations until new data is added to replay buffer
             eval_model_flag = False
@@ -330,7 +337,7 @@ def main(args, experiment_folder):
 
             # Save neural oracle
             if args.surrogate_oracle_type == "neural":
-                neural_oracle.save(f"{experiment_folder}/full_cp_iter_{save_t}_oracle")
+                env.save_surrogate_oracle(f"{experiment_folder}/full_cp_iter_{save_t}")
 
             # Do not save the RB if no new data is generated
             if not args.store_only_initial_conformations:

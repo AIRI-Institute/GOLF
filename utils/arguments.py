@@ -116,12 +116,26 @@ def get_args():
         "--tau", default=0.9, type=float, help="Neural oracle update rate"
     )
     parser.add_argument(
+        "--actor_dropout",
+        default=0.0,
+        type=float,
+        help="Add dropout layers to the regression head of actor \
+              to properly regularize weights",
+    )
+    parser.add_argument(
+        "--neural_oracle_dropout",
+        default=0.0,
+        type=float,
+        help="Add dropout layers to the regression head of neural oracle \
+              to decorrelate neural oracle and the actor",
+    )
+    parser.add_argument(
         "--initial_tau",
         default=0.9,
         type=float,
         help="Initialize initial neural oracle as \
               'initial_tau * actor_weights + (1 - initial_tau) * random_weights' \
-              to make initial neural oracle differ from the actor",
+              to make decorrelate neural oracle and the actor",
     )
     parser.add_argument(
         "--minimize_on_every_step",
@@ -245,6 +259,22 @@ def get_args():
         "--clip_value", default=None, help="Clipping value for actor gradients"
     )
     parser.add_argument(
+        "--energy_loss",
+        default="L2",
+        type=str,
+        choices=["L1", "L2"],
+        help="NNP energy loss",
+    )
+    parser.add_argument(
+        "--force_loss",
+        default="L2",
+        type=str,
+        choices=["L2", "RMSE_atomwise"],
+        help="NNP force loss. \
+              L2: first average over atoms in molecules; then average over molecules in batch. \
+              RMSE_atomwise: average over all atoms in batch",
+    )
+    parser.add_argument(
         "--energy_loss_coef",
         default=0.01,
         type=float,
@@ -299,9 +329,6 @@ def get_args():
     # Eval args
     parser.add_argument(
         "--eval_freq", default=1e3, type=int, help="Evaluation frequency"
-    )
-    parser.add_argument(
-        "--n_eval_runs", default=10, type=int, help="Number of evaluation episodes"
     )
     parser.add_argument(
         "--eval_termination_mode",
