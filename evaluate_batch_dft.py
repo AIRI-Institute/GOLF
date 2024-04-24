@@ -290,7 +290,6 @@ def make_env(args):
         "minimize_on_done": False,
         "terminate_on_negative_reward": args.terminate_on_negative_reward,
         "max_num_negative_rewards": args.max_num_negative_rewards,
-        "evaluation": True,
         "host_file_path": args.host_file_path,
     }
 
@@ -398,7 +397,7 @@ def main(checkpoint_path, args, config):
         episode_timesteps = eval_env.unwrapped.get_env_step()
 
         # Select next action
-        select_action_result = eval_policy.select_action(episode_timesteps)
+        select_action_result = eval_policy.select_action()
         actions = select_action_result["action"]
         energies = select_action_result["energy"]
         lbfgs_dones = select_action_result["done"]
