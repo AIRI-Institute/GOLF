@@ -32,7 +32,6 @@ class EnergyWrapper(gym.Wrapper):
         neural_oracle=None,
         minimize_on_every_step=False,
         minimize_on_done=True,
-        evaluation=False,
         terminate_on_negative_reward=False,
         max_num_negative_rewards=1,
         host_file_path=None,
@@ -42,7 +41,6 @@ class EnergyWrapper(gym.Wrapper):
         self.n_threads = n_threads
         self.minimize_on_every_step = minimize_on_every_step
         self.minimize_on_done = minimize_on_done
-        self.evaluation = evaluation
         self.terminate_on_negative_reward = terminate_on_negative_reward
         self.max_num_negative_rewards = max_num_negative_rewards
 
@@ -103,8 +101,6 @@ class EnergyWrapper(gym.Wrapper):
         energy_delta = self.surrogate_oracle.get_energy_delta(
             new_energies, calc_SO_energy_indices
         )
-        # print("ENERGY DELTA")
-        # print(energy_delta)
 
         # When agent encounters 'max_num_negative_rewards' terminate the episode
         self.negative_rewards_counter[energy_delta < 0] += 1
@@ -203,3 +199,6 @@ class EnergyWrapper(gym.Wrapper):
             return self.genuine_oracle.get_energies(indices)
         else:
             return self.surrogate_oracle.get_energies(indices)
+
+    def save_surrogate_oracle(self, path):
+        self.surrogate_oracle.save(path)

@@ -20,7 +20,6 @@ def make_envs(args, neural_oracle):
         "neural_oracle": neural_oracle,
         "n_threads": args.n_threads,
         "minimize_on_every_step": args.minimize_on_every_step,
-        "evaluation": False,
         "terminate_on_negative_reward": args.terminate_on_negative_reward,
         "max_num_negative_rewards": args.max_num_negative_rewards,
         "host_file_path": args.host_file_path,
@@ -39,13 +38,7 @@ def make_envs(args, neural_oracle):
             "timelimit": args.timelimit_eval,
         }
     )
-
-    if args.reward == "rdkit":
-        env_kwargs["n_parallel"] = 1
-    else:
-        env_kwargs["n_parallel"] = args.n_eval_runs
-        reward_wrapper_kwargs["minimize_on_every_step"] = False
-        reward_wrapper_kwargs["evaluation"] = True
+    reward_wrapper_kwargs["minimize_on_every_step"] = False
 
     # Initialize eval env
     eval_env = OptimizationEnv(**env_kwargs)
