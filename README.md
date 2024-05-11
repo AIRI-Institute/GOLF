@@ -1,7 +1,7 @@
 # (ICLR2024 Poster) Gradual Optimization Learning for Conformational Energy Minimization
 
 <p align="left">
-  <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a> <a href="https://openreview.net/forum?id=FMMF1a9ifL"><img alt="Openreview" src="https://img.shields.io/badge/review-OpenReview-red"></a> <a href="https://arxiv.org/abs/2311.06295"><img alt="Paper URL" src="https://img.shields.io/badge/arxiv-2311.06295-blue"></a>
+  <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a> <a href="https://iclr.cc/virtual/2024/poster/19068"><img alt="ICLR poster page" src="https://img.shields.io/badge/poster%20page-ICLR-green"></a> <a href="https://openreview.net/forum?id=FMMF1a9ifL"><img alt="Openreview" src="https://img.shields.io/badge/review-OpenReview-red"></a> <a href="https://arxiv.org/abs/2311.06295"><img alt="Paper URL" src="https://img.shields.io/badge/arxiv-2311.06295-blue"></a>
 </p>
 
 This repository is the official implementation of the paper:
