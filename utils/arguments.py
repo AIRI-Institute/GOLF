@@ -143,6 +143,12 @@ def get_args():
         type=int,
         help="Number of features to describe atomic environments inside backbone",
     )
+    parser.add_argument(
+        "--radial_basis_type",
+        default="Bessel",
+        choices=["Bessel", "Gaussian"],
+        help="Radial basis function type",
+    )
 
     # GOLF args
     parser.add_argument(
