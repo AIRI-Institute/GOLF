@@ -11,7 +11,7 @@ This repository provides an example of how to evaluate the _SchNet_ and _PaiNN_ 
   ```
 2. Download evaluation dataset $\mathcal{D}_{\text{opt}}^{\text{test}}$:
   ```
-  wget ???
+  wget https://a002dlils-kadurin-nabladft.obs.ru-moscow-1.hc.sbercloud.ru/data/nablaDFTv2/energy_databases/test_trajectories_initial.db
   ```
 3. Create virtual environment on a GPU machine:
    ```
