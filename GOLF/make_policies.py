@@ -17,11 +17,11 @@ def make_policies(env, args):
     with open(args.nnp_config_path, "r") as f:
         nnp_args = yaml.safe_load(f)
 
-    if args.actor_dropout:
-        assert (
-            args.nnp_type == "DimenetPlusPlus"
-        ), "Dropout is currently implemented only in DimenetPlusPlus NNP"
-        nnp_args["dropout"] = args.actor_dropout
+    # if args.actor_dropout:
+    #     assert (
+    #         args.nnp_type == "DimenetPlusPlus"
+    #     ), "Dropout is currently implemented only in DimenetPlusPlus NNP"
+    #     nnp_args["dropout"] = args.actor_dropout
 
     # Actor args
     actor_args = {

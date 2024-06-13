@@ -84,7 +84,7 @@ class ReplayBuffer(object):
         batch = Batch.from_data_list(states).to(self.device)
         forces = torch.cat(forces).to(self.device)
 
-        if self.atomrefs is not None:
+        if self.atomrefs:
             # Get atomization energy for each molecule in the batch
             atomization_energy = scatter(
                 self.atomrefs[batch.z],
@@ -100,7 +100,7 @@ class ReplayBuffer(object):
         batch = Batch.from_data_list(states).to(self.device)
         forces = torch.cat(forces).to(self.device)
         energy = energy.to(self.device)
-        if self.atomrefs is not None:
+        if self.atomrefs:
             # Get atomization energy for each molecule in the batch
             atomization_energy = scatter(
                 self.atomrefs[batch.z],

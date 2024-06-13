@@ -94,7 +94,7 @@ class DimeNetPlusPlusPotential(nn.Module):
                 predictions,
                 pos,
                 grad_outputs=torch.ones_like(predictions),
-                create_graph=self.training,
+                create_graph=True,
             )[0]
         )
 
