@@ -21,7 +21,7 @@ rm -f /dev/shm/psi* /dev/shm/null* /dev/shm/dfh*
 
 for port in `seq $begin $end`;
 do
-    python3.9 ../env/dft.py $num_threads $port &>worker_$port.out &
+    python ../env/dft.py $num_threads $port &>worker_$port.out &
 done
 
 wait
