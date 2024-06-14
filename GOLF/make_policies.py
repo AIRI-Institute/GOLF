@@ -34,6 +34,7 @@ def make_policies(env, eval_env, args):
         "env": env,
         "backbone": args.backbone,
         "backbone_args": backbone_args,
+        "do_postprocessing": args.do_postprocessing,
         "action_norm_limit": args.action_norm_limit,
     }
     actor = actors[args.actor](**actor_args)

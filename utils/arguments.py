@@ -149,6 +149,12 @@ def get_args():
         choices=["Bessel", "Gaussian"],
         help="Radial basis function type",
     )
+    parser.add_argument(
+        "do_postprocessing",
+        default=False,
+        type=bool,
+        help="Postprocess energy by subtracting mean",
+    )
 
     # GOLF args
     parser.add_argument(

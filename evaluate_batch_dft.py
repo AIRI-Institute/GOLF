@@ -340,12 +340,8 @@ def main(checkpoint_path, args, config):
 
     if config.actor != "rdkit":
         agent_path = checkpoint_path / args.agent_path
-        # eval_policy.actor.load_state_dict(
-        #     torch.load(agent_path, map_location=torch.device(DEVICE))
-        # )
-        # TMP directly load model from the checkpoint
-        eval_policy.actor.model = torch.load(
-            agent_path, map_location=torch.device(DEVICE)
+        eval_policy.actor.load_state_dict(
+            torch.load(agent_path, map_location=torch.device(DEVICE))["state_dict"]
         )
         eval_policy.actor.to(DEVICE)
         eval_policy.actor.eval()

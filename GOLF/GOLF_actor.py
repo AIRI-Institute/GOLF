@@ -33,6 +33,7 @@ class Actor(nn.Module):
         self,
         backbone,
         backbone_args,
+        do_postprocessing=False,
         action_norm_limit=None,
     ):
         super(Actor, self).__init__()
@@ -48,9 +49,16 @@ class Actor(nn.Module):
             spk.atomistic.Forces(energy_key="energy", force_key="anti_gradient"),
         ]
 
+        if do_postprocessing:
+            postprocessors = [
+                spk.transform.AddOffsets(property="energy", add_mean=True)
+            ]
+        else:
+            postprocessors = None
         self.model = spk.model.NeuralNetworkPotential(
             representation=representation,
             input_modules=[spk.atomistic.PairwiseDistances()],
+            postprocessors=postprocessors,
             output_modules=output_modules,
         )
 
@@ -99,8 +107,6 @@ class Actor(nn.Module):
 
     def forward(self, state_dict, active_optimizers_ids=None, train=False):
         output = self.model(state_dict)
-        # TMP rename forces to anti_gradients
-        output["anti_gradient"] = output.pop("forces")
         self._save_last_output(output)
         if train:
             return output
