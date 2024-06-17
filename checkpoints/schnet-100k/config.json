@@ -1,6 +1,6 @@
 {
     "n_parallel": 240,
-    "n_threads": 24,
+    "n_workers": 24,
     "db_path": "../../data/traj-500k.db",
     "eval_db_path": "../../data/GOLF_test.db",
     "num_initial_conformations": -1,

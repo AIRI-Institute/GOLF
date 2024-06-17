@@ -87,18 +87,16 @@ def calculate_dft_energy_tcp_client(task, host, port, logging=False):
         return conformation_id, step, None, None
 
 
-def get_dft_server_destinations(n_threads, host_file_path=None):
+def get_dft_server_destinations(n_workers, host_file_path=None):
     if host_file_path:
         with open(host_file_path, "r") as f:
             hosts = f.readlines()
     else:
         hosts = HOSTS
-    # Different ports for train/eval to avoid "Connection refused errors"
     port_range_begin = PORT_RANGE_BEGIN_TRAIN
-
     destinations = []
     for host in hosts:
-        for port in range(port_range_begin, port_range_begin + n_threads):
+        for port in range(port_range_begin, port_range_begin + n_workers):
             destinations.append((host, port))
 
     return destinations

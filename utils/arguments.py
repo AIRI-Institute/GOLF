@@ -37,10 +37,10 @@ def get_args():
         help="Number of copies of env to run in parallel",
     )
     parser.add_argument(
-        "--n_threads",
+        "--n_workers",
         default=1,
         type=int,
-        help="Number of parallel threads for DFT computations",
+        help="Number of parallel DFT workers",
     )
     parser.add_argument(
         "--db_path",

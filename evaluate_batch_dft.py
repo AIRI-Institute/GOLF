@@ -288,7 +288,7 @@ def make_env(args):
     # Reward wrapper kwargs
     reward_wrapper_kwargs = {
         "dft": args.reward == "dft",
-        "n_threads": args.n_threads,
+        "n_workers": args.n_workers,
         "minimize_on_every_step": args.minimize_on_every_step,
         "minimize_on_done": False,
         "terminate_on_negative_reward": args.terminate_on_negative_reward,
