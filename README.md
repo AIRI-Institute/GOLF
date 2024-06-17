@@ -4,24 +4,30 @@ This repository provides an example of how to evaluate the _SchNet_ and _PaiNN_ 
 
 
 ## Evaluate _SchNet_ or _PaiNN_
-1. Download the checkpoint from the [nablaDFT](https://github.com/AIRI-Institute/nablaDFT) repo.
+All the checkpoints with the corresponding configs are in `checkpoints` directory.
+1. **Setup virtual environment on the parent machine.** To perform optimization in a reasonable time, we assume that the parent machine has a GPU.
+   ```
+   source setup_gpu_env.sh
+   ```
+2. **Setup dft workers on CPU-rich machines.** To speed up the evaluation, we parallelize DFT computations using several CPU-rich machines. Hostnames of CPU-rich machines must be provided in the `env/host_names.env`. If CPU-rich machines are unavailable, the Psi4 computations can be performed on the parent machine. In this case, `env/host_names.env` must contain ip-address of the parent machine.
+   - Log in to CPU-rich machines. They must be accessible via `socket.bind`.
+   - Clone GOLF repo `git clone --branch nabla2DFT-eval https://github.com/AIRI-Institute/GOLF`.
+   - Set up verual environments for DFT workers
+  ```
+  cd scripts && source setup_host.sh <number of threads per worker> <number of workers> <starting port number>
+  ```
+  For example, to launch 4 workers using 4 threads each and listening to ports `20000, 20001, 20002, 20003`, run:
+  ```
+  cd scripts && source setup_host.sh 4 4 20000
+  ```
   ```
   cd checkpoints/painn-100k
   wget https://a002dlils-kadurin-nabladft.obs.ru-moscow-1.hc.sbercloud.ru/data/nablaDFTv2/models_checkpoints/PaiNN/painn_100k.ckpt && mv painn_100k.ckpt NNP_checkpoint_actor
   ```
-2. Download evaluation dataset $\mathcal{D}_{\text{opt}}^{\text{test}}$:
+2. **Download evaluation dataset $\mathcal{D}_{\text{opt}}^{\text{test}}$ on the parent machine**:
   ```
   wget https://a002dlils-kadurin-nabladft.obs.ru-moscow-1.hc.sbercloud.ru/data/nablaDFTv2/energy_databases/test_trajectories_initial.db
   ```
-3. Create virtual environment on a GPU machine:
-   ```
-   # On the GPU machine
-   conda create -y -n GOLF_env python=3.9
-   conda activate GOLF_env
-   conda install pytorch pytorch-cuda=11.8 -c pytorch -c nvidia
-   conda install  psi4 -c psi4
-   python -m pip install -r requirements.txt
-   ```
 4. To speed up the evaluation, we parallelize DFT computations using several CPU-rich machines. Hostnames of CPU-rich machines must be provided in the `env/host_names.env`. If CPU-rich machines are unavailable, the Psi4 computations can be performed on the GPU machine. In this case, `env/host_names.env` must be changed accordingly.
    Set up workers that perform Psi4 calculations in parallel:
    - Log in to CPU-rich machines. They must be accessible via `socket.bind`.
