@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Exit immediately if a command exits with a non-zero status.
-set -e
+set -ex
 
 # Function to clean up resources
 cleanup() {
@@ -26,8 +26,7 @@ rm -f /dev/shm/psi* /dev/shm/null* /dev/shm/dfh*
 
 # Launch workers
 for PORT in $(seq $START_PORT $END_PORT); do
-    echo "Launching worker on port $port"
-    python3.10 ../env/dft.py $NUM_THREADS $PORT &> worker_$PORT.out &
+    python ../env/dft.py $NUM_THREADS $PORT &> worker_$PORT.out &
 done
 
 # Wait for all background jobs to finish
