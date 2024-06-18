@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Exit immediately if a command exits with a non-zero status.
-set -e
+set -ex
 
 # Function to print usage
 print_usage() {
@@ -25,6 +25,19 @@ fi
 NUM_THREADS=$1
 NUM_WORKERS=$2
 START_PORT=$3
+
+# Function to check if the -r flag is in the wrong place
+check_argument_order() {
+    for arg in "$@"; do
+        if [[ "$arg" == "-r" || "$arg" == "--relaunch" ]]; then
+            echo "Error: The -r or --relaunch flag should be the first argument."
+            print_usage
+            exit 1
+        fi
+    done
+}
+
+check_argument_order "$NUM_THREADS" "$NUM_WORKERS" "$START_PORT"
 
 # Function to install Mamba
 install_mamba() {
