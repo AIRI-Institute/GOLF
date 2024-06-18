@@ -40,7 +40,6 @@ install_mamba() {
 setup_environment() {
     echo "Setting up the environment..."
     source ~/mamba3/etc/profile.d/conda.sh # Initialize Conda/Mamba environment
-    source ~/.bashrc
     conda create -y -n golf_dft_env python=3.10 # Create the environment with Python 3.10
     conda activate golf_dft_env # Activate the newly created environment
     mamba install -y psi4 -c conda-forge # Install psi4 using Mamba
@@ -68,9 +67,6 @@ else
 fi
 
 # Main script execution
-source ~/.bashrc
-source ~/mamba3/etc/profile.d/conda.sh
-
 if [[ $RELAUNCH_ONLY -eq 0 ]]; then
     setup_environment
 else
