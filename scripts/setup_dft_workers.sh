@@ -5,7 +5,7 @@ set -e
 
 # Function to print usage
 print_usage() {
-    echo "Usage: $0 [-r|--relaunch] <num_threads> <port_range> <start_port>"
+    echo "Usage: $0 [-r|--relaunch] <num_threads> <num_workers> <start_port>"
 }
 
 # Parse arguments
@@ -43,8 +43,8 @@ setup_environment() {
     source ~/.bashrc
     conda create -y -n golf_dft_env python=3.10 # Create the environment with Python 3.10
     conda activate golf_dft_env # Activate the newly created environment
-    mamba install -y psi4 -c conda-forge # Install psi4 using Mamba
-    mamba install -y ase -c conda-forge # Install ase using Mamba
+    conda install -y psi4 -c conda-forge # Install psi4 using Mamba
+    conda install -y ase -c conda-forge # Install ase using Mamba
 }
 
 # Function to activate the environment
