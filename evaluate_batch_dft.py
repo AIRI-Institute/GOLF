@@ -324,7 +324,7 @@ def main(checkpoint_path, args, config):
         torch.use_deterministic_algorithms(True)
 
     dft_server_destinations = get_dft_server_destinations(
-        args.n_threads, args.host_file_path
+        args.n_workers, args.host_file_path
     )
     method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
     executors = [
@@ -750,7 +750,7 @@ if __name__ == "__main__":
         help="Number of copies of env to run in parallel",
     )
     parser.add_argument(
-        "--n_threads",
+        "--n_workers",
         default=1,
         type=int,
         help="Number of parallel threads for DFT computations",
@@ -920,7 +920,7 @@ if __name__ == "__main__":
     config["n_parallel"] = args.n_parallel
     config["host_file_path"] = args.host_file_path
     config["timelimit"] = args.timelimit + 1
-    config["n_threads"] = args.n_threads
+    config["n_workers"] = args.n_workers
     config["terminate_on_negative_reward"] = args.terminate_on_negative_reward
     config["max_num_negative_rewards"] = args.max_num_negative_rewards
     config["reward"] = args.reward
