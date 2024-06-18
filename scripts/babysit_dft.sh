@@ -17,9 +17,9 @@ trap cleanup EXIT
 
 # Parameters
 NUM_THREADS=$1
-PORT_RANGE=$2
+NUM_WORKERS=$2
 START_PORT=$3
-END_PORT=$(($START_PORT + $PORT_RANGE - 1))
+END_PORT=$(($START_PORT + $NUM_WORKERS - 1))
 
 # Clean up any leftover shared memory files
 rm -f /dev/shm/psi* /dev/shm/null* /dev/shm/dfh*

@@ -23,7 +23,7 @@ fi
 
 # Parameters
 NUM_THREADS=$1
-PORT_RANGE=$2
+NUM_WORKERS=$2
 START_PORT=$3
 
 # Function to install Mamba
@@ -39,6 +39,7 @@ install_mamba() {
 # Function to setup the environment
 setup_environment() {
     echo "Setting up the environment..."
+    source ~/mamba3/etc/profile.d/conda.sh # Initialize Conda/Mamba environment
     source ~/.bashrc
     conda create -y -n golf_dft_env python=3.10 # Create the environment with Python 3.10
     conda activate golf_dft_env # Activate the newly created environment
@@ -49,13 +50,14 @@ setup_environment() {
 # Function to activate the environment
 activate_environment() {
     echo "Activating the environment..."
+    source ~/mamba3/etc/profile.d/conda.sh # Initialize Conda/Mamba environment
     conda activate golf_dft_env # Activate the environment
 }
 
 # Function to launch workers
 launch_workers() {
     echo "Launching workers..."
-    ./babysit_dft.sh $NUM_THREADS $PORT_RANGE $START_PORT
+    ./babysit_dft.sh $NUM_THREADS $NUM_WORKERS $START_PORT
 }
 
 # Check if Mamba is already installed
