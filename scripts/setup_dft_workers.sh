@@ -43,8 +43,8 @@ setup_environment() {
     source ~/.bashrc
     conda create -y -n golf_dft_env python=3.10 # Create the environment with Python 3.10
     conda activate golf_dft_env # Activate the newly created environment
-    conda install -y psi4 -c conda-forge # Install psi4 using Mamba
-    conda install -y ase -c conda-forge # Install ase using Mamba
+    mamba install -y psi4 -c conda-forge # Install psi4 using Mamba
+    mamba install -y ase -c conda-forge # Install ase using Mamba
 }
 
 # Function to activate the environment
@@ -68,11 +68,12 @@ else
 fi
 
 # Main script execution
+source ~/.bashrc
+source ~/mamba3/etc/profile.d/conda.sh
+
 if [[ $RELAUNCH_ONLY -eq 0 ]]; then
-    source ~/.bashrc
     setup_environment
 else
-    source ~/.bashrc
     activate_environment
 fi
 launch_workers
