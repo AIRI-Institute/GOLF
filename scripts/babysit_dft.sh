@@ -26,7 +26,8 @@ rm -f /dev/shm/psi* /dev/shm/null* /dev/shm/dfh*
 
 # Launch workers
 for PORT in $(seq $START_PORT $END_PORT); do
-    python ../env/dft.py $NUM_THREADS $PORT &> worker_$PORT.out &
+    echo "Launching worker on port $port"
+    python3.10 ../env/dft.py $NUM_THREADS $PORT &> worker_$PORT.out &
 done
 
 # Wait for all background jobs to finish
