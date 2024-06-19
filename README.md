@@ -18,12 +18,16 @@ All checkpoints with the corresponding configurations are in the `checkpoints` d
    - Clone GOLF repo `git clone --branch nabla2DFT-eval https://github.com/AIRI-Institute/GOLF`.
    - Set up virtual environment for DFT workers
      ```
-     cd scripts && source setup_host.sh <number of threads per worker> <number of workers> <starting port number>
+     cd scripts && ./setup_host.sh <number of threads per worker> <number of workers> <starting port number>
      ```
      For example, to launch 4 workers using 4 threads each, listening to ports 20000, 20001, 20002, and 20003, run:
      ```
-     cd scripts && source setup_host.sh 4 4 20000
+     cd scripts && ./setup_host.sh 4 4 20000
      ```
+   - If you need to run DFT workers without installing the env run:
+      ```
+      cd scripts && ./setup_host.sh --relaunch 4 4 20000
+      ```
 3. **Download evaluation dataset $\mathcal{D}_{\text{opt}}^{\text{test}}$ on the parent machine**:
      ```
      mkdir data && cd data
