@@ -52,17 +52,17 @@ install_mamba() {
 # Function to setup the environment
 setup_environment() {
     echo "Setting up the environment..."
-    source ~/mamba3/etc/profile.d/conda.sh # Initialize Conda/Mamba environment
+    source $CONDA_PREFIX/etc/profile.d/conda.sh # Initialize Conda/Mamba environment
     conda create -y -n golf_dft_env python=3.10 # Create the environment with Python 3.10
     conda activate golf_dft_env # Activate the newly created environment
-    conda install -y psi4 -c conda-forge # Install psi4 using Mamba
+    conda install -y numpy=1 psi4 -c conda-forge # Install psi4 using Mamba
     conda install -y ase -c conda-forge # Install ase using Mamba
 }
 
 # Function to activate the environment
 activate_environment() {
     echo "Activating the environment..."
-    source ~/mamba3/etc/profile.d/conda.sh # Initialize Conda/Mamba environment
+    source $CONDA_PREFIX/etc/profile.d/conda.sh # Initialize Conda/Mamba environment
     conda activate golf_dft_env # Activate the environment
 }
 
