@@ -7,8 +7,6 @@ import tempfile
 import traceback
 from datetime import datetime
 
-import psi4
-
 PORT_RANGE_BEGIN_TRAIN = 20000
 PORT_RANGE_BEGIN_EVAL = 30000
 HOSTS = [
@@ -23,7 +21,6 @@ HOSTS = [
     "192.168.19.29",
     "192.168.19.30",
 ]
-# HOSTS = ["192.168.19.103"]
 
 
 def recvall(sock, count):
