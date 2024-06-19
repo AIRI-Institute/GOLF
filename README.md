@@ -30,7 +30,13 @@ All checkpoints with the corresponding configurations are in the `checkpoints` d
      wget https://a002dlils-kadurin-nabladft.obs.ru-moscow-1.hc.sbercloud.ru/data/nablaDFTv2/energy_databases/test_trajectories_initial.db
      cd ../
      ```
-4. **Run evaluation on the parent machine**:
+4. **Test DFT workers (optional).** You can optionally test if the DFT workers correctly process conformations by running:
+   ```
+   python test_dft_workers.py --hostnames env/host_names.txt --db_path data/test_trajectories_initial.db --num_workers_per_server 4
+   ```
+   - `num_workers_per_server` must match  `<number of workers>`.
+   - `db_path` must point to downloaded $\mathcal{D}_{\text{opt}}^{\text{test}}$ dataset.
+6. **Run evaluation on the parent machine**:
    ```
    CUDA_VISIBLE_DEVICES=0 python evaluate_batch_dft.py --checkpoint_path checkpoints/painn-100k --agent_path painn_100k.ckpt --n_parallel 60 --n_workers 8 --conf_number -1 --host_file_path env/host_names.txt --eval_db_path data/test_trajectories_initial.db --timelimit 100 --terminate_on_negative_reward False --reward dft --minimize_on_every_step False --eval_early_stop_steps 100 --subtract_atomization_energy False
    ```
