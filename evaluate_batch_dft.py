@@ -288,7 +288,7 @@ def make_env(args):
     # Reward wrapper kwargs
     reward_wrapper_kwargs = {
         "dft": args.reward == "dft",
-        "n_threads": args.n_threads,
+        "n_workers": args.n_workers,
         "minimize_on_every_step": args.minimize_on_every_step,
         "minimize_on_done": False,
         "terminate_on_negative_reward": args.terminate_on_negative_reward,
@@ -324,7 +324,7 @@ def main(checkpoint_path, args, config):
         torch.use_deterministic_algorithms(True)
 
     dft_server_destinations = get_dft_server_destinations(
-        args.n_threads, args.host_file_path
+        args.n_workers, args.host_file_path
     )
     method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
     executors = [
@@ -341,19 +341,16 @@ def main(checkpoint_path, args, config):
     if config.actor != "rdkit":
         agent_path = checkpoint_path / args.agent_path
         eval_policy.actor.load_state_dict(
-            torch.load(agent_path, map_location=torch.device(DEVICE))
+            torch.load(agent_path, map_location=torch.device(DEVICE))["state_dict"]
         )
         eval_policy.actor.to(DEVICE)
         eval_policy.actor.eval()
 
     atomrefs = None
     with connect(args.eval_db_path) as conn:
-        if "atomrefs" in conn.metadata and args.subtract_atomization_energy:
+        if "atomrefs" in conn.metadata:
             atomrefs = np.array(conn.metadata["atomrefs"]["energy"])
-    if args.subtract_atomization_energy:
-        assert (
-            atomrefs is not None
-        ), "Per-atom energies are not provided but args.subtract_atomization_energy is True."
+        assert atomrefs is not None, "Per-atom energies are not provided."
 
     state = eval_env.reset()
     if args.resume:
@@ -361,10 +358,10 @@ def main(checkpoint_path, args, config):
             metric["conformation_id"]
             for metric in read_metrics(args.evaluation_metrics_path)
         )
-        while set(eval_env.atoms_ids).issubset(metrics_ids):
+        while set(eval_env.unwrapped.atoms_ids).issubset(metrics_ids):
             state = eval_env.reset()
 
-    reserve_db_ids(args.results_db_path, eval_env.atoms_ids.copy())
+    reserve_db_ids(args.results_db_path, eval_env.unwrapped.atoms_ids.copy())
     eval_policy.reset(state)
 
     finished = np.zeros(shape=eval_env.n_parallel, dtype=bool)
@@ -376,14 +373,21 @@ def main(checkpoint_path, args, config):
     }
 
     stats = {}
-    for i, conformation_id in enumerate(eval_env.atoms_ids):
-        optimal_energy = eval_env.energy[i] + 1e-8
-        if eval_env.optimal_energy[i]:
-            optimal_energy = eval_env.optimal_energy[i]
+    for i, conformation_id in enumerate(eval_env.unwrapped.atoms_ids):
+        if not args.subtract_atomization_energy:
+            atomization_energy = atomrefs[
+                eval_env.unwrapped.atoms[i].get_atomic_numbers()
+            ].sum()
+        else:
+            atomization_energy = 0
+        optimal_energy = eval_env.unwrapped.energy[i] + 1e-8
+        if eval_env.unwrapped.optimal_energy[i]:
+            optimal_energy = eval_env.unwrapped.optimal_energy[i]
         stats[conformation_id] = ConformationOptimizationStats(
             conformation_id=conformation_id,
-            initial_energy_ground_truth=eval_env.energy[i],
-            optimal_energy_ground_truth=optimal_energy,
+            initial_energy_ground_truth=eval_env.unwrapped.energy[i]
+            + atomization_energy,
+            optimal_energy_ground_truth=optimal_energy + atomization_energy,
         )
         barrier[conformation_id] += 1
 
@@ -422,7 +426,7 @@ def main(checkpoint_path, args, config):
         # Handle non-finite actions
         non_finite_action_mask = ~finished & (~is_finite_action)
         for i in np.where(non_finite_action_mask)[0]:
-            conformation_id = eval_env.atoms_ids[i]
+            conformation_id = eval_env.unwrapped.atoms_ids[i]
             stats[conformation_id].non_finite_action = True
             stats[conformation_id].non_finite_action_step = episode_timesteps[i]
 
@@ -452,15 +456,17 @@ def main(checkpoint_path, args, config):
 
             for i in np.where(early_stop_step_mask)[0]:
                 early_stop_step_reached[early_stop_step][i] = 1
-                conformation_id = eval_env.atoms_ids[i]
+                conformation_id = eval_env.unwrapped.atoms_ids[i]
                 energy = energies[i]
-                if args.subtract_atomization_energy:
-                    energy += atomrefs[
-                        eval_env.unwrapped.atoms[i].get_atomic_numbers()
-                    ].sum()
+                energy += atomrefs[
+                    eval_env.unwrapped.atoms[i].get_atomic_numbers()
+                ].sum()
                 step_stats = StepStats(
                     n_iter=n_iters[i], energy=energy, force=forces[i]
                 )
+                # print(
+                #     step_stats.n_iter, step_stats.energy, step_stats.energy_ground_truth
+                # )
                 stats[conformation_id].step2stats[early_stop_step] = step_stats
                 tasks.append(
                     (
@@ -474,7 +480,7 @@ def main(checkpoint_path, args, config):
         lbfgs_dones_mask = ~finished & lbfgs_dones & (lbfgs_done_steps == -1)
         lbfgs_done_steps[lbfgs_dones_mask] = steps[lbfgs_dones_mask]
         for i in np.where(lbfgs_dones_mask)[0]:
-            conformation_id = eval_env.atoms_ids[i]
+            conformation_id = eval_env.unwrapped.atoms_ids[i]
             stats[conformation_id].lbfgs_done = True
             stats[conformation_id].lbfgs_done_step = steps[i]
 
@@ -503,7 +509,7 @@ def main(checkpoint_path, args, config):
                 lbfgs_done_steps[i] = -1
                 done_envs_ids.append(i)
 
-                conformation_id = eval_env.atoms_ids[i]
+                conformation_id = eval_env.unwrapped.atoms_ids[i]
                 barrier[conformation_id] -= 1
                 if barrier[conformation_id] == 0:
                     log_conformation_optimization_stats(
@@ -549,11 +555,13 @@ def main(checkpoint_path, args, config):
             del futures[future_id]
 
         if len(done_envs_ids) > 0:
-            atoms_ids = [eval_env.atoms_ids[i] for i in done_envs_ids]
-            atoms_list = [eval_env.atoms[i].copy() for i in done_envs_ids]
-            smiles_list = [eval_env.smiles[i] for i in done_envs_ids]
-            initial_energies = [eval_env.energy[i] for i in done_envs_ids]
-            optimal_energies = [eval_env.optimal_energy[i] for i in done_envs_ids]
+            atoms_ids = [eval_env.unwrapped.atoms_ids[i] for i in done_envs_ids]
+            atoms_list = [eval_env.unwrapped.atoms[i].copy() for i in done_envs_ids]
+            smiles_list = [eval_env.unwrapped.smiles[i] for i in done_envs_ids]
+            initial_energies = [eval_env.unwrapped.energy[i] for i in done_envs_ids]
+            optimal_energies = [
+                eval_env.unwrapped.optimal_energy[i] for i in done_envs_ids
+            ]
             write_to_db(
                 args.results_db_path,
                 atoms_ids,
@@ -572,19 +580,26 @@ def main(checkpoint_path, args, config):
             reset_states = eval_env.reset(indices=envs_to_reset)
             eval_policy.reset(reset_states, indices=envs_to_reset)
             state = recollate_batch(state, envs_to_reset, reset_states)
-            atoms_ids = [eval_env.atoms_ids[i] for i in envs_to_reset]
+            atoms_ids = [eval_env.unwrapped.atoms_ids[i] for i in envs_to_reset]
             reserve_db_ids(args.results_db_path, atoms_ids)
             pbar_optimization.update(n_conf_processed_delta)
 
         for i in envs_to_reset:
-            conformation_id = eval_env.atoms_ids[i]
-            optimal_energy = eval_env.energy[i] + 1e-4
-            if eval_env.optimal_energy[i]:
-                optimal_energy = eval_env.optimal_energy[i]
+            if not args.subtract_atomization_energy:
+                atomization_energy = atomrefs[
+                    eval_env.unwrapped.atoms[i].get_atomic_numbers()
+                ].sum()
+            else:
+                atomization_energy = 0
+            conformation_id = eval_env.unwrapped.atoms_ids[i]
+            optimal_energy = eval_env.unwrapped.energy[i] + 1e-4
+            if eval_env.unwrapped.optimal_energy[i]:
+                optimal_energy = eval_env.unwrapped.optimal_energy[i]
             stats[conformation_id] = ConformationOptimizationStats(
                 conformation_id=conformation_id,
-                initial_energy_ground_truth=eval_env.energy[i],
-                optimal_energy_ground_truth=optimal_energy,
+                initial_energy_ground_truth=eval_env.unwrapped.energy[i]
+                + atomization_energy,
+                optimal_energy_ground_truth=optimal_energy + atomization_energy,
             )
             barrier[conformation_id] += 1
 
@@ -607,6 +622,7 @@ def main(checkpoint_path, args, config):
         step_stats = stats[conformation_id].step2stats[step]
         step_stats.energy_ground_truth = energy
         step_stats.force_ground_truth = force
+        # print(step_stats.n_iter, step_stats.energy, step_stats.energy_ground_truth)
         barrier[conformation_id] -= 1
         if barrier[conformation_id] == 0:
             update_data_in_db(args.results_db_path, conformation_id, energy, force)
@@ -734,7 +750,7 @@ if __name__ == "__main__":
         help="Number of copies of env to run in parallel",
     )
     parser.add_argument(
-        "--n_threads",
+        "--n_workers",
         default=1,
         type=int,
         help="Number of parallel threads for DFT computations",
@@ -904,7 +920,7 @@ if __name__ == "__main__":
     config["n_parallel"] = args.n_parallel
     config["host_file_path"] = args.host_file_path
     config["timelimit"] = args.timelimit + 1
-    config["n_threads"] = args.n_threads
+    config["n_workers"] = args.n_workers
     config["terminate_on_negative_reward"] = args.terminate_on_negative_reward
     config["max_num_negative_rewards"] = args.max_num_negative_rewards
     config["reward"] = args.reward

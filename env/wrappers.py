@@ -130,7 +130,7 @@ class DFTOracle(BaseOracle):
         self,
         n_parallel,
         update_coordinates_fn,
-        n_threads,
+        n_workers,
         converter,
         host_file_path,
     ):
@@ -138,7 +138,7 @@ class DFTOracle(BaseOracle):
 
         self.previous_molecules = [None] * self.n_parallel
         self.dft_server_destinations = get_dft_server_destinations(
-            n_threads, host_file_path
+            n_workers, host_file_path
         )
         method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
         self.executors = [
@@ -287,7 +287,7 @@ class EnergyWrapper(gym.Wrapper):
         self,
         env,
         dft=False,
-        n_threads=1,
+        n_workers=1,
         minimize_on_every_step=False,
         minimize_on_done=True,
         evaluation=False,
@@ -297,7 +297,7 @@ class EnergyWrapper(gym.Wrapper):
     ):
         # Set arguments
         self.dft = dft
-        self.n_threads = n_threads
+        self.n_workers = n_workers
         self.minimize_on_every_step = minimize_on_every_step
         self.minimize_on_done = minimize_on_done
         self.evaluation = evaluation
@@ -322,7 +322,7 @@ class EnergyWrapper(gym.Wrapper):
         self.dft_oracle = DFTOracle(
             n_parallel=self.n_parallel,
             update_coordinates_fn=update_ase_atoms_positions,
-            n_threads=self.n_threads,
+            n_workers=self.n_workers,
             converter=converter,
             host_file_path=host_file_path,
         )

@@ -169,6 +169,15 @@ def get_cutoff_by_string(cutoff_type):
     raise ValueError(f"Unexpected cutoff type:{cutoff_type}")
 
 
+def get_radial_basis_by_string(radial_basis_type):
+    if radial_basis_type == "Bessel":
+        return snn.BesselRBF
+    elif radial_basis_type == "Gaussian":
+        return snn.GaussianRBF
+
+    raise ValueError(f"Unexpected radial basis type:{radial_basis_type}")
+
+
 def get_atoms_indices_range(states):
     return torch.nn.functional.pad(
         torch.cumsum(states[properties.n_atoms], dim=0), pad=(1, 0)

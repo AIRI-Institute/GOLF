@@ -37,10 +37,10 @@ def get_args():
         help="Number of copies of env to run in parallel",
     )
     parser.add_argument(
-        "--n_threads",
+        "--n_workers",
         default=1,
         type=int,
-        help="Number of parallel threads for DFT computations",
+        help="Number of parallel DFT workers",
     )
     parser.add_argument(
         "--db_path",
@@ -142,6 +142,18 @@ def get_args():
         default=128,
         type=int,
         help="Number of features to describe atomic environments inside backbone",
+    )
+    parser.add_argument(
+        "--radial_basis_type",
+        default="Bessel",
+        choices=["Bessel", "Gaussian"],
+        help="Radial basis function type",
+    )
+    parser.add_argument(
+        "do_postprocessing",
+        default=False,
+        type=bool,
+        help="Postprocess energy by subtracting mean",
     )
 
     # GOLF args

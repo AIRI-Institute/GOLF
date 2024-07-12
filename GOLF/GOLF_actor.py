@@ -33,6 +33,7 @@ class Actor(nn.Module):
         self,
         backbone,
         backbone_args,
+        do_postprocessing=False,
         action_norm_limit=None,
     ):
         super(Actor, self).__init__()
@@ -48,9 +49,16 @@ class Actor(nn.Module):
             spk.atomistic.Forces(energy_key="energy", force_key="anti_gradient"),
         ]
 
+        if do_postprocessing:
+            postprocessors = [
+                spk.transform.AddOffsets(property="energy", add_mean=True)
+            ]
+        else:
+            postprocessors = None
         self.model = spk.model.NeuralNetworkPotential(
             representation=representation,
             input_modules=[spk.atomistic.PairwiseDistances()],
+            postprocessors=postprocessors,
             output_modules=output_modules,
         )
 
@@ -77,11 +85,11 @@ class Actor(nn.Module):
             max_norm = torch.maximum(
                 max_norm, torch.full_like(max_norm, fill_value=EPS, dtype=torch.float32)
             )
-            coefficient[
-                n_atoms[molecule_id] : n_atoms[molecule_id + 1]
-            ] = torch.minimum(
-                self.action_norm_limit / max_norm,
-                torch.ones_like(max_norm, dtype=torch.float32),
+            coefficient[n_atoms[molecule_id] : n_atoms[molecule_id + 1]] = (
+                torch.minimum(
+                    self.action_norm_limit / max_norm,
+                    torch.ones_like(max_norm, dtype=torch.float32),
+                )
             )
 
         return actions * coefficient
@@ -278,7 +286,9 @@ class AsyncLBFGS:
         self.optimizer.zero_grad()
         await self.optimizer2policy_queue.put(self.state)
         anti_gradient, energy = await self.policy2optimizer_queue.get()
-        self.state[properties.R].grad = -anti_gradient
+        self.state[properties.R].grad = -anti_gradient.type(
+            self.state[properties.R].dtype
+        )
         # Energy and anti-gradient before step
         if self.n_iter == 0:
             self.anti_gradient = anti_gradient

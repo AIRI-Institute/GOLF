@@ -1,27 +1,33 @@
-#! /bin/bash -ex
+#!/bin/bash
 
-# kill `ps uaxww | grep dft.py | awk '{ print $2 }'`
+# Exit immediately if a command exits with a non-zero status.
+set -ex
 
-function cleanup {
-    echo "stop workers"
+# Function to clean up resources
+cleanup() {
+    echo "Stopping workers..."
     pkill -P $$
 
-    echo "clean /dev/shm"
+    echo "Cleaning shared memory..."
     rm -f /dev/shm/psi* /dev/shm/null* /dev/shm/dfh*
 }
 
+# Trap EXIT signal to clean up resources
 trap cleanup EXIT
 
-num_threads=$1
-range=$2
-begin=$3
-end=`expr $begin + $range - 1`
+# Parameters
+NUM_THREADS=$1
+NUM_WORKERS=$2
+START_PORT=$3
+END_PORT=$(($START_PORT + $NUM_WORKERS - 1))
 
+# Clean up any leftover shared memory files
 rm -f /dev/shm/psi* /dev/shm/null* /dev/shm/dfh*
 
-for port in `seq $begin $end`;
-do
-    python3.9 ../env/dft.py $num_threads $port &>worker_$port.out &
+# Launch workers
+for PORT in $(seq $START_PORT $END_PORT); do
+    python ../env/dft.py $NUM_THREADS $PORT &> worker_$PORT.out &
 done
 
+# Wait for all background jobs to finish
 wait

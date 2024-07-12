@@ -8,7 +8,7 @@ from GOLF.GOLF_actor import (
     ConformationOptimizer,
     LBFGSConformationOptimizer,
 )
-from GOLF.utils import get_cutoff_by_string
+from GOLF.utils import get_cutoff_by_string, get_radial_basis_by_string
 from GOLF.optim.lion_pytorch import Lion
 from utils.utils import ignore_extra_args
 
@@ -23,7 +23,9 @@ def make_policies(env, eval_env, args):
     backbone_args = {
         "n_interactions": args.n_interactions,
         "n_atom_basis": args.n_atom_basis,
-        "radial_basis": schnetpack.nn.BesselRBF(n_rbf=args.n_rbf, cutoff=args.cutoff),
+        "radial_basis": get_radial_basis_by_string(args.radial_basis_type)(
+            n_rbf=args.n_rbf, cutoff=args.cutoff
+        ),
         "cutoff_fn": get_cutoff_by_string("cosine")(args.cutoff),
     }
 
@@ -32,6 +34,7 @@ def make_policies(env, eval_env, args):
         "env": env,
         "backbone": args.backbone,
         "backbone_args": backbone_args,
+        "do_postprocessing": args.do_postprocessing,
         "action_norm_limit": args.action_norm_limit,
     }
     actor = actors[args.actor](**actor_args)
