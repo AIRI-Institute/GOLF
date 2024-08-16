@@ -130,11 +130,9 @@ This repository is the official implementation of the paper:
 1. Set up environment on the GPU machine.
    ```
    # On the GPU machine
-   conda create -y -n GOLF_env python=3.9
-   conda activate GOLF_env
-   conda install pytorch pytorch-cuda=11.8 -c pytorch -c nvidia
-   conda install  psi4 -c psi4
-   python -m pip install -r requirements.txt
+   ./scripts/setup_gpu_env.sh
+   conda activate GOLF_schnetpack
+   pip install -r requirements.txt
    ```
 2. Download training dataset $\mathcal{D}_0$ and evaluation dataset $\mathcal{D}\_{\text{test}}$
    ```
