@@ -179,7 +179,7 @@ To speed up the training, we parallelize DFT computations using several CPU-rich
    # On CPU rich machines
    git clone https://github.com/AIRI-Institute/GOLF
    cd GOLF/scripts
-   ./setup_host.sh n_ports ports_range_begin
+   ./setup_dft_workers.sh <num_threads> <num_workers> <start_port>
    ```
    Here, `n_ports` denotes number of workers on a CPU-rich machine, and `ports_range_begin` denotes the starting port numbers for workers. Workers calculate energies and forces using `psi4` for newly generated conformations. For example, `./setup_host.sh 24 20000` will launch a total of 48 workers listening to ports `20000, ... , 20023`. You can change the `ports_range_begin` in `env/dft.py`.
    
