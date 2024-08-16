@@ -3,5 +3,3 @@ conda install -y -n GOLF_schnetpack pytorch pytorch-cuda=12.1 -c pytorch -c nvid
 conda install -y -n GOLF_schnetpack lightning -c conda-forge
 conda install -y -n GOLF_schnetpack psi4 -c conda-forge
 conda install -y -n GOLF_schnetpack rdkit -c conda-forge
-conda activate GOLF_schnetpack
-python -m pip install -r ../requirements.txt
